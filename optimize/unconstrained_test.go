@@ -82,19 +82,19 @@ var gradFreeTests = []unconstrainedTest{
 		},
 		x: []float64{-5, 4, 16, 3},
 	},
-    {
+	{
 		name: "Sphere5D",
 		p: Problem{
 			Func: functions.Sphere{}.Func,
 		},
-		x:       []float64{0.00001, 1.00001, 2.00001, 3.00001, 4.00001},
+		x: []float64{0.00001, 1.00001, 2.00001, 3.00001, 4.00001},
 	},
 	{
 		name: "Sphere10D",
 		p: Problem{
 			Func: functions.Sphere{}.Func,
 		},
-		x:       []float64{0.00001, 1.00001, 2.00001, 3.00001, 4.00001, 5.00001, 6.00001, 7.00001, 8.00001, 9.00001},
+		x: []float64{0.00001, 1.00001, 2.00001, 3.00001, 4.00001, 5.00001, 6.00001, 7.00001, 8.00001, 9.00001},
 	},
 }
 
@@ -1056,6 +1056,16 @@ func TestGradientDescentBacktracking(t *testing.T) {
 	testLocal(t, gradientDescentTests, &GradientDescent{
 		Linesearcher: &Backtracking{
 			DecreaseFactor: 0.1,
+		},
+	})
+}
+
+func TestGradientDescentBacktrackingWithMinimumStepSize(t *testing.T) {
+	t.Parallel()
+	testLocal(t, gradientDescentTests, &GradientDescent{
+		Linesearcher: &Backtracking{
+			DecreaseFactor:  0.1,
+			MinimumStepSize: 2e-8,
 		},
 	})
 }
