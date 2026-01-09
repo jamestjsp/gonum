@@ -178,6 +178,11 @@ func TestDggsvp3(t *testing.T) {
 	testlapack.Dggsvp3Test(t, impl)
 }
 
+func TestDhgeqz(t *testing.T) {
+	t.Parallel()
+	testlapack.DhgeqzTest(t, impl)
+}
+
 func TestDgtsv(t *testing.T) {
 	t.Parallel()
 	testlapack.DgtsvTest(t, impl)
@@ -221,6 +226,11 @@ func TestDlag2(t *testing.T) {
 func TestDlags2(t *testing.T) {
 	t.Parallel()
 	testlapack.Dlags2Test(t, impl)
+}
+
+func TestDlagv2(t *testing.T) {
+	t.Parallel()
+	testlapack.Dlagv2Test(t, impl)
 }
 
 func TestDlagtm(t *testing.T) {
@@ -676,6 +686,21 @@ func TestDtrsyl(t *testing.T) {
 func TestDtgsy2(t *testing.T) {
 	t.Parallel()
 	testlapack.Dtgsy2Test(t, impl)
+}
+
+func TestDtgex2(t *testing.T) {
+	t.Parallel()
+	testlapack.Dtgex2Test(t, impl)
+}
+
+func TestDtgevc(t *testing.T) {
+	t.Parallel()
+	testlapack.DtgevcTest(t, impl)
+}
+
+func TestDtgexc(t *testing.T) {
+	t.Parallel()
+	testlapack.DtgexcTest(t, impl)
 }
 
 func TestDtrti2(t *testing.T) {
