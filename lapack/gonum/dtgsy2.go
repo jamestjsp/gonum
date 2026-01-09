@@ -192,7 +192,7 @@ func (impl Implementation) Dtgsy2(trans blas.Transpose, ijob, m, n int, a []floa
 							scale *= scaloc
 						}
 					} else {
-						rdscal2, rdsum2 = impl.Dlatdf(lapack.MaximizeNormXJob(ijob), 2, z[:], ldz, rhs[:], rdsum2, rdscal2, ipiv[:2], jpiv[:2])
+						rdscal2, rdsum2 = impl.Dlatdf(lapack.MaximizeNormXJob(ijob & 2), 2, z[:], ldz, rhs[:], rdsum2, rdscal2, ipiv[:2], jpiv[:2])
 						if rdscal2 != 1 {
 							for kk := 0; kk < n; kk++ {
 								bi.Dscal(m, rdscal2, c[kk:], ldc)
@@ -245,7 +245,7 @@ func (impl Implementation) Dtgsy2(trans blas.Transpose, ijob, m, n int, a []floa
 							scale *= scaloc
 						}
 					} else {
-						rdscal2, rdsum2 = impl.Dlatdf(lapack.MaximizeNormXJob(ijob), 4, z[:], ldz, rhs[:], rdsum2, rdscal2, ipiv[:4], jpiv[:4])
+						rdscal2, rdsum2 = impl.Dlatdf(lapack.MaximizeNormXJob(ijob & 2), 4, z[:], ldz, rhs[:], rdsum2, rdscal2, ipiv[:4], jpiv[:4])
 						if rdscal2 != 1 {
 							for kk := 0; kk < n; kk++ {
 								bi.Dscal(m, rdscal2, c[kk:], ldc)
@@ -304,7 +304,7 @@ func (impl Implementation) Dtgsy2(trans blas.Transpose, ijob, m, n int, a []floa
 							scale *= scaloc
 						}
 					} else {
-						rdscal2, rdsum2 = impl.Dlatdf(lapack.MaximizeNormXJob(ijob), 4, z[:], ldz, rhs[:], rdsum2, rdscal2, ipiv[:4], jpiv[:4])
+						rdscal2, rdsum2 = impl.Dlatdf(lapack.MaximizeNormXJob(ijob & 2), 4, z[:], ldz, rhs[:], rdsum2, rdscal2, ipiv[:4], jpiv[:4])
 						if rdscal2 != 1 {
 							for kk := 0; kk < n; kk++ {
 								bi.Dscal(m, rdscal2, c[kk:], ldc)
@@ -393,7 +393,7 @@ func (impl Implementation) Dtgsy2(trans blas.Transpose, ijob, m, n int, a []floa
 							scale *= scaloc
 						}
 					} else {
-						rdscal2, rdsum2 = impl.Dlatdf(lapack.MaximizeNormXJob(ijob), 8, z[:], ldz, rhs[:], rdsum2, rdscal2, ipiv[:8], jpiv[:8])
+						rdscal2, rdsum2 = impl.Dlatdf(lapack.MaximizeNormXJob(ijob & 2), 8, z[:], ldz, rhs[:], rdsum2, rdscal2, ipiv[:8], jpiv[:8])
 						if rdscal2 != 1 {
 							for kk := 0; kk < n; kk++ {
 								bi.Dscal(m, rdscal2, c[kk:], ldc)
