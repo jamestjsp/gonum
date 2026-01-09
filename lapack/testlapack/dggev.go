@@ -1,0 +1,190 @@
+// Copyright ©2026 The Gonum Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+package testlapack
+
+import (
+	"math"
+	"testing"
+
+	"gonum.org/v1/gonum/lapack"
+)
+
+type Dggever interface {
+	Dggev(jobvl lapack.LeftEVJob, jobvr lapack.RightEVJob, n int,
+		a []float64, lda int, b []float64, ldb int,
+		alphar, alphai, beta []float64,
+		vl []float64, ldvl int, vr []float64, ldvr int,
+		work []float64, lwork int) bool
+}
+
+func DggevTest(t *testing.T, impl Dggever) {
+	testDggevWorkspace(t, impl)
+	testDggevEmpty(t, impl)
+
+	for _, n := range []int{1, 2, 3, 4, 5} {
+		testDggevDiagonal(t, impl, n)
+	}
+
+	testDggevEigenvaluesOnly(t, impl)
+}
+
+func testDggevWorkspace(t *testing.T, impl Dggever) {
+	for _, n := range []int{1, 5, 10, 20} {
+		work := make([]float64, 1)
+		impl.Dggev(lapack.LeftEVCompute, lapack.RightEVCompute, n,
+			nil, max(1, n), nil, max(1, n),
+			nil, nil, nil,
+			nil, max(1, n), nil, max(1, n),
+			work, -1)
+		if work[0] < float64(8*n) {
+			t.Errorf("n=%d: workspace query returned %v, want >= %d", n, work[0], 8*n)
+		}
+	}
+}
+
+func testDggevEmpty(t *testing.T, impl Dggever) {
+	work := make([]float64, 1)
+	ok := impl.Dggev(lapack.LeftEVNone, lapack.RightEVNone, 0,
+		nil, 1, nil, 1,
+		nil, nil, nil,
+		nil, 1, nil, 1,
+		work, 1)
+	if !ok {
+		t.Error("n=0: Dggev returned false")
+	}
+}
+
+func testDggevDiagonal(t *testing.T, impl Dggever, n int) {
+	// Test diagonal matrices A = diag(1,2,...,n), B = I.
+	// Eigenvalues should be 1, 2, ..., n.
+	a := zeros(n, n, n)
+	b := eye(n, n)
+	for i := 0; i < n; i++ {
+		a.Data[i*a.Stride+i] = float64(i + 1)
+	}
+
+	alphar := make([]float64, n)
+	alphai := make([]float64, n)
+	beta := make([]float64, n)
+
+	work := make([]float64, 1)
+	impl.Dggev(lapack.LeftEVNone, lapack.RightEVNone, n,
+		a.Data, a.Stride, b.Data, b.Stride,
+		alphar, alphai, beta,
+		nil, 1, nil, 1,
+		work, -1)
+	lwork := int(work[0])
+	work = make([]float64, lwork)
+
+	// Reset matrices.
+	a = zeros(n, n, n)
+	b = eye(n, n)
+	for i := 0; i < n; i++ {
+		a.Data[i*a.Stride+i] = float64(i + 1)
+	}
+
+	ok := impl.Dggev(lapack.LeftEVNone, lapack.RightEVNone, n,
+		a.Data, a.Stride, b.Data, b.Stride,
+		alphar, alphai, beta,
+		nil, 1, nil, 1,
+		work, lwork)
+
+	if !ok {
+		t.Errorf("n=%d diagonal: Dggev failed to converge", n)
+		return
+	}
+
+	// Check eigenvalues. They should be 1, 2, ..., n (in some order).
+	const tol = 1e-10
+	evFound := make([]bool, n)
+	for i := 0; i < n; i++ {
+		if alphai[i] != 0 {
+			t.Errorf("n=%d diagonal: expected real eigenvalue, got alphai[%d]=%v", n, i, alphai[i])
+			continue
+		}
+		if beta[i] == 0 {
+			t.Errorf("n=%d diagonal: unexpected infinite eigenvalue at %d", n, i)
+			continue
+		}
+		ev := alphar[i] / beta[i]
+		found := false
+		for k := 0; k < n; k++ {
+			if !evFound[k] && math.Abs(ev-float64(k+1)) < tol {
+				evFound[k] = true
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("n=%d diagonal: unexpected eigenvalue %v", n, ev)
+		}
+	}
+}
+
+func testDggevEigenvaluesOnly(t *testing.T, impl Dggever) {
+	// Test eigenvalue computation without eigenvectors.
+	// Use diagonal A with diagonal B.
+	// A = diag(2, 4, 6), B = diag(1, 2, 3) => eigenvalues are 2, 2, 2.
+	n := 3
+	a := zeros(n, n, n)
+	b := zeros(n, n, n)
+	a.Data[0] = 2
+	a.Data[n+1] = 4
+	a.Data[2*n+2] = 6
+	b.Data[0] = 1
+	b.Data[n+1] = 2
+	b.Data[2*n+2] = 3
+
+	alphar := make([]float64, n)
+	alphai := make([]float64, n)
+	beta := make([]float64, n)
+
+	work := make([]float64, 1)
+	impl.Dggev(lapack.LeftEVNone, lapack.RightEVNone, n,
+		a.Data, a.Stride, b.Data, b.Stride,
+		alphar, alphai, beta,
+		nil, 1, nil, 1,
+		work, -1)
+	lwork := int(work[0])
+	work = make([]float64, lwork)
+
+	// Reset matrices.
+	a = zeros(n, n, n)
+	b = zeros(n, n, n)
+	a.Data[0] = 2
+	a.Data[n+1] = 4
+	a.Data[2*n+2] = 6
+	b.Data[0] = 1
+	b.Data[n+1] = 2
+	b.Data[2*n+2] = 3
+
+	ok := impl.Dggev(lapack.LeftEVNone, lapack.RightEVNone, n,
+		a.Data, a.Stride, b.Data, b.Stride,
+		alphar, alphai, beta,
+		nil, 1, nil, 1,
+		work, lwork)
+
+	if !ok {
+		t.Error("eigenvalues only: Dggev failed to converge")
+		return
+	}
+
+	// Check that all eigenvalues are 2.
+	const tol = 1e-10
+	for i := 0; i < n; i++ {
+		if alphai[i] != 0 {
+			t.Errorf("eigenvalues only: expected real eigenvalue, got alphai[%d]=%v", i, alphai[i])
+			continue
+		}
+		if beta[i] == 0 {
+			t.Errorf("eigenvalues only: unexpected infinite eigenvalue at %d", i)
+			continue
+		}
+		ev := alphar[i] / beta[i]
+		if math.Abs(ev-2) > tol {
+			t.Errorf("eigenvalues only: eigenvalue[%d] = %v, want 2", i, ev)
+		}
+	}
+}

@@ -188,6 +188,11 @@ func TestDgges(t *testing.T) {
 	testlapack.DggesTest(t, impl)
 }
 
+func TestDggev(t *testing.T) {
+	t.Parallel()
+	testlapack.DggevTest(t, impl)
+}
+
 func TestDgtsv(t *testing.T) {
 	t.Parallel()
 	testlapack.DgtsvTest(t, impl)
