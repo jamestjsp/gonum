@@ -79,6 +79,9 @@ func DggesTest(t *testing.T, impl Dggeser) {
 	} {
 		testDggesMatrix(t, impl, tc.name, tc.a, tc.b, optimumWork)
 	}
+
+	// Test sorting.
+	testDggesSorting(t, impl)
 }
 
 func testDgges(t *testing.T, impl Dggeser, n int, jobvsl, jobvsr lapack.SchurComp, extra int, wl worklen, rnd *rand.Rand) {
@@ -311,4 +314,117 @@ func isQuasiUpperTriangular(a blas64.General) bool {
 		}
 	}
 	return true
+}
+
+// testDggesSorting tests eigenvalue sorting with SortSelected.
+func testDggesSorting(t *testing.T, impl Dggeser) {
+	const tol = 100
+
+	// Test matrix pair where eigenvalues are clearly separable.
+	// A = diag(1, 5, 3), B = I => eigenvalues are 1, 5, 3.
+	// Select eigenvalues > 2 (should get 5 and 3).
+	n := 3
+	a := blas64.General{
+		Rows: n, Cols: n, Stride: n,
+		Data: []float64{
+			1, 0, 0,
+			0, 5, 0,
+			0, 0, 3,
+		},
+	}
+	b := blas64.General{
+		Rows: n, Cols: n, Stride: n,
+		Data: []float64{
+			1, 0, 0,
+			0, 1, 0,
+			0, 0, 1,
+		},
+	}
+
+	aOrig := cloneGeneral(a)
+	bOrig := cloneGeneral(b)
+
+	alphar := make([]float64, n)
+	alphai := make([]float64, n)
+	beta := make([]float64, n)
+	vsl := nanGeneral(n, n, n)
+	vsr := nanGeneral(n, n, n)
+	bwork := make([]bool, n)
+
+	work := make([]float64, 1)
+	impl.Dgges(lapack.SchurHess, lapack.SchurHess, lapack.SortNone, nil, n, nil, n, nil, n,
+		nil, nil, nil, nil, n, nil, n, work, -1, nil)
+	lwork := int(work[0])
+	work = make([]float64, lwork)
+
+	// Select eigenvalues where alphar/beta > 2.
+	selctg := func(alphar, alphai, beta float64) bool {
+		if beta == 0 {
+			return false // Infinite eigenvalue.
+		}
+		return alphar/beta > 2
+	}
+
+	sdim, ok := impl.Dgges(lapack.SchurHess, lapack.SchurHess, lapack.SortSelected, selctg, n,
+		a.Data, a.Stride, b.Data, b.Stride, alphar, alphai, beta,
+		vsl.Data, vsl.Stride, vsr.Data, vsr.Stride, work, lwork, bwork)
+
+	if !ok {
+		t.Errorf("Sorting test: Dgges failed to converge")
+		return
+	}
+
+	// Should have 2 selected eigenvalues (5 and 3).
+	if sdim != 2 {
+		t.Errorf("Sorting test: sdim=%d, want 2", sdim)
+	}
+
+	// Check that first sdim eigenvalues satisfy the selection criterion.
+	for i := 0; i < sdim; i++ {
+		if beta[i] != 0 && alphar[i]/beta[i] <= 2 {
+			t.Errorf("Sorting test: eigenvalue[%d]=%v should be > 2", i, alphar[i]/beta[i])
+		}
+	}
+
+	// Check that remaining eigenvalues do NOT satisfy the criterion.
+	for i := sdim; i < n; i++ {
+		if beta[i] != 0 && alphar[i]/beta[i] > 2 {
+			t.Errorf("Sorting test: eigenvalue[%d]=%v should be <= 2", i, alphar[i]/beta[i])
+		}
+	}
+
+	// Check decomposition is still correct.
+	orthoTol := float64(n) * dlamchE
+	if orthoTol < 1e-13 {
+		orthoTol = 1e-13
+	}
+
+	residVSL := residualOrthogonal(vsl, false)
+	if residVSL > orthoTol {
+		t.Errorf("Sorting test: VSL not orthogonal; |I - VSL*VSLᵀ|=%v, want<=%v", residVSL, orthoTol)
+	}
+	residVSR := residualOrthogonal(vsr, false)
+	if residVSR > orthoTol {
+		t.Errorf("Sorting test: VSR not orthogonal; |I - VSR*VSRᵀ|=%v, want<=%v", residVSR, orthoTol)
+	}
+
+	residA := residualGeneralizedSchur(aOrig, a, vsl, vsr)
+	anorm := dlange(lapack.MaxColumnSum, n, n, aOrig.Data, aOrig.Stride)
+	if anorm == 0 {
+		anorm = 1
+	}
+	normResA := residA / (anorm * float64(n) * dlamchE)
+	if normResA > tol {
+		t.Errorf("Sorting test: ||A - VSL*S*VSRᵀ||/(||A||*n*eps)=%v, want<=%v", normResA, tol)
+	}
+
+	residB := residualGeneralizedSchur(bOrig, b, vsl, vsr)
+	bnorm := dlange(lapack.MaxColumnSum, n, n, bOrig.Data, bOrig.Stride)
+	if bnorm == 0 {
+		bnorm = 1
+	}
+	normResB := residB / (bnorm * float64(n) * dlamchE)
+	if normResB > tol {
+		t.Errorf("Sorting test: ||B - VSL*T*VSRᵀ||/(||B||*n*eps)=%v, want<=%v", normResB, tol)
+	}
 }

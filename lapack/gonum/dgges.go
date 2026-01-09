@@ -320,8 +320,48 @@ func (impl Implementation) Dgges(jobvsl, jobvsr lapack.SchurComp, sort lapack.Sc
 	// Sort eigenvalues if desired.
 	sdim = 0
 	if wantst {
-		// TODO: Implement sorting in Phase C using Dtgsen.
-		panic("lapack: sorting not implemented in Dgges (requires Phase C)")
+		// Populate bwork[] using selctg callback.
+		// For complex conjugate pairs, both must be selected together.
+		for i := 0; i < n; {
+			if i < n-1 && alphai[i] != 0 {
+				// Complex conjugate pair at positions i and i+1.
+				// Both must be selected if either is selected.
+				sel1 := selctg(alphar[i], alphai[i], beta[i])
+				sel2 := selctg(alphar[i+1], alphai[i+1], beta[i+1])
+				bwork[i] = sel1 || sel2
+				bwork[i+1] = sel1 || sel2
+				i += 2
+			} else {
+				// Real eigenvalue.
+				bwork[i] = selctg(alphar[i], alphai[i], beta[i])
+				i++
+			}
+		}
+
+		// Count selected eigenvalues.
+		for i := 0; i < n; i++ {
+			if bwork[i] {
+				sdim++
+			}
+		}
+
+		// Call Dtgsen to reorder eigenvalues.
+		if sdim > 0 && sdim < n {
+			// Allocate iwork for Dtgsen (ijob=0 needs n+6).
+			liwork := n + 6
+			iwork := make([]int, liwork)
+
+			var tgsenM int
+			tgsenM, _, _, _, ok = impl.Dtgsen(0, wantvsl, wantvsr, bwork, n,
+				a, lda, b, ldb, alphar, alphai, beta,
+				vsl, ldvsl, vsr, ldvsr, work[iwrk:], lwork-iwrk, iwork, liwork)
+
+			if !ok {
+				work[0] = float64(maxwrk)
+				return 0, false
+			}
+			sdim = tgsenM
+		}
 	}
 
 	// Back-transform eigenvectors.
