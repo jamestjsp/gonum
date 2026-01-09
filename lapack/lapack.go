@@ -239,10 +239,17 @@ const (
 	OrthoPostmul  OrthoComp = 'V' // The orthogonal matrix is post-multiplied into the matrix stored in the argument on entry.
 )
 
-// SchurSort specifies eigenvalue sorting in Dgees.
+// SchurSort specifies eigenvalue sorting in Dgees and Dgges.
 type SchurSort byte
 
 const (
 	SortNone     SchurSort = 'N' // No sorting.
 	SortSelected SchurSort = 'S' // Sort selected eigenvalues to top-left.
 )
+
+// SchurSelect is a function type for eigenvalue selection in Dgges.
+// It receives the real part (alphar), imaginary part (alphai), and
+// denominator (beta) of a generalized eigenvalue. The eigenvalue is
+// (alphar + i*alphai) / beta. When beta is zero, the eigenvalue is infinite.
+// The function returns true if the eigenvalue should be selected.
+type SchurSelect func(alphar, alphai, beta float64) bool

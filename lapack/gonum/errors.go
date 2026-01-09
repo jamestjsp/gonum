@@ -102,6 +102,8 @@ const (
 
 	// Panic strings for bad slice lengths.
 	badLenAlpha    = "lapack: bad length of alpha"
+	badLenAlphaI   = "lapack: bad length of alphai"
+	badLenAlphaR   = "lapack: bad length of alphar"
 	badLenBeta     = "lapack: bad length of beta"
 	badLenIpiv     = "lapack: bad length of ipiv"
 	badLenJpiv     = "lapack: bad length of jpiv"
@@ -142,6 +144,8 @@ const (
 	shortV     = "lapack: insufficient length of v"
 	shortVL    = "lapack: insufficient length of vl"
 	shortVR    = "lapack: insufficient length of vr"
+	shortVSL   = "lapack: insufficient length of vsl"
+	shortVSR   = "lapack: insufficient length of vsr"
 	shortVT    = "lapack: insufficient length of vt"
 	shortVn1   = "lapack: insufficient length of vn1"
 	shortVn2   = "lapack: insufficient length of vn2"
@@ -169,6 +173,8 @@ const (
 	badLdV    = "lapack: bad leading dimension of V"
 	badLdVL   = "lapack: bad leading dimension of VL"
 	badLdVR   = "lapack: bad leading dimension of VR"
+	badLdVSL  = "lapack: bad leading dimension of VSL"
+	badLdVSR  = "lapack: bad leading dimension of VSR"
 	badLdVT   = "lapack: bad leading dimension of VT"
 	badLdW    = "lapack: bad leading dimension of W"
 	badLdWH   = "lapack: bad leading dimension of WH"
