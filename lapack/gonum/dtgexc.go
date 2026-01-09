@@ -4,8 +4,6 @@
 
 package gonum
 
-import "gonum.org/v1/gonum/blas"
-
 // Dtgexc reorders the generalized Schur decomposition of a real matrix pair
 // (A,B), so that the diagonal block of (A,B) at row ifst is moved to row ilst.
 //
@@ -83,14 +81,6 @@ func (impl Implementation) Dtgexc(wantq, wantz bool, n int, a []float64, lda int
 
 	if n == 1 {
 		return ifstOut, ilstOut, ok
-	}
-
-	// Initialize Q and Z to identity if needed.
-	if wantq {
-		impl.Dlaset(blas.All, n, n, 0, 1, q, ldq)
-	}
-	if wantz {
-		impl.Dlaset(blas.All, n, n, 0, 1, z, ldz)
 	}
 
 	here := ifstOut

@@ -185,7 +185,7 @@ func (impl Implementation) Dtgsyl(trans blas.Transpose, ijob, m, n int,
 			// for I = P, P-1, ..., 1; J = 1, 2, ..., Q.
 			for j := p + 1; j <= p+q; j++ {
 				js := iwork[j]
-				je := iwork[j+1] - 1
+				je := abs(iwork[j+1]) - 1
 				nbj := je - abs(js) + 1
 				if js < 0 {
 					js = -js
@@ -257,7 +257,7 @@ func (impl Implementation) Dtgsyl(trans blas.Transpose, ijob, m, n int,
 
 				for j := p + q; j >= p+1; j-- {
 					js := iwork[j]
-					je := iwork[j+1] - 1
+					je := abs(iwork[j+1]) - 1
 					nbj := je - abs(js) + 1
 					if js < 0 {
 						js = -js

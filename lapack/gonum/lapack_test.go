@@ -708,6 +708,11 @@ func TestDtgexc(t *testing.T) {
 	testlapack.DtgexcTest(t, impl)
 }
 
+func TestDtgsen(t *testing.T) {
+	t.Parallel()
+	testlapack.DtgsenTest(t, impl)
+}
+
 func TestDtrti2(t *testing.T) {
 	t.Parallel()
 	testlapack.Dtrti2Test(t, impl)

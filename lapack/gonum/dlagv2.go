@@ -77,13 +77,31 @@ func (Implementation) Dlagv2(a []float64, lda int, b []float64, ldb int) (csq, s
 
 	// Check if A21 is negligible.
 	if math.Abs(a21) <= ulp {
+		// Matrix is already upper triangular. No transformation needed.
+		// Just write back the scaled values and return identity transformation.
+		a[0] = a11 * anorm
+		a[1] = a12 * anorm
+		a[lda] = 0
+		a[lda+1] = a22 * anorm
+		b[0] = b11 * bnorm
+		b[1] = b12 * bnorm
+		b[ldb+1] = b22 * bnorm
+
 		csq = 1
 		snq = 0
 		csr = 1
 		snr = 0
 		csz = 1
 		snz = 0
-		a[lda] = 0
+
+		// Compute eigenvalues.
+		alphar0 = a[0]
+		alphar1 = a[lda+1]
+		alphai0 = 0
+		alphai1 = 0
+		scale1 = b[0]
+		scale2 = b[ldb+1]
+		return
 	} else if math.Abs(b11) <= ulp {
 		// B11 is negligible.
 		csq, snq, _ = Implementation{}.Dlartg(a11, a21)
