@@ -27,6 +27,7 @@ const (
 	badSVDJob           = "lapack: bad SVDJob"
 	badSchurComp        = "lapack: bad SchurComp"
 	badSchurJob         = "lapack: bad SchurJob"
+	badSchurSort        = "lapack: bad SchurSort"
 	badSide             = "lapack: bad Side"
 	badSort             = "lapack: bad Sort"
 	badStoreV           = "lapack: bad StoreV"

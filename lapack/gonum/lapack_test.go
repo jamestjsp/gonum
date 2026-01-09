@@ -52,6 +52,11 @@ func TestDgeev(t *testing.T) {
 	testlapack.DgeevTest(t, impl)
 }
 
+func TestDgees(t *testing.T) {
+	t.Parallel()
+	testlapack.DgeesTest(t, impl)
+}
+
 func TestDgehd2(t *testing.T) {
 	t.Parallel()
 	testlapack.Dgehd2Test(t, impl)
