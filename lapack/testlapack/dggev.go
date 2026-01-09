@@ -28,6 +28,7 @@ func DggevTest(t *testing.T, impl Dggever) {
 	}
 
 	testDggevEigenvaluesOnly(t, impl)
+	testDggevEigenvectors(t, impl)
 }
 
 func testDggevWorkspace(t *testing.T, impl Dggever) {
@@ -185,6 +186,76 @@ func testDggevEigenvaluesOnly(t *testing.T, impl Dggever) {
 		ev := alphar[i] / beta[i]
 		if math.Abs(ev-2) > tol {
 			t.Errorf("eigenvalues only: eigenvalue[%d] = %v, want 2", i, ev)
+		}
+	}
+}
+
+func testDggevEigenvectors(t *testing.T, impl Dggever) {
+	// Test eigenvector computation with diagonal matrices.
+	// A = diag(1, 2, 3), B = I => eigenvalues 1, 2, 3 with standard basis eigenvectors.
+	n := 3
+	aOrig := zeros(n, n, n)
+	bOrig := eye(n, n)
+	for i := 0; i < n; i++ {
+		aOrig.Data[i*aOrig.Stride+i] = float64(i + 1)
+	}
+
+	a := cloneGeneral(aOrig)
+	b := cloneGeneral(bOrig)
+
+	alphar := make([]float64, n)
+	alphai := make([]float64, n)
+	beta := make([]float64, n)
+	vl := nanGeneral(n, n, n)
+	vr := nanGeneral(n, n, n)
+
+	work := make([]float64, 1)
+	impl.Dggev(lapack.LeftEVCompute, lapack.RightEVCompute, n,
+		nil, n, nil, n, nil, nil, nil, nil, n, nil, n, work, -1)
+	lwork := int(work[0])
+	work = make([]float64, lwork)
+
+	ok := impl.Dggev(lapack.LeftEVCompute, lapack.RightEVCompute, n,
+		a.Data, a.Stride, b.Data, b.Stride,
+		alphar, alphai, beta,
+		vl.Data, vl.Stride, vr.Data, vr.Stride,
+		work, lwork)
+
+	if !ok {
+		t.Error("eigenvectors: Dggev failed to converge")
+		return
+	}
+
+	// Verify eigenvalues.
+	const tol = 1e-10
+	for i := 0; i < n; i++ {
+		if alphai[i] != 0 {
+			t.Errorf("eigenvectors: expected real eigenvalue, got alphai[%d]=%v", i, alphai[i])
+		}
+		if beta[i] == 0 {
+			t.Errorf("eigenvectors: unexpected infinite eigenvalue at %d", i)
+		}
+	}
+
+	// Verify right eigenvector equation: A*v = lambda*B*v.
+	// For diagonal A and identity B, eigenvectors should be standard basis.
+	for j := 0; j < n; j++ {
+		if beta[j] == 0 || alphai[j] != 0 {
+			continue
+		}
+		lambda := alphar[j] / beta[j]
+
+		// Compute A*v and lambda*B*v = lambda*v (since B=I).
+		for i := 0; i < n; i++ {
+			av := 0.0
+			lbv := 0.0
+			for k := 0; k < n; k++ {
+				av += aOrig.Data[i*aOrig.Stride+k] * vr.Data[k*vr.Stride+j]
+				lbv += lambda * bOrig.Data[i*bOrig.Stride+k] * vr.Data[k*vr.Stride+j]
+			}
+			if math.Abs(av-lbv) > tol*math.Max(1, math.Abs(av)) {
+				t.Errorf("eigenvectors: right eigenvector residual at (%d,%d): |A*v - λ*B*v| = %v", i, j, math.Abs(av-lbv))
+			}
 		}
 	}
 }
