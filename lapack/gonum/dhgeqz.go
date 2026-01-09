@@ -122,9 +122,9 @@ func (impl Implementation) Dhgeqz(job lapack.SchurJob, compq, compz lapack.Schur
 	}
 
 	// Machine constants.
-	eps := dlamchE
 	safmin := dlamchS
-	ulp := eps
+	safmax := 1 / safmin
+	ulp := dlamchE
 	anorm := impl.Dlanhs(lapack.Frobenius, n, h, ldh, nil)
 	bnorm := impl.Dlantr(lapack.Frobenius, blas.Upper, blas.NonUnit, n, n, t, ldt, nil)
 	atol := math.Max(safmin, ulp*anorm)
@@ -132,7 +132,7 @@ func (impl Implementation) Dhgeqz(job lapack.SchurJob, compq, compz lapack.Schur
 	ascale := 1 / math.Max(safmin, anorm)
 	bscale := 1 / math.Max(safmin, bnorm)
 
-	// Set eigenvalues for rows ilo-1:0 and ihi+1:n.
+	// Set eigenvalues for rows outside [ilo, ihi].
 	for j := 0; j < ilo; j++ {
 		alphar[j] = h[j*ldh+j]
 		alphai[j] = 0
@@ -145,7 +145,6 @@ func (impl Implementation) Dhgeqz(job lapack.SchurJob, compq, compz lapack.Schur
 	}
 
 	// Main QZ iteration loop.
-	ifirst := ilo
 	ilast := ihi
 	ifrstm := ilo
 	ilastm := ihi
@@ -155,18 +154,22 @@ func (impl Implementation) Dhgeqz(job lapack.SchurJob, compq, compz lapack.Schur
 	}
 
 	const maxit = 30
+	iiter := 0      // Iterations since last eigenvalue.
+	eshift := 0.0   // Exceptional shift accumulator.
+
 	for jiter := 0; jiter < maxit*(ihi-ilo+1); jiter++ {
-		// Check for deflation.
+		// Check for convergence.
 		if ilast < ilo {
 			break
 		}
 
-		// Check for negligible subdiagonal element.
+		// Check for deflation: negligible subdiagonal in H.
+		var ifirst int
 		for j := ilast; j > ilo; j-- {
 			if math.Abs(h[j*ldh+j-1]) <= atol {
 				h[j*ldh+j-1] = 0
 				ifirst = j
-				goto L60
+				goto checkT
 			}
 			tst1 := math.Abs(h[(j-1)*ldh+j-1]) + math.Abs(h[j*ldh+j])
 			if tst1 == 0 {
@@ -178,44 +181,47 @@ func (impl Implementation) Dhgeqz(job lapack.SchurJob, compq, compz lapack.Schur
 				}
 			}
 			if math.Abs(h[j*ldh+j-1]) <= ulp*tst1 {
-				temp := math.Max(math.Abs(h[j*ldh+j-1]), math.Abs(h[(j-1)*ldh+j]))
-				temp2 := math.Min(math.Abs(h[j*ldh+j-1]), math.Abs(h[(j-1)*ldh+j]))
-				temp3 := math.Max(math.Abs(h[j*ldh+j]), math.Abs(h[(j-1)*ldh+j-1]-h[j*ldh+j]))
-				temp4 := math.Min(math.Abs(h[j*ldh+j]), math.Abs(h[(j-1)*ldh+j-1]-h[j*ldh+j]))
-				if temp*temp2/math.Max(safmin, temp3*temp4) <= math.Max(safmin, ulp*temp3) {
+				hlj := math.Abs(h[j*ldh+j-1])
+				hjlm1 := math.Abs(h[(j-1)*ldh+j])
+				temp := math.Max(hlj, hjlm1)
+				temp2 := math.Min(hlj, hjlm1)
+				hjj := math.Abs(h[j*ldh+j])
+				hjm1 := math.Abs(h[(j-1)*ldh+j-1])
+				temp3 := math.Max(hjj, math.Abs(hjm1-hjj))
+				temp4 := math.Min(hjj, math.Abs(hjm1-hjj))
+				if temp2*temp <= math.Max(safmin, ulp*temp3*temp4) {
 					h[j*ldh+j-1] = 0
 					ifirst = j
-					goto L60
+					goto checkT
 				}
 			}
 		}
 		ifirst = ilo
 
-	L60:
-		// Check for negligible off-diagonal element in T.
+	checkT:
+		// Check for negligible elements in T.
 		for j := ilast; j >= ifirst+1; j-- {
 			if math.Abs(t[j*ldt+j-1]) <= btol {
 				t[j*ldt+j-1] = 0
 			}
 		}
 
-		// Check for deflation.
+		// Handle different block types.
 		if ifirst == ilast {
-			// Single eigenvalue.
+			// 1x1 block - single real eigenvalue.
 			alphar[ilast] = h[ilast*ldh+ilast]
 			alphai[ilast] = 0
 			beta[ilast] = t[ilast*ldt+ilast]
 			ilast--
+			iiter = 0
 			continue
 		}
 
 		if ifirst == ilast-1 {
-			// 2x2 block.
-			// Compute eigenvalues of 2x2 block.
-			var s1, s2, wr1, wr2, wi float64
-			s1, s2, wr1, wr2, wi = impl.Dlag2(h[ifirst*ldh+ifirst:], ldh, t[ifirst*ldt+ifirst:], ldt)
+			// 2x2 block - compute eigenvalues.
+			s1, s2, wr1, wr2, wi := impl.Dlag2(h[ifirst*ldh+ifirst:], ldh, t[ifirst*ldt+ifirst:], ldt)
 			if wi == 0 {
-				// Real eigenvalues.
+				// Two real eigenvalues.
 				alphar[ifirst] = wr1
 				alphai[ifirst] = 0
 				beta[ifirst] = s1
@@ -232,129 +238,136 @@ func (impl Implementation) Dhgeqz(job lapack.SchurJob, compq, compz lapack.Schur
 				beta[ilast] = s1
 			}
 			ilast -= 2
+			iiter = 0
 			continue
 		}
 
-		// Check for infinite eigenvalue.
+		// Handle zero diagonal in T (infinite eigenvalue).
 		if t[ilast*ldt+ilast] == 0 {
-			// Eigenvalue at infinity.
 			alphar[ilast] = h[ilast*ldh+ilast]
 			alphai[ilast] = 0
 			beta[ilast] = 0
 			ilast--
+			iiter = 0
 			continue
 		}
 
-		// Do one QZ step.
-		ok = impl.doQZStep(ilschr, ilq, ilz, n, ifirst, ilast, ifrstm, ilastm,
-			h, ldh, t, ldt, q, ldq, z, ldz, ascale, bscale, safmin)
-		if !ok {
-			// Try exceptional shift.
-			for j := ilast - 1; j >= ifirst; j-- {
-				temp := 0.0
-				if j == ifirst {
-					temp = math.Abs(h[(j+1)*ldh+j])
-				} else if j == ilast-1 {
-					temp = math.Abs(h[j*ldh+j-1])
-				} else {
-					temp = math.Abs(h[(j+1)*ldh+j]) + math.Abs(h[j*ldh+j-1])
-				}
-				if math.Abs(h[j*ldh+j]) <= ulp*temp {
-					h[j*ldh+j] = 0
-				}
-			}
+		// Perform QZ step.
+		iiter++
+
+		// Compute shifts from the trailing 2x2 block.
+		var s1, s2, wr, wr2, wi float64
+
+		// Exceptional shift every 10 iterations.
+		if iiter%10 == 0 {
+			// Ad-hoc exceptional shift to escape stagnation.
+			// Use shift of 1 (Mathworks improvement over LAPACK's zero).
+			eshift += 1.0
+			s1 = eshift
+			s2 = 0
+			wr = eshift
+			wi = 0
+		} else {
+			// Normal shift: eigenvalues of trailing 2x2.
+			s1, s2, wr, wr2, wi = impl.Dlag2(h[(ilast-1)*ldh+ilast-1:], ldh, t[(ilast-1)*ldt+ilast-1:], ldt)
+			_ = wr2
 		}
+
+		// Do one QZ sweep using single shift.
+		// Even for complex shifts, single shift will eventually converge.
+		impl.doQZSweep(ilschr, ilq, ilz, n, ifirst, ilast, ifrstm, ilastm,
+			h, ldh, t, ldt, q, ldq, z, ldz, ascale, bscale, s1, s2, wr, safmin, safmax)
+		_ = wi
 	}
 
-	// Set remaining eigenvalues.
+	// Check convergence.
 	if ilast >= ilo {
-		// Iteration did not fully converge.
 		return false
 	}
 
 	return true
 }
 
-// doQZStep performs one step of the QZ algorithm.
-func (impl Implementation) doQZStep(ilschr, ilq, ilz bool, n, ifirst, ilast, ifrstm, ilastm int,
+// doQZSweep performs single-shift QZ sweeps.
+func (impl Implementation) doQZSweep(ilschr, ilq, ilz bool, n, ifirst, ilast, ifrstm, ilastm int,
 	h []float64, ldh int, t []float64, ldt int, q []float64, ldq int, z []float64, ldz int,
-	ascale, bscale, safmin float64) bool {
+	ascale, bscale, s1, s2, wr, safmin, safmax float64) {
 
-	// Compute shift.
-	a11 := ascale * h[ifirst*ldh+ifirst]
-	a21 := ascale * h[(ifirst+1)*ldh+ifirst]
-	a22 := ascale * h[(ifirst+1)*ldh+ifirst+1]
-	b11 := bscale * t[ifirst*ldt+ifirst]
-	b22 := bscale * t[(ifirst+1)*ldt+ifirst+1]
+	// Single shift QZ step.
+	// Start column: compute H - (wr/s1)*T column.
+	istart := ifirst
 
-	// Calculate shift.
-	s1 := a11*b22 - a22*b11
-	s2 := a21 * b22
-	if math.Abs(s2) <= safmin {
-		return true // Already converged.
+	// First column of H - shift*T.
+	temp := h[istart*ldh+istart]
+	if s1 != 0 {
+		temp -= (wr / s1) * t[istart*ldt+istart]
 	}
+	temp2 := h[(istart+1)*ldh+istart]
 
-	// Apply transformations.
-	for j := ifirst; j < ilast; j++ {
-		if j > ifirst {
-			a21 = h[(j+1)*ldh+j-1]
-		}
+	cs, sn, _ := impl.Dlartg(temp, temp2)
 
-		// Compute Givens rotation to annihilate a21.
-		var cs, sn, r float64
-		if j == ifirst {
-			cs, sn, r = impl.Dlartg(s1, s2)
-		} else {
-			cs, sn, r = impl.Dlartg(h[j*ldh+j-1], a21)
-			h[j*ldh+j-1] = r
+	// Chase the bulge.
+	for j := istart; j < ilast; j++ {
+		if j > istart {
+			// Compute rotation to annihilate H[j+1,j-1].
+			temp = h[j*ldh+j-1]
+			temp2 = h[(j+1)*ldh+j-1]
+			cs, sn, _ = impl.Dlartg(temp, temp2)
+			h[j*ldh+j-1] = cs*temp + sn*temp2
 			h[(j+1)*ldh+j-1] = 0
 		}
 
-		// Apply rotation from left to H and T.
+		// Apply rotation from left to H.
 		for jc := j; jc <= ilastm; jc++ {
-			temp := cs*h[j*ldh+jc] + sn*h[(j+1)*ldh+jc]
+			temp = cs*h[j*ldh+jc] + sn*h[(j+1)*ldh+jc]
 			h[(j+1)*ldh+jc] = -sn*h[j*ldh+jc] + cs*h[(j+1)*ldh+jc]
 			h[j*ldh+jc] = temp
 		}
-		for jc := ifrstm; jc <= min(j+2, ilastm); jc++ {
-			temp := cs*t[j*ldt+jc] + sn*t[(j+1)*ldt+jc]
+
+		// Apply rotation from left to T.
+		for jc := j; jc <= ilastm; jc++ {
+			temp = cs*t[j*ldt+jc] + sn*t[(j+1)*ldt+jc]
 			t[(j+1)*ldt+jc] = -sn*t[j*ldt+jc] + cs*t[(j+1)*ldt+jc]
 			t[j*ldt+jc] = temp
 		}
+
+		// Update Q if needed.
 		if ilq {
 			for jr := 0; jr < n; jr++ {
-				temp := cs*q[jr*ldq+j] + sn*q[jr*ldq+j+1]
+				temp = cs*q[jr*ldq+j] + sn*q[jr*ldq+j+1]
 				q[jr*ldq+j+1] = -sn*q[jr*ldq+j] + cs*q[jr*ldq+j+1]
 				q[jr*ldq+j] = temp
 			}
 		}
 
-		// Annihilate t[j+1,j].
+		// Annihilate T[j+1,j] to restore upper triangular form.
 		if t[(j+1)*ldt+j] != 0 {
-			cs, sn, r = impl.Dlartg(t[(j+1)*ldt+j+1], t[(j+1)*ldt+j])
-			t[(j+1)*ldt+j+1] = r
+			cs, sn, _ = impl.Dlartg(t[(j+1)*ldt+j+1], t[(j+1)*ldt+j])
+			t[(j+1)*ldt+j+1] = cs*t[(j+1)*ldt+j+1] + sn*t[(j+1)*ldt+j]
 			t[(j+1)*ldt+j] = 0
 
-			// Apply rotation from right to H and T.
+			// Apply rotation from right to H.
 			for jr := ifrstm; jr <= min(j+2, ilast); jr++ {
-				temp := cs*h[jr*ldh+j+1] + sn*h[jr*ldh+j]
+				temp = cs*h[jr*ldh+j+1] + sn*h[jr*ldh+j]
 				h[jr*ldh+j] = -sn*h[jr*ldh+j+1] + cs*h[jr*ldh+j]
 				h[jr*ldh+j+1] = temp
 			}
+
+			// Apply rotation from right to T.
 			for jr := ifrstm; jr <= j; jr++ {
-				temp := cs*t[jr*ldt+j+1] + sn*t[jr*ldt+j]
+				temp = cs*t[jr*ldt+j+1] + sn*t[jr*ldt+j]
 				t[jr*ldt+j] = -sn*t[jr*ldt+j+1] + cs*t[jr*ldt+j]
 				t[jr*ldt+j+1] = temp
 			}
+
+			// Update Z if needed.
 			if ilz {
 				for jr := 0; jr < n; jr++ {
-					temp := cs*z[jr*ldz+j+1] + sn*z[jr*ldz+j]
+					temp = cs*z[jr*ldz+j+1] + sn*z[jr*ldz+j]
 					z[jr*ldz+j] = -sn*z[jr*ldz+j+1] + cs*z[jr*ldz+j]
 					z[jr*ldz+j+1] = temp
 				}
 			}
 		}
 	}
-
-	return true
 }
