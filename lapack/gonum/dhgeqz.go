@@ -229,7 +229,13 @@ func (impl Implementation) Dhgeqz(job lapack.SchurJob, compq, compz lapack.Schur
 				alphai[ilast] = 0
 				beta[ilast] = s2
 			} else {
-				// Complex conjugate pair.
+				// Complex conjugate pair - standardize the 2x2 block.
+				// H block should have equal diagonals and H(i+1,i)*H(i,i+1) < 0.
+				// T block should be diagonal with positive entries.
+				if ilschr {
+					impl.standardize2x2Block(n, ifirst, ifrstm, ilastm,
+						h, ldh, t, ldt, q, ldq, z, ldz, ilq, ilz)
+				}
 				alphar[ifirst] = wr1
 				alphai[ifirst] = wi
 				beta[ifirst] = s1
@@ -367,6 +373,164 @@ func (impl Implementation) doQZSweep(ilschr, ilq, ilz bool, n, ifirst, ilast, if
 					z[jr*ldz+j] = -sn*z[jr*ldz+j+1] + cs*z[jr*ldz+j]
 					z[jr*ldz+j+1] = temp
 				}
+			}
+		}
+	}
+}
+
+// standardize2x2Block puts a 2x2 block at position j into Schur canonical form.
+// For H: equal diagonals with H(j+1,j)*H(j,j+1) < 0.
+// For T: diagonal with positive entries.
+func (impl Implementation) standardize2x2Block(n, j, ifrstm, ilastm int,
+	h []float64, ldh int, t []float64, ldt int,
+	q []float64, ldq int, z []float64, ldz int, ilq, ilz bool) {
+
+	// Extract 2x2 block from H.
+	a := h[j*ldh+j]
+	b := h[j*ldh+j+1]
+	c := h[(j+1)*ldh+j]
+	d := h[(j+1)*ldh+j+1]
+
+	// Use Dlanv2 to standardize H's 2x2 block.
+	aa, bb, cc, dd, _, _, _, _, cs, sn := impl.Dlanv2(a, b, c, d)
+
+	// Store standardized H block.
+	h[j*ldh+j] = aa
+	h[j*ldh+j+1] = bb
+	h[(j+1)*ldh+j] = cc
+	h[(j+1)*ldh+j+1] = dd
+
+	// Apply transformation to rest of H from left: rows j, j+1.
+	for jc := j + 2; jc <= ilastm; jc++ {
+		temp := cs*h[j*ldh+jc] + sn*h[(j+1)*ldh+jc]
+		h[(j+1)*ldh+jc] = -sn*h[j*ldh+jc] + cs*h[(j+1)*ldh+jc]
+		h[j*ldh+jc] = temp
+	}
+
+	// Apply transformation to rest of H from right: columns j, j+1.
+	for jr := ifrstm; jr < j; jr++ {
+		temp := cs*h[jr*ldh+j] + sn*h[jr*ldh+j+1]
+		h[jr*ldh+j+1] = -sn*h[jr*ldh+j] + cs*h[jr*ldh+j+1]
+		h[jr*ldh+j] = temp
+	}
+
+	// Apply transformation to T from left: rows j, j+1.
+	for jc := j; jc <= ilastm; jc++ {
+		temp := cs*t[j*ldt+jc] + sn*t[(j+1)*ldt+jc]
+		t[(j+1)*ldt+jc] = -sn*t[j*ldt+jc] + cs*t[(j+1)*ldt+jc]
+		t[j*ldt+jc] = temp
+	}
+
+	// Apply transformation to T from right: columns j, j+1.
+	for jr := ifrstm; jr <= j+1; jr++ {
+		temp := cs*t[jr*ldt+j] + sn*t[jr*ldt+j+1]
+		t[jr*ldt+j+1] = -sn*t[jr*ldt+j] + cs*t[jr*ldt+j+1]
+		t[jr*ldt+j] = temp
+	}
+
+	// Update Q if needed.
+	if ilq {
+		for jr := 0; jr < n; jr++ {
+			temp := cs*q[jr*ldq+j] + sn*q[jr*ldq+j+1]
+			q[jr*ldq+j+1] = -sn*q[jr*ldq+j] + cs*q[jr*ldq+j+1]
+			q[jr*ldq+j] = temp
+		}
+	}
+
+	// Update Z if needed.
+	if ilz {
+		for jr := 0; jr < n; jr++ {
+			temp := cs*z[jr*ldz+j] + sn*z[jr*ldz+j+1]
+			z[jr*ldz+j+1] = -sn*z[jr*ldz+j] + cs*z[jr*ldz+j+1]
+			z[jr*ldz+j] = temp
+		}
+	}
+
+	// Now make T's 2x2 block diagonal with positive entries.
+	// T currently has the form [ t11  t12 ]
+	//                          [ t21  t22 ]
+	// We need to eliminate t12 and t21 and ensure t11, t22 > 0.
+
+	// First eliminate t21 (subdiagonal) if present.
+	if t[(j+1)*ldt+j] != 0 {
+		cs2, sn2, _ := impl.Dlartg(t[(j+1)*ldt+j+1], t[(j+1)*ldt+j])
+		t[(j+1)*ldt+j+1] = cs2*t[(j+1)*ldt+j+1] + sn2*t[(j+1)*ldt+j]
+		t[(j+1)*ldt+j] = 0
+
+		// Apply from right to H.
+		for jr := ifrstm; jr <= j+1; jr++ {
+			temp := cs2*h[jr*ldh+j+1] + sn2*h[jr*ldh+j]
+			h[jr*ldh+j] = -sn2*h[jr*ldh+j+1] + cs2*h[jr*ldh+j]
+			h[jr*ldh+j+1] = temp
+		}
+
+		// Apply from right to T (rows above j+1).
+		for jr := ifrstm; jr <= j; jr++ {
+			temp := cs2*t[jr*ldt+j+1] + sn2*t[jr*ldt+j]
+			t[jr*ldt+j] = -sn2*t[jr*ldt+j+1] + cs2*t[jr*ldt+j]
+			t[jr*ldt+j+1] = temp
+		}
+
+		// Update Z.
+		if ilz {
+			for jr := 0; jr < n; jr++ {
+				temp := cs2*z[jr*ldz+j+1] + sn2*z[jr*ldz+j]
+				z[jr*ldz+j] = -sn2*z[jr*ldz+j+1] + cs2*z[jr*ldz+j]
+				z[jr*ldz+j+1] = temp
+			}
+		}
+	}
+
+	// Eliminate t12 (superdiagonal) if present.
+	if t[j*ldt+j+1] != 0 {
+		cs3, sn3, _ := impl.Dlartg(t[j*ldt+j], t[j*ldt+j+1])
+		t[j*ldt+j] = cs3*t[j*ldt+j] + sn3*t[j*ldt+j+1]
+		t[j*ldt+j+1] = 0
+
+		// Apply from left to H.
+		for jc := j; jc <= ilastm; jc++ {
+			temp := cs3*h[j*ldh+jc] + sn3*h[(j+1)*ldh+jc]
+			h[(j+1)*ldh+jc] = -sn3*h[j*ldh+jc] + cs3*h[(j+1)*ldh+jc]
+			h[j*ldh+jc] = temp
+		}
+
+		// Apply from left to T (columns right of j).
+		for jc := j + 1; jc <= ilastm; jc++ {
+			temp := cs3*t[j*ldt+jc] + sn3*t[(j+1)*ldt+jc]
+			t[(j+1)*ldt+jc] = -sn3*t[j*ldt+jc] + cs3*t[(j+1)*ldt+jc]
+			t[j*ldt+jc] = temp
+		}
+
+		// Update Q.
+		if ilq {
+			for jr := 0; jr < n; jr++ {
+				temp := cs3*q[jr*ldq+j] + sn3*q[jr*ldq+j+1]
+				q[jr*ldq+j+1] = -sn3*q[jr*ldq+j] + cs3*q[jr*ldq+j+1]
+				q[jr*ldq+j] = temp
+			}
+		}
+	}
+
+	// Ensure T diagonals are positive.
+	if t[j*ldt+j] < 0 {
+		for jc := j; jc <= ilastm; jc++ {
+			h[j*ldh+jc] = -h[j*ldh+jc]
+			t[j*ldt+jc] = -t[j*ldt+jc]
+		}
+		if ilq {
+			for jr := 0; jr < n; jr++ {
+				q[jr*ldq+j] = -q[jr*ldq+j]
+			}
+		}
+	}
+	if t[(j+1)*ldt+j+1] < 0 {
+		for jc := j + 1; jc <= ilastm; jc++ {
+			h[(j+1)*ldh+jc] = -h[(j+1)*ldh+jc]
+			t[(j+1)*ldt+jc] = -t[(j+1)*ldt+jc]
+		}
+		if ilq {
+			for jr := 0; jr < n; jr++ {
+				q[jr*ldq+j+1] = -q[jr*ldq+j+1]
 			}
 		}
 	}

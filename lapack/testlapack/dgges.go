@@ -63,9 +63,40 @@ func DggesTest(t *testing.T, impl Dggeser) {
 				},
 			},
 		},
+		{
+			// Matrix with complex eigenvalues to test 2x2 block standardization.
+			// A = [0, -1; 1, 0] has eigenvalues ±i.
+			name: "Complex eigenvalues 2x2",
+			a: blas64.General{
+				Rows: 2, Cols: 2, Stride: 2,
+				Data: []float64{
+					0, -1,
+					1, 0,
+				},
+			},
+			b: eye(2, 2),
+		},
+		{
+			// Larger matrix with complex eigenvalues.
+			// Has both real and complex eigenvalues.
+			name: "Mixed eigenvalues 4x4",
+			a: blas64.General{
+				Rows: 4, Cols: 4, Stride: 4,
+				Data: []float64{
+					1, 0, 0, 0,
+					0, 0, -2, 0,
+					0, 2, 0, 0,
+					0, 0, 0, 3,
+				},
+			},
+			b: eye(4, 4),
+		},
 	} {
 		testDggesMatrix(t, impl, tc.name, tc.a, tc.b, optimumWork)
 	}
+
+	// Test 2x2 block standardization specifically.
+	testDggesBlockStandardization(t, impl)
 
 	// Test sorting.
 	testDggesSorting(t, impl)
@@ -413,5 +444,88 @@ func testDggesSorting(t *testing.T, impl Dggeser) {
 	normResB := residB / (bnorm * float64(n) * dlamchE)
 	if normResB > tol {
 		t.Errorf("Sorting test: ||B - VSL*T*VSRᵀ||/(||B||*n*eps)=%v, want<=%v", normResB, tol)
+	}
+}
+
+// testDggesBlockStandardization tests that 2x2 blocks in S are properly
+// standardized: equal diagonals and H(i+1,i)*H(i,i+1) < 0.
+// Also checks that T's 2x2 block is diagonal with positive entries.
+func testDggesBlockStandardization(t *testing.T, impl Dggeser) {
+	// Matrix with complex eigenvalues ±i.
+	// After Schur factorization, should have a 2x2 block with:
+	// - Equal diagonals
+	// - Product of off-diagonals negative
+	n := 2
+	a := blas64.General{
+		Rows: n, Cols: n, Stride: n,
+		Data: []float64{
+			0, -1,
+			1, 0,
+		},
+	}
+	b := eye(n, n)
+
+	alphar := make([]float64, n)
+	alphai := make([]float64, n)
+	beta := make([]float64, n)
+	vsl := nanGeneral(n, n, n)
+	vsr := nanGeneral(n, n, n)
+
+	work := make([]float64, 1)
+	impl.Dgges(lapack.SchurHess, lapack.SchurHess, lapack.SortNone, nil, n,
+		nil, n, nil, n, nil, nil, nil, nil, n, nil, n, work, -1, nil)
+	lwork := int(work[0])
+	work = make([]float64, lwork)
+
+	_, ok := impl.Dgges(lapack.SchurHess, lapack.SchurHess, lapack.SortNone, nil, n,
+		a.Data, a.Stride, b.Data, b.Stride, alphar, alphai, beta,
+		vsl.Data, vsl.Stride, vsr.Data, vsr.Stride, work, lwork, nil)
+
+	if !ok {
+		t.Errorf("Block standardization test: Dgges failed to converge")
+		return
+	}
+
+	// Check that we have complex eigenvalues.
+	if alphai[0] == 0 || alphai[1] == 0 {
+		t.Errorf("Block standardization test: expected complex eigenvalues, got alphai=%v", alphai)
+		return
+	}
+
+	// Check S (stored in a) has standardized 2x2 block.
+	s00 := a.Data[0]
+	s01 := a.Data[1]
+	s10 := a.Data[n]
+	s11 := a.Data[n+1]
+
+	// Diagonals should be equal (within tolerance).
+	const tol = 1e-12
+	if diff := s00 - s11; diff > tol || diff < -tol {
+		t.Errorf("Block standardization: S diagonals not equal; S[0,0]=%v, S[1,1]=%v, diff=%v",
+			s00, s11, diff)
+	}
+
+	// Off-diagonal product should be negative (complex eigenvalues).
+	if s10*s01 >= 0 {
+		t.Errorf("Block standardization: S[1,0]*S[0,1]=%v, want < 0", s10*s01)
+	}
+
+	// Check T (stored in b) is diagonal with positive entries.
+	t00 := b.Data[0]
+	t01 := b.Data[1]
+	t10 := b.Data[n]
+	t11 := b.Data[n+1]
+
+	if t01 > tol || t01 < -tol {
+		t.Errorf("Block standardization: T[0,1]=%v, want 0", t01)
+	}
+	if t10 > tol || t10 < -tol {
+		t.Errorf("Block standardization: T[1,0]=%v, want 0", t10)
+	}
+	if t00 <= 0 {
+		t.Errorf("Block standardization: T[0,0]=%v, want > 0", t00)
+	}
+	if t11 <= 0 {
+		t.Errorf("Block standardization: T[1,1]=%v, want > 0", t11)
 	}
 }
