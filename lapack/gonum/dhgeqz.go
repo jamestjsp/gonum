@@ -297,7 +297,7 @@ func (impl Implementation) doQZStep(ilschr, ilq, ilz bool, n, ifirst, ilast, ifr
 	// Apply transformations.
 	for j := ifirst; j < ilast; j++ {
 		if j > ifirst {
-			a21 = h[(j+1)*ldh+j]
+			a21 = h[(j+1)*ldh+j-1]
 		}
 
 		// Compute Givens rotation to annihilate a21.
