@@ -123,14 +123,11 @@ func (impl Implementation) Dhgeqz(job lapack.SchurJob, compq, compz lapack.Schur
 
 	// Machine constants.
 	safmin := dlamchS
-	safmax := 1 / safmin
 	ulp := dlamchE
 	anorm := impl.Dlanhs(lapack.Frobenius, n, h, ldh, nil)
 	bnorm := impl.Dlantr(lapack.Frobenius, blas.Upper, blas.NonUnit, n, n, t, ldt, nil)
 	atol := math.Max(safmin, ulp*anorm)
 	btol := math.Max(safmin, ulp*bnorm)
-	ascale := 1 / math.Max(safmin, anorm)
-	bscale := 1 / math.Max(safmin, bnorm)
 
 	// Set eigenvalues for rows outside [ilo, ihi].
 	for j := 0; j < ilo; j++ {
@@ -231,7 +228,7 @@ func (impl Implementation) Dhgeqz(job lapack.SchurJob, compq, compz lapack.Schur
 			} else {
 				// Complex conjugate pair - standardize the 2x2 block.
 				// H block should have equal diagonals and H(i+1,i)*H(i,i+1) < 0.
-				// T block should be diagonal with positive entries.
+				// T block should be upper triangular with positive entries.
 				if ilschr {
 					impl.standardize2x2Block(n, ifirst, ifrstm, ilastm,
 						h, ldh, t, ldt, q, ldq, z, ldz, ilq, ilz)
@@ -279,11 +276,11 @@ func (impl Implementation) Dhgeqz(job lapack.SchurJob, compq, compz lapack.Schur
 			_ = wr2
 		}
 
-		// Do one QZ sweep using single shift.
-		// Even for complex shifts, single shift will eventually converge.
-		impl.doQZSweep(ilschr, ilq, ilz, n, ifirst, ilast, ifrstm, ilastm,
-			h, ldh, t, ldt, q, ldq, z, ldz, ascale, bscale, s1, s2, wr, safmin, safmax)
-		_ = wi
+		// Do one QZ sweep.
+		// TODO: Double-shift has bugs, use single-shift for now.
+		impl.doQZSweepSingle(ilschr, ilq, ilz, n, ifirst, ilast, ifrstm, ilastm,
+			h, ldh, t, ldt, q, ldq, z, ldz, s1, wr, safmin)
+		_, _ = wi, s2
 	}
 
 	// Check convergence.
@@ -294,16 +291,14 @@ func (impl Implementation) Dhgeqz(job lapack.SchurJob, compq, compz lapack.Schur
 	return true
 }
 
-// doQZSweep performs single-shift QZ sweeps.
-func (impl Implementation) doQZSweep(ilschr, ilq, ilz bool, n, ifirst, ilast, ifrstm, ilastm int,
+// doQZSweepSingle performs a single-shift QZ sweep.
+func (impl Implementation) doQZSweepSingle(ilschr, ilq, ilz bool, n, ifirst, ilast, ifrstm, ilastm int,
 	h []float64, ldh int, t []float64, ldt int, q []float64, ldq int, z []float64, ldz int,
-	ascale, bscale, s1, s2, wr, safmin, safmax float64) {
+	s1, wr, safmin float64) {
 
-	// Single shift QZ step.
-	// Start column: compute H - (wr/s1)*T column.
 	istart := ifirst
 
-	// First column of H - shift*T.
+	// First column of H - shift*T where shift = wr/s1.
 	temp := h[istart*ldh+istart]
 	if s1 != 0 {
 		temp -= (wr / s1) * t[istart*ldt+istart]
@@ -315,7 +310,6 @@ func (impl Implementation) doQZSweep(ilschr, ilq, ilz bool, n, ifirst, ilast, if
 	// Chase the bulge.
 	for j := istart; j < ilast; j++ {
 		if j > istart {
-			// Compute rotation to annihilate H[j+1,j-1].
 			temp = h[j*ldh+j-1]
 			temp2 = h[(j+1)*ldh+j-1]
 			cs, sn, _ = impl.Dlartg(temp, temp2)
@@ -378,6 +372,258 @@ func (impl Implementation) doQZSweep(ilschr, ilq, ilz bool, n, ifirst, ilast, if
 	}
 }
 
+// doQZSweepDouble performs an implicit double-shift QZ sweep for complex conjugate shifts.
+// The shifts are wr ± i*wi where wi != 0.
+func (impl Implementation) doQZSweepDouble(ilschr, ilq, ilz bool, n, ifirst, ilast, ifrstm, ilastm int,
+	h []float64, ldh int, t []float64, ldt int, q []float64, ldq int, z []float64, ldz int,
+	s1, s2, wr, wi, safmin float64) {
+
+	istart := ifirst
+
+	// For the implicit double-shift, we compute the first column of
+	// (H - (wr+i*wi)*T/s1) * (H - (wr-i*wi)*T/s1)
+	// which equals the first column of
+	// (H*H - 2*wr*H*T/s1 + (wr^2+wi^2)*T*T/s1^2)
+	//
+	// Let shift1 = wr/s1, shift2 = (wr^2+wi^2)/(s1*s2)
+	// The product M = (H - shift1*T)^2 + (wi/s1)^2*T^2
+	//
+	// First column of M applied to e1 gives a 3-vector (for 3x3 or larger).
+
+	// Extract the top-left 3x3 block (or 2x2 if ilast-istart < 2).
+	h11 := h[istart*ldh+istart]
+	h12 := h[istart*ldh+istart+1]
+	h21 := h[(istart+1)*ldh+istart]
+	h22 := h[(istart+1)*ldh+istart+1]
+	t11 := t[istart*ldt+istart]
+	t12 := t[istart*ldt+istart+1]
+	t22 := t[(istart+1)*ldt+istart+1]
+
+	var v1, v2, v3 float64
+
+	if ilast-istart >= 2 {
+		h32 := h[(istart+2)*ldh+istart+1]
+
+		// Compute shift parameters.
+		// For complex conjugate shifts s = wr ± i*wi with scaling s1:
+		//   (H - s*T)(H - conj(s)*T) = (H - wr/s1*T)^2 + (wi/s1)^2*T^2
+		var shift1, beta float64
+		if s1 != 0 {
+			shift1 = wr / s1
+			beta = (wi / s1) * (wi / s1)
+		}
+
+		// Let A = H - shift1*T.
+		a11 := h11 - shift1*t11
+		a12 := h12 - shift1*t12
+		a21 := h21
+		a22 := h22 - shift1*t22
+
+		// First column of (A^2 + beta*T^2):
+		// A^2*e1 = [a11^2 + a12*a21, a21*(a11+a22), h32*a21]
+		// T^2*e1 = [t11^2, 0, 0] (since T is upper triangular)
+		v1 = a11*a11 + a12*a21 + beta*t11*t11
+		v2 = a21 * (a11 + a22)
+		v3 = h32 * a21
+
+		// Scale to avoid overflow.
+		scale := math.Abs(v1) + math.Abs(v2) + math.Abs(v3)
+		if scale > 0 {
+			v1 /= scale
+			v2 /= scale
+			v3 /= scale
+		}
+	} else {
+		// 2x2 case: use single shift instead.
+		var shift1 float64
+		if s1 != 0 {
+			shift1 = wr / s1
+		}
+		v1 = h11 - shift1*t11
+		v2 = h21
+		v3 = 0
+	}
+
+	// Create Householder transformation to introduce bulge.
+	vv := []float64{v2, v3}
+	v1, tau := impl.Dlarfg(3, v1, vv, 1)
+	v := []float64{1, vv[0], vv[1]}
+
+	// Chase the bulge through the matrix.
+	for j := istart; j < ilast-1; j++ {
+		if j > istart {
+			// Compute Householder to annihilate H[j+1:j+3, j-1].
+			v1 = h[j*ldh+j-1]
+			v2 = h[(j+1)*ldh+j-1]
+			if j+2 <= ilast {
+				v3 = h[(j+2)*ldh+j-1]
+			} else {
+				v3 = 0
+			}
+			vv[0] = v2
+			vv[1] = v3
+			v1, tau = impl.Dlarfg(3, v1, vv, 1)
+			v[0] = 1
+			v[1] = vv[0]
+			v[2] = vv[1]
+
+			h[j*ldh+j-1] = v1
+			h[(j+1)*ldh+j-1] = 0
+			if j+2 <= ilast {
+				h[(j+2)*ldh+j-1] = 0
+			}
+		}
+
+		// Apply Householder from left to H.
+		jend := ilastm
+		for jc := j; jc <= jend; jc++ {
+			sum := h[j*ldh+jc] + v[1]*h[(j+1)*ldh+jc]
+			if j+2 <= ilast {
+				sum += v[2] * h[(j+2)*ldh+jc]
+			}
+			h[j*ldh+jc] -= tau * sum
+			h[(j+1)*ldh+jc] -= tau * sum * v[1]
+			if j+2 <= ilast {
+				h[(j+2)*ldh+jc] -= tau * sum * v[2]
+			}
+		}
+
+		// Apply Householder from left to T.
+		for jc := j; jc <= jend; jc++ {
+			sum := t[j*ldt+jc] + v[1]*t[(j+1)*ldt+jc]
+			if j+2 <= ilast {
+				sum += v[2] * t[(j+2)*ldt+jc]
+			}
+			t[j*ldt+jc] -= tau * sum
+			t[(j+1)*ldt+jc] -= tau * sum * v[1]
+			if j+2 <= ilast {
+				t[(j+2)*ldt+jc] -= tau * sum * v[2]
+			}
+		}
+
+		// Update Q if needed.
+		if ilq {
+			for jr := 0; jr < n; jr++ {
+				sum := q[jr*ldq+j] + v[1]*q[jr*ldq+j+1]
+				if j+2 <= ilast {
+					sum += v[2] * q[jr*ldq+j+2]
+				}
+				q[jr*ldq+j] -= tau * sum
+				q[jr*ldq+j+1] -= tau * sum * v[1]
+				if j+2 <= ilast {
+					q[jr*ldq+j+2] -= tau * sum * v[2]
+				}
+			}
+		}
+
+		// Zero out T[j+2,j] and T[j+1,j] to restore triangular form.
+		// First handle T[j+2,j] if it exists.
+		if j+2 <= ilast && t[(j+2)*ldt+j] != 0 {
+			cs, sn, _ := impl.Dlartg(t[(j+2)*ldt+j+1], t[(j+2)*ldt+j])
+			t[(j+2)*ldt+j+1] = cs*t[(j+2)*ldt+j+1] + sn*t[(j+2)*ldt+j]
+			t[(j+2)*ldt+j] = 0
+
+			// Apply from right to H and T.
+			for jr := ifrstm; jr <= min(j+3, ilast); jr++ {
+				temp := cs*h[jr*ldh+j+1] + sn*h[jr*ldh+j]
+				h[jr*ldh+j] = -sn*h[jr*ldh+j+1] + cs*h[jr*ldh+j]
+				h[jr*ldh+j+1] = temp
+			}
+			for jr := ifrstm; jr <= j+1; jr++ {
+				temp := cs*t[jr*ldt+j+1] + sn*t[jr*ldt+j]
+				t[jr*ldt+j] = -sn*t[jr*ldt+j+1] + cs*t[jr*ldt+j]
+				t[jr*ldt+j+1] = temp
+			}
+			if ilz {
+				for jr := 0; jr < n; jr++ {
+					temp := cs*z[jr*ldz+j+1] + sn*z[jr*ldz+j]
+					z[jr*ldz+j] = -sn*z[jr*ldz+j+1] + cs*z[jr*ldz+j]
+					z[jr*ldz+j+1] = temp
+				}
+			}
+		}
+
+		// Handle T[j+1,j].
+		if t[(j+1)*ldt+j] != 0 {
+			cs, sn, _ := impl.Dlartg(t[(j+1)*ldt+j+1], t[(j+1)*ldt+j])
+			t[(j+1)*ldt+j+1] = cs*t[(j+1)*ldt+j+1] + sn*t[(j+1)*ldt+j]
+			t[(j+1)*ldt+j] = 0
+
+			for jr := ifrstm; jr <= min(j+2, ilast); jr++ {
+				temp := cs*h[jr*ldh+j+1] + sn*h[jr*ldh+j]
+				h[jr*ldh+j] = -sn*h[jr*ldh+j+1] + cs*h[jr*ldh+j]
+				h[jr*ldh+j+1] = temp
+			}
+			for jr := ifrstm; jr <= j; jr++ {
+				temp := cs*t[jr*ldt+j+1] + sn*t[jr*ldt+j]
+				t[jr*ldt+j] = -sn*t[jr*ldt+j+1] + cs*t[jr*ldt+j]
+				t[jr*ldt+j+1] = temp
+			}
+			if ilz {
+				for jr := 0; jr < n; jr++ {
+					temp := cs*z[jr*ldz+j+1] + sn*z[jr*ldz+j]
+					z[jr*ldz+j] = -sn*z[jr*ldz+j+1] + cs*z[jr*ldz+j]
+					z[jr*ldz+j+1] = temp
+				}
+			}
+		}
+	}
+
+	// Final step: handle the last 2x2 portion.
+	j := ilast - 1
+	temp := h[j*ldh+j-1]
+	temp2 := h[(j+1)*ldh+j-1]
+	cs, sn, _ := impl.Dlartg(temp, temp2)
+	h[j*ldh+j-1] = cs*temp + sn*temp2
+	h[(j+1)*ldh+j-1] = 0
+
+	// Apply from left.
+	for jc := j; jc <= ilastm; jc++ {
+		temp = cs*h[j*ldh+jc] + sn*h[(j+1)*ldh+jc]
+		h[(j+1)*ldh+jc] = -sn*h[j*ldh+jc] + cs*h[(j+1)*ldh+jc]
+		h[j*ldh+jc] = temp
+	}
+	for jc := j; jc <= ilastm; jc++ {
+		temp = cs*t[j*ldt+jc] + sn*t[(j+1)*ldt+jc]
+		t[(j+1)*ldt+jc] = -sn*t[j*ldt+jc] + cs*t[(j+1)*ldt+jc]
+		t[j*ldt+jc] = temp
+	}
+	if ilq {
+		for jr := 0; jr < n; jr++ {
+			temp = cs*q[jr*ldq+j] + sn*q[jr*ldq+j+1]
+			q[jr*ldq+j+1] = -sn*q[jr*ldq+j] + cs*q[jr*ldq+j+1]
+			q[jr*ldq+j] = temp
+		}
+	}
+
+	// Restore T triangular.
+	if t[(j+1)*ldt+j] != 0 {
+		cs, sn, _ = impl.Dlartg(t[(j+1)*ldt+j+1], t[(j+1)*ldt+j])
+		t[(j+1)*ldt+j+1] = cs*t[(j+1)*ldt+j+1] + sn*t[(j+1)*ldt+j]
+		t[(j+1)*ldt+j] = 0
+
+		for jr := ifrstm; jr <= ilast; jr++ {
+			temp = cs*h[jr*ldh+j+1] + sn*h[jr*ldh+j]
+			h[jr*ldh+j] = -sn*h[jr*ldh+j+1] + cs*h[jr*ldh+j]
+			h[jr*ldh+j+1] = temp
+		}
+		for jr := ifrstm; jr <= j; jr++ {
+			temp = cs*t[jr*ldt+j+1] + sn*t[jr*ldt+j]
+			t[jr*ldt+j] = -sn*t[jr*ldt+j+1] + cs*t[jr*ldt+j]
+			t[jr*ldt+j+1] = temp
+		}
+		if ilz {
+			for jr := 0; jr < n; jr++ {
+				temp = cs*z[jr*ldz+j+1] + sn*z[jr*ldz+j]
+				z[jr*ldz+j] = -sn*z[jr*ldz+j+1] + cs*z[jr*ldz+j]
+				z[jr*ldz+j+1] = temp
+			}
+		}
+	}
+
+	_ = safmin
+}
+
 // standardize2x2Block puts a 2x2 block at position j into Schur canonical form.
 // For H: equal diagonals with H(j+1,j)*H(j,j+1) < 0.
 // For T: diagonal with positive entries.
@@ -429,8 +675,9 @@ func (impl Implementation) standardize2x2Block(n, j, ifrstm, ilastm int,
 	}
 
 	// Update Q if needed.
+	// For left transformation on H/T (rows j, j+1), we update Q = Q * G^T.
 	if ilq {
-		for jr := 0; jr < n; jr++ {
+		for jr := range n {
 			temp := cs*q[jr*ldq+j] + sn*q[jr*ldq+j+1]
 			q[jr*ldq+j+1] = -sn*q[jr*ldq+j] + cs*q[jr*ldq+j+1]
 			q[jr*ldq+j] = temp
@@ -438,98 +685,97 @@ func (impl Implementation) standardize2x2Block(n, j, ifrstm, ilastm int,
 	}
 
 	// Update Z if needed.
+	// For right transformation on H/T (columns j, j+1), we update Z = Z * G.
 	if ilz {
-		for jr := 0; jr < n; jr++ {
+		for jr := range n {
 			temp := cs*z[jr*ldz+j] + sn*z[jr*ldz+j+1]
 			z[jr*ldz+j+1] = -sn*z[jr*ldz+j] + cs*z[jr*ldz+j+1]
 			z[jr*ldz+j] = temp
 		}
 	}
 
-	// Now make T's 2x2 block diagonal with positive entries.
-	// T currently has the form [ t11  t12 ]
-	//                          [ t21  t22 ]
-	// We need to eliminate t12 and t21 and ensure t11, t22 > 0.
+	// Make T upper triangular with positive diagonal.
+	// After applying the Dlanv2 similarity transformation, T may have
+	// nonzero t21. We need to eliminate it using a right rotation.
+	// Also ensure T diagonals are positive.
 
-	// First eliminate t21 (subdiagonal) if present.
-	if t[(j+1)*ldt+j] != 0 {
-		cs2, sn2, _ := impl.Dlartg(t[(j+1)*ldt+j+1], t[(j+1)*ldt+j])
-		t[(j+1)*ldt+j+1] = cs2*t[(j+1)*ldt+j+1] + sn2*t[(j+1)*ldt+j]
+	t11 := t[j*ldt+j]
+	t12 := t[j*ldt+j+1]
+	t21 := t[(j+1)*ldt+j]
+	t22 := t[(j+1)*ldt+j+1]
+
+	// Eliminate t21 using a right rotation on columns j, j+1.
+	// Find R2 = [cs2 sn2; -sn2 cs2] such that [t21, t22] * R2 = [0, *]
+	// This means cs2*t21 - sn2*t22 = 0.
+	if t21 != 0 {
+		// Dlartg(a, b): c*a + s*b = r, -s*a + c*b = 0 => c*b = s*a
+		// We need c*t21 = s*t22, so call Dlartg(t22, t21).
+		cs2, sn2, _ := impl.Dlartg(t22, t21)
+
+		// Apply T = T * R2 (column operation).
+		// For T's 2x2 block:
+		t[j*ldt+j] = cs2*t11 - sn2*t12
+		t[j*ldt+j+1] = sn2*t11 + cs2*t12
 		t[(j+1)*ldt+j] = 0
+		t[(j+1)*ldt+j+1] = sn2*t21 + cs2*t22
 
-		// Apply from right to H.
+		// For T rows above the 2x2 block:
+		for jr := ifrstm; jr < j; jr++ {
+			tj := t[jr*ldt+j]
+			tjp1 := t[jr*ldt+j+1]
+			t[jr*ldt+j] = cs2*tj - sn2*tjp1
+			t[jr*ldt+j+1] = sn2*tj + cs2*tjp1
+		}
+
+		// Apply H = H * R2 (column operation).
 		for jr := ifrstm; jr <= j+1; jr++ {
-			temp := cs2*h[jr*ldh+j+1] + sn2*h[jr*ldh+j]
-			h[jr*ldh+j] = -sn2*h[jr*ldh+j+1] + cs2*h[jr*ldh+j]
-			h[jr*ldh+j+1] = temp
+			hj := h[jr*ldh+j]
+			hjp1 := h[jr*ldh+j+1]
+			h[jr*ldh+j] = cs2*hj - sn2*hjp1
+			h[jr*ldh+j+1] = sn2*hj + cs2*hjp1
 		}
 
-		// Apply from right to T (rows above j+1).
-		for jr := ifrstm; jr <= j; jr++ {
-			temp := cs2*t[jr*ldt+j+1] + sn2*t[jr*ldt+j]
-			t[jr*ldt+j] = -sn2*t[jr*ldt+j+1] + cs2*t[jr*ldt+j]
-			t[jr*ldt+j+1] = temp
-		}
-
-		// Update Z.
+		// Apply Z = Z * R2.
 		if ilz {
-			for jr := 0; jr < n; jr++ {
-				temp := cs2*z[jr*ldz+j+1] + sn2*z[jr*ldz+j]
-				z[jr*ldz+j] = -sn2*z[jr*ldz+j+1] + cs2*z[jr*ldz+j]
-				z[jr*ldz+j+1] = temp
-			}
-		}
-	}
-
-	// Eliminate t12 (superdiagonal) if present.
-	if t[j*ldt+j+1] != 0 {
-		cs3, sn3, _ := impl.Dlartg(t[j*ldt+j], t[j*ldt+j+1])
-		t[j*ldt+j] = cs3*t[j*ldt+j] + sn3*t[j*ldt+j+1]
-		t[j*ldt+j+1] = 0
-
-		// Apply from left to H.
-		for jc := j; jc <= ilastm; jc++ {
-			temp := cs3*h[j*ldh+jc] + sn3*h[(j+1)*ldh+jc]
-			h[(j+1)*ldh+jc] = -sn3*h[j*ldh+jc] + cs3*h[(j+1)*ldh+jc]
-			h[j*ldh+jc] = temp
-		}
-
-		// Apply from left to T (columns right of j).
-		for jc := j + 1; jc <= ilastm; jc++ {
-			temp := cs3*t[j*ldt+jc] + sn3*t[(j+1)*ldt+jc]
-			t[(j+1)*ldt+jc] = -sn3*t[j*ldt+jc] + cs3*t[(j+1)*ldt+jc]
-			t[j*ldt+jc] = temp
-		}
-
-		// Update Q.
-		if ilq {
-			for jr := 0; jr < n; jr++ {
-				temp := cs3*q[jr*ldq+j] + sn3*q[jr*ldq+j+1]
-				q[jr*ldq+j+1] = -sn3*q[jr*ldq+j] + cs3*q[jr*ldq+j+1]
-				q[jr*ldq+j] = temp
+			for jr := range n {
+				zj := z[jr*ldz+j]
+				zjp1 := z[jr*ldz+j+1]
+				z[jr*ldz+j] = cs2*zj - sn2*zjp1
+				z[jr*ldz+j+1] = sn2*zj + cs2*zjp1
 			}
 		}
 	}
 
 	// Ensure T diagonals are positive.
+	// This is a left (row) transformation: negate row j of H and T.
+	// For the factorization H_orig = Q * H * Z^T, if H_new = D * H where D[j,j] = -1,
+	// then Q_new = Q * D (negate column j of Q).
 	if t[j*ldt+j] < 0 {
-		for jc := j; jc <= ilastm; jc++ {
+		// Negate row j of H (from column ifrstm to ilastm, including subdiagonal).
+		for jc := ifrstm; jc <= ilastm; jc++ {
 			h[j*ldh+jc] = -h[j*ldh+jc]
+		}
+		// Negate row j of T (from column j to ilastm, T is upper triangular).
+		for jc := j; jc <= ilastm; jc++ {
 			t[j*ldt+jc] = -t[j*ldt+jc]
 		}
 		if ilq {
-			for jr := 0; jr < n; jr++ {
+			for jr := range n {
 				q[jr*ldq+j] = -q[jr*ldq+j]
 			}
 		}
 	}
 	if t[(j+1)*ldt+j+1] < 0 {
-		for jc := j + 1; jc <= ilastm; jc++ {
+		// Negate row j+1 of H (from column ifrstm to ilastm).
+		for jc := ifrstm; jc <= ilastm; jc++ {
 			h[(j+1)*ldh+jc] = -h[(j+1)*ldh+jc]
+		}
+		// Negate row j+1 of T (from column j+1 to ilastm).
+		for jc := j + 1; jc <= ilastm; jc++ {
 			t[(j+1)*ldt+jc] = -t[(j+1)*ldt+jc]
 		}
 		if ilq {
-			for jr := 0; jr < n; jr++ {
+			for jr := range n {
 				q[jr*ldq+j+1] = -q[jr*ldq+j+1]
 			}
 		}
