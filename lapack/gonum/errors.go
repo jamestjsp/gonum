@@ -159,6 +159,8 @@ const (
 	badLdA    = "lapack: bad leading dimension of A"
 	badLdB    = "lapack: bad leading dimension of B"
 	badLdC    = "lapack: bad leading dimension of C"
+	badLdD    = "lapack: bad leading dimension of D"
+	badLdE    = "lapack: bad leading dimension of E"
 	badLdF    = "lapack: bad leading dimension of F"
 	badLdH    = "lapack: bad leading dimension of H"
 	badLdQ    = "lapack: bad leading dimension of Q"

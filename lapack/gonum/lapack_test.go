@@ -32,6 +32,16 @@ func TestDgebal(t *testing.T) {
 	testlapack.DgebalTest(t, impl)
 }
 
+func TestDggbal(t *testing.T) {
+	t.Parallel()
+	testlapack.DggbalTest(t, impl)
+}
+
+func TestDggbak(t *testing.T) {
+	t.Parallel()
+	testlapack.DggbakTest(t, impl)
+}
+
 func TestDgebd2(t *testing.T) {
 	t.Parallel()
 	testlapack.Dgebd2Test(t, impl)
@@ -656,6 +666,16 @@ func TestDtrevc3(t *testing.T) {
 func TestDtrexc(t *testing.T) {
 	t.Parallel()
 	testlapack.DtrexcTest(t, impl)
+}
+
+func TestDtrsyl(t *testing.T) {
+	t.Parallel()
+	testlapack.DtrsylTest(t, impl)
+}
+
+func TestDtgsy2(t *testing.T) {
+	t.Parallel()
+	testlapack.Dtgsy2Test(t, impl)
 }
 
 func TestDtrti2(t *testing.T) {
