@@ -88,8 +88,8 @@ func (impl Implementation) Dgges(jobvsl, jobvsr lapack.SchurComp, sort lapack.Sc
 	wantvsr := jobvsr == lapack.SchurHess
 	wantst := sort == lapack.SortSelected
 
-	// Minimum workspace: 8*n for general operations.
-	minwrk := max(1, 8*n)
+	// Minimum workspace: 3*n (lscale, rscale, tau) + 6*n (Dggbal) = 9*n.
+	minwrk := max(1, 9*n)
 
 	switch {
 	case jobvsl != lapack.SchurHess && jobvsl != lapack.SchurNone:

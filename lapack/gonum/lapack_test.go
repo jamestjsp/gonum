@@ -183,6 +183,11 @@ func TestDhgeqz(t *testing.T) {
 	testlapack.DhgeqzTest(t, impl)
 }
 
+func TestDgges(t *testing.T) {
+	t.Parallel()
+	testlapack.DggesTest(t, impl)
+}
+
 func TestDgtsv(t *testing.T) {
 	t.Parallel()
 	testlapack.DgtsvTest(t, impl)
