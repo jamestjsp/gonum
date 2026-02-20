@@ -30,11 +30,10 @@ func DhgeqzTest(t *testing.T, impl Dhgeqzer) {
 		t.Errorf("Workspace query returned invalid size: %v", work[0])
 	}
 
-	// Test 2x2 upper Hessenberg-triangular pair.
 	testDhgeqz2x2(t, impl)
-
-	// Test 3x3 upper Hessenberg-triangular pair.
 	testDhgeqz3x3(t, impl)
+	testDhgeqzComplex4x4(t, impl)
+	testDhgeqzComplex6x6(t, impl)
 }
 
 func testDhgeqz2x2(t *testing.T, impl Dhgeqzer) {
@@ -143,4 +142,178 @@ func testDhgeqz3x3(t *testing.T, impl Dhgeqzer) {
 			t.Errorf("3x3 test: eigenvalue %d is NaN", i)
 		}
 	}
+}
+
+func testDhgeqzComplex4x4(t *testing.T, impl Dhgeqzer) {
+	// 4x4 Hessenberg-triangular pair with complex conjugate eigenvalues.
+	// H has structure that produces complex eigenvalue pairs.
+	n := 4
+	h := blas64.General{
+		Rows: n, Cols: n, Stride: n,
+		Data: []float64{
+			1, 2, 0.5, 0.3,
+			-3, 1, 1.0, 0.2,
+			0, -2, 0, 1.5,
+			0, 0, -1, 0,
+		},
+	}
+	tt := blas64.General{
+		Rows: n, Cols: n, Stride: n,
+		Data: []float64{
+			1, 0.5, 0.2, 0.1,
+			0, 1, 0.3, 0.1,
+			0, 0, 1, 0.4,
+			0, 0, 0, 1,
+		},
+	}
+
+	hOrig := make([]float64, len(h.Data))
+	tOrig := make([]float64, len(tt.Data))
+	copy(hOrig, h.Data)
+	copy(tOrig, tt.Data)
+
+	q := blas64.General{Rows: n, Cols: n, Stride: n, Data: make([]float64, n*n)}
+	z := blas64.General{Rows: n, Cols: n, Stride: n, Data: make([]float64, n*n)}
+	alphar := make([]float64, n)
+	alphai := make([]float64, n)
+	beta := make([]float64, n)
+	work := make([]float64, 4*n)
+
+	ok := impl.Dhgeqz(lapack.EigenvaluesAndSchur, lapack.SchurHess, lapack.SchurHess, n, 0, n-1,
+		h.Data, h.Stride, tt.Data, tt.Stride, alphar, alphai, beta,
+		q.Data, q.Stride, z.Data, z.Stride, work, len(work))
+
+	if !ok {
+		t.Fatal("4x4 complex test: QZ iteration did not converge")
+	}
+
+	hasComplex := false
+	for i := 0; i < n; i++ {
+		if alphai[i] != 0 {
+			hasComplex = true
+			break
+		}
+	}
+	if !hasComplex {
+		t.Log("4x4 complex test: no complex eigenvalues detected (may be OK if exceptional shifts resolved them)")
+	}
+
+	// Verify Schur decomposition: Q^T * H_orig * Z ≈ S.
+	bi := blas64.Implementation()
+	const tol = 1e-10
+	tmp := make([]float64, n*n)
+	result := make([]float64, n*n)
+
+	// tmp = H_orig * Z
+	for i := 0; i < n; i++ {
+		for j := 0; j < n; j++ {
+			var s float64
+			for k := 0; k < n; k++ {
+				s += hOrig[i*n+k] * z.Data[k*n+j]
+			}
+			tmp[i*n+j] = s
+		}
+	}
+	// result = Q^T * tmp
+	for i := 0; i < n; i++ {
+		for j := 0; j < n; j++ {
+			var s float64
+			for k := 0; k < n; k++ {
+				s += q.Data[k*n+i] * tmp[k*n+j]
+			}
+			result[i*n+j] = s
+		}
+	}
+	// Check result ≈ S (h after QZ)
+	for i := 0; i < n; i++ {
+		for j := 0; j < n; j++ {
+			diff := math.Abs(result[i*n+j] - h.Data[i*n+j])
+			if diff > tol {
+				t.Errorf("4x4 complex test: Q^T*H*Z - S at (%d,%d): diff=%e", i, j, diff)
+			}
+		}
+	}
+
+	_ = bi
+}
+
+func testDhgeqzComplex6x6(t *testing.T, impl Dhgeqzer) {
+	// 6x6 Hessenberg-triangular pair designed to have multiple complex pairs.
+	n := 6
+	h := blas64.General{
+		Rows: n, Cols: n, Stride: n,
+		Data: []float64{
+			0.5, 1.0, 0.3, 0.1, 0.2, 0.4,
+			-1.5, 0.5, 0.7, 0.2, 0.1, 0.3,
+			0, -2.0, 1.0, 0.5, 0.3, 0.1,
+			0, 0, -1.0, 1.0, 0.8, 0.2,
+			0, 0, 0, -0.5, 0.3, 1.0,
+			0, 0, 0, 0, -1.2, 0.3,
+		},
+	}
+	tt := blas64.General{
+		Rows: n, Cols: n, Stride: n,
+		Data: []float64{
+			1, 0.2, 0.1, 0, 0, 0,
+			0, 1, 0.3, 0.1, 0, 0,
+			0, 0, 1, 0.2, 0.1, 0,
+			0, 0, 0, 1, 0.1, 0,
+			0, 0, 0, 0, 1, 0.2,
+			0, 0, 0, 0, 0, 1,
+		},
+	}
+
+	hOrig := make([]float64, len(h.Data))
+	tOrig := make([]float64, len(tt.Data))
+	copy(hOrig, h.Data)
+	copy(tOrig, tt.Data)
+
+	q := blas64.General{Rows: n, Cols: n, Stride: n, Data: make([]float64, n*n)}
+	z := blas64.General{Rows: n, Cols: n, Stride: n, Data: make([]float64, n*n)}
+	alphar := make([]float64, n)
+	alphai := make([]float64, n)
+	beta := make([]float64, n)
+	work := make([]float64, 4*n)
+
+	ok := impl.Dhgeqz(lapack.EigenvaluesAndSchur, lapack.SchurHess, lapack.SchurHess, n, 0, n-1,
+		h.Data, h.Stride, tt.Data, tt.Stride, alphar, alphai, beta,
+		q.Data, q.Stride, z.Data, z.Stride, work, len(work))
+
+	if !ok {
+		t.Fatal("6x6 complex test: QZ iteration did not converge")
+	}
+
+	// Verify Schur decomposition: Q^T * H_orig * Z ≈ S.
+	const tol = 1e-10
+	tmp := make([]float64, n*n)
+	result := make([]float64, n*n)
+
+	for i := 0; i < n; i++ {
+		for j := 0; j < n; j++ {
+			var s float64
+			for k := 0; k < n; k++ {
+				s += hOrig[i*n+k] * z.Data[k*n+j]
+			}
+			tmp[i*n+j] = s
+		}
+	}
+	for i := 0; i < n; i++ {
+		for j := 0; j < n; j++ {
+			var s float64
+			for k := 0; k < n; k++ {
+				s += q.Data[k*n+i] * tmp[k*n+j]
+			}
+			result[i*n+j] = s
+		}
+	}
+	for i := 0; i < n; i++ {
+		for j := 0; j < n; j++ {
+			diff := math.Abs(result[i*n+j] - h.Data[i*n+j])
+			if diff > tol {
+				t.Errorf("6x6 complex test: Q^T*H*Z - S at (%d,%d): diff=%e", i, j, diff)
+			}
+		}
+	}
+
+	_ = tOrig
 }

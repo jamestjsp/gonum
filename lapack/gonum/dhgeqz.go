@@ -8,6 +8,7 @@ import (
 	"math"
 
 	"gonum.org/v1/gonum/blas"
+	"gonum.org/v1/gonum/blas/blas64"
 	"gonum.org/v1/gonum/lapack"
 )
 
@@ -128,6 +129,8 @@ func (impl Implementation) Dhgeqz(job lapack.SchurJob, compq, compz lapack.Schur
 	bnorm := impl.Dlantr(lapack.Frobenius, blas.Upper, blas.NonUnit, n, n, t, ldt, nil)
 	atol := math.Max(safmin, ulp*anorm)
 	btol := math.Max(safmin, ulp*bnorm)
+	ascale := 1 / math.Max(safmin, anorm)
+	bscale := 1 / math.Max(safmin, bnorm)
 
 	// Set eigenvalues for rows outside [ilo, ihi].
 	for j := 0; j < ilo; j++ {
@@ -151,6 +154,7 @@ func (impl Implementation) Dhgeqz(job lapack.SchurJob, compq, compz lapack.Schur
 	}
 
 	const maxit = 30
+	totalMaxit := maxit * (ihi - ilo + 1)
 	iiter := 0      // Iterations since last eigenvalue.
 	eshift := 0.0   // Exceptional shift accumulator.
 
@@ -263,24 +267,29 @@ func (impl Implementation) Dhgeqz(job lapack.SchurJob, compq, compz lapack.Schur
 
 		// Exceptional shift every 10 iterations.
 		if iiter%10 == 0 {
-			// Ad-hoc exceptional shift to escape stagnation.
-			// Use shift of 1 (Mathworks improvement over LAPACK's zero).
-			eshift += 1.0
-			s1 = eshift
-			s2 = 0
+			if float64(totalMaxit)*safmin*math.Abs(h[ilast*ldh+ilast-1]) <
+				math.Abs(t[(ilast-1)*ldt+ilast-1]) {
+				eshift = h[ilast*ldh+ilast-1] / t[(ilast-1)*ldt+ilast-1]
+			} else {
+				eshift += 1 / (safmin * float64(totalMaxit))
+			}
+			s1 = 1
 			wr = eshift
 			wi = 0
 		} else {
 			// Normal shift: eigenvalues of trailing 2x2.
 			s1, s2, wr, wr2, wi = impl.Dlag2(h[(ilast-1)*ldh+ilast-1:], ldh, t[(ilast-1)*ldt+ilast-1:], ldt)
-			_ = wr2
+			_, _ = wr2, s2
 		}
 
 		// Do one QZ sweep.
-		// TODO: Double-shift has bugs, use single-shift for now.
-		impl.doQZSweepSingle(ilschr, ilq, ilz, n, ifirst, ilast, ifrstm, ilastm,
-			h, ldh, t, ldt, q, ldq, z, ldz, s1, wr, safmin)
-		_, _ = wi, s2
+		if wi == 0 {
+			impl.doQZSweepSingle(ilschr, ilq, ilz, n, ifirst, ilast, ifrstm, ilastm,
+				h, ldh, t, ldt, q, ldq, z, ldz, s1, wr, safmin)
+		} else {
+			impl.doQZSweepDouble(ilschr, ilq, ilz, n, ifirst, ilast, ifrstm, ilastm,
+				h, ldh, t, ldt, q, ldq, z, ldz, ascale, bscale, safmin)
+		}
 	}
 
 	// Check convergence.
@@ -296,9 +305,9 @@ func (impl Implementation) doQZSweepSingle(ilschr, ilq, ilz bool, n, ifirst, ila
 	h []float64, ldh int, t []float64, ldt int, q []float64, ldq int, z []float64, ldz int,
 	s1, wr, safmin float64) {
 
+	bi := blas64.Implementation()
 	istart := ifirst
 
-	// First column of H - shift*T where shift = wr/s1.
 	temp := h[istart*ldh+istart]
 	if s1 != 0 {
 		temp -= (wr / s1) * t[istart*ldt+istart]
@@ -307,7 +316,6 @@ func (impl Implementation) doQZSweepSingle(ilschr, ilq, ilz bool, n, ifirst, ila
 
 	cs, sn, _ := impl.Dlartg(temp, temp2)
 
-	// Chase the bulge.
 	for j := istart; j < ilast; j++ {
 		if j > istart {
 			temp = h[j*ldh+j-1]
@@ -317,311 +325,242 @@ func (impl Implementation) doQZSweepSingle(ilschr, ilq, ilz bool, n, ifirst, ila
 			h[(j+1)*ldh+j-1] = 0
 		}
 
-		// Apply rotation from left to H.
-		for jc := j; jc <= ilastm; jc++ {
-			temp = cs*h[j*ldh+jc] + sn*h[(j+1)*ldh+jc]
-			h[(j+1)*ldh+jc] = -sn*h[j*ldh+jc] + cs*h[(j+1)*ldh+jc]
-			h[j*ldh+jc] = temp
-		}
-
-		// Apply rotation from left to T.
-		for jc := j; jc <= ilastm; jc++ {
-			temp = cs*t[j*ldt+jc] + sn*t[(j+1)*ldt+jc]
-			t[(j+1)*ldt+jc] = -sn*t[j*ldt+jc] + cs*t[(j+1)*ldt+jc]
-			t[j*ldt+jc] = temp
-		}
-
-		// Update Q if needed.
+		nj := ilastm - j + 1
+		bi.Drot(nj, h[j*ldh+j:], 1, h[(j+1)*ldh+j:], 1, cs, sn)
+		bi.Drot(nj, t[j*ldt+j:], 1, t[(j+1)*ldt+j:], 1, cs, sn)
 		if ilq {
-			for jr := 0; jr < n; jr++ {
-				temp = cs*q[jr*ldq+j] + sn*q[jr*ldq+j+1]
-				q[jr*ldq+j+1] = -sn*q[jr*ldq+j] + cs*q[jr*ldq+j+1]
-				q[jr*ldq+j] = temp
-			}
+			bi.Drot(n, q[j:], ldq, q[j+1:], ldq, cs, sn)
 		}
 
-		// Annihilate T[j+1,j] to restore upper triangular form.
 		if t[(j+1)*ldt+j] != 0 {
 			cs, sn, _ = impl.Dlartg(t[(j+1)*ldt+j+1], t[(j+1)*ldt+j])
 			t[(j+1)*ldt+j+1] = cs*t[(j+1)*ldt+j+1] + sn*t[(j+1)*ldt+j]
 			t[(j+1)*ldt+j] = 0
 
-			// Apply rotation from right to H.
-			for jr := ifrstm; jr <= min(j+2, ilast); jr++ {
-				temp = cs*h[jr*ldh+j+1] + sn*h[jr*ldh+j]
-				h[jr*ldh+j] = -sn*h[jr*ldh+j+1] + cs*h[jr*ldh+j]
-				h[jr*ldh+j+1] = temp
+			nh := min(j+2, ilast) - ifrstm + 1
+			bi.Drot(nh, h[ifrstm*ldh+j+1:], ldh, h[ifrstm*ldh+j:], ldh, cs, sn)
+			nt := j - ifrstm + 1
+			if nt > 0 {
+				bi.Drot(nt, t[ifrstm*ldt+j+1:], ldt, t[ifrstm*ldt+j:], ldt, cs, sn)
 			}
-
-			// Apply rotation from right to T.
-			for jr := ifrstm; jr <= j; jr++ {
-				temp = cs*t[jr*ldt+j+1] + sn*t[jr*ldt+j]
-				t[jr*ldt+j] = -sn*t[jr*ldt+j+1] + cs*t[jr*ldt+j]
-				t[jr*ldt+j+1] = temp
-			}
-
-			// Update Z if needed.
 			if ilz {
-				for jr := 0; jr < n; jr++ {
-					temp = cs*z[jr*ldz+j+1] + sn*z[jr*ldz+j]
-					z[jr*ldz+j] = -sn*z[jr*ldz+j+1] + cs*z[jr*ldz+j]
-					z[jr*ldz+j+1] = temp
-				}
+				bi.Drot(n, z[j+1:], ldz, z[j:], ldz, cs, sn)
 			}
 		}
 	}
 }
 
-// doQZSweepDouble performs an implicit double-shift QZ sweep for complex conjugate shifts.
-// The shifts are wr ± i*wi where wi != 0.
+// doQZSweepDouble performs an implicit double-shift QZ sweep for complex
+// conjugate shifts. It follows the Francis implicit double-shift QZ algorithm
+// as described in LAPACK's dhgeqz.f.
 func (impl Implementation) doQZSweepDouble(ilschr, ilq, ilz bool, n, ifirst, ilast, ifrstm, ilastm int,
 	h []float64, ldh int, t []float64, ldt int, q []float64, ldq int, z []float64, ldz int,
-	s1, s2, wr, wi, safmin float64) {
+	ascale, bscale, safmin float64) {
 
 	istart := ifirst
 
-	// For the implicit double-shift, we compute the first column of
-	// (H - (wr+i*wi)*T/s1) * (H - (wr-i*wi)*T/s1)
-	// which equals the first column of
-	// (H*H - 2*wr*H*T/s1 + (wr^2+wi^2)*T*T/s1^2)
-	//
-	// Let shift1 = wr/s1, shift2 = (wr^2+wi^2)/(s1*s2)
-	// The product M = (H - shift1*T)^2 + (wi/s1)^2*T^2
-	//
-	// First column of M applied to e1 gives a 3-vector (for 3x3 or larger).
+	// Compute first column of double-shift polynomial using LAPACK's
+	// numerically stable formula based on scaled pencil entries.
+	// Bottom-right 2x2 of T^{-1}*H (scaled).
+	ad11 := (ascale * h[(ilast-1)*ldh+ilast-1]) / (bscale * t[(ilast-1)*ldt+ilast-1])
+	ad21 := (ascale * h[ilast*ldh+ilast-1]) / (bscale * t[(ilast-1)*ldt+ilast-1])
+	ad12 := (ascale * h[(ilast-1)*ldh+ilast]) / (bscale * t[ilast*ldt+ilast])
+	ad22 := (ascale * h[ilast*ldh+ilast]) / (bscale * t[ilast*ldt+ilast])
+	u12 := t[(ilast-1)*ldt+ilast] / t[ilast*ldt+ilast]
 
-	// Extract the top-left 3x3 block (or 2x2 if ilast-istart < 2).
-	h11 := h[istart*ldh+istart]
-	h12 := h[istart*ldh+istart+1]
-	h21 := h[(istart+1)*ldh+istart]
-	h22 := h[(istart+1)*ldh+istart+1]
-	t11 := t[istart*ldt+istart]
-	t12 := t[istart*ldt+istart+1]
-	t22 := t[(istart+1)*ldt+istart+1]
+	// Top-left 3x3 of T^{-1}*H (scaled).
+	ad11l := (ascale * h[istart*ldh+istart]) / (bscale * t[istart*ldt+istart])
+	ad21l := (ascale * h[(istart+1)*ldh+istart]) / (bscale * t[istart*ldt+istart])
+	ad12l := (ascale * h[istart*ldh+istart+1]) / (bscale * t[(istart+1)*ldt+istart+1])
+	ad22l := (ascale * h[(istart+1)*ldh+istart+1]) / (bscale * t[(istart+1)*ldt+istart+1])
+	ad32l := (ascale * h[(istart+2)*ldh+istart+1]) / (bscale * t[(istart+1)*ldt+istart+1])
+	u12l := t[istart*ldt+istart+1] / t[(istart+1)*ldt+istart+1]
 
-	var v1, v2, v3 float64
-
-	if ilast-istart >= 2 {
-		h32 := h[(istart+2)*ldh+istart+1]
-
-		// Compute shift parameters.
-		// For complex conjugate shifts s = wr ± i*wi with scaling s1:
-		//   (H - s*T)(H - conj(s)*T) = (H - wr/s1*T)^2 + (wi/s1)^2*T^2
-		var shift1, beta float64
-		if s1 != 0 {
-			shift1 = wr / s1
-			beta = (wi / s1) * (wi / s1)
-		}
-
-		// Let A = H - shift1*T.
-		a11 := h11 - shift1*t11
-		a12 := h12 - shift1*t12
-		a21 := h21
-		a22 := h22 - shift1*t22
-
-		// First column of (A^2 + beta*T^2):
-		// A^2*e1 = [a11^2 + a12*a21, a21*(a11+a22), h32*a21]
-		// T^2*e1 = [t11^2, 0, 0] (since T is upper triangular)
-		v1 = a11*a11 + a12*a21 + beta*t11*t11
-		v2 = a21 * (a11 + a22)
-		v3 = h32 * a21
-
-		// Scale to avoid overflow.
-		scale := math.Abs(v1) + math.Abs(v2) + math.Abs(v3)
-		if scale > 0 {
-			v1 /= scale
-			v2 /= scale
-			v3 /= scale
-		}
-	} else {
-		// 2x2 case: use single shift instead.
-		var shift1 float64
-		if s1 != 0 {
-			shift1 = wr / s1
-		}
-		v1 = h11 - shift1*t11
-		v2 = h21
-		v3 = 0
-	}
+	v1 := (ad11-ad11l)*(ad22-ad11l) - ad12*ad21 +
+		ad21*u12*ad11l + (ad12l-ad11l*u12l)*ad21l
+	v2 := ((ad22l - ad11l) - ad21l*u12l - (ad11 - ad11l) -
+		(ad22 - ad11l) + ad21*u12) * ad21l
+	v3 := ad32l * ad21l
 
 	// Create Householder transformation to introduce bulge.
-	vv := []float64{v2, v3}
-	v1, tau := impl.Dlarfg(3, v1, vv, 1)
-	v := []float64{1, vv[0], vv[1]}
+	var vv [2]float64
+	vv[0] = v2
+	vv[1] = v3
+	v1, tau := impl.Dlarfg(3, v1, vv[:], 1)
+	_ = v1
+	var v [3]float64
+	v[0] = 1
+	v[1] = vv[0]
+	v[2] = vv[1]
 
 	// Chase the bulge through the matrix.
 	for j := istart; j < ilast-1; j++ {
 		if j > istart {
-			// Compute Householder to annihilate H[j+1:j+3, j-1].
 			v1 = h[j*ldh+j-1]
 			v2 = h[(j+1)*ldh+j-1]
-			if j+2 <= ilast {
-				v3 = h[(j+2)*ldh+j-1]
-			} else {
-				v3 = 0
-			}
+			v3 = h[(j+2)*ldh+j-1]
 			vv[0] = v2
 			vv[1] = v3
-			v1, tau = impl.Dlarfg(3, v1, vv, 1)
+			v1, tau = impl.Dlarfg(3, v1, vv[:], 1)
 			v[0] = 1
 			v[1] = vv[0]
 			v[2] = vv[1]
 
 			h[j*ldh+j-1] = v1
 			h[(j+1)*ldh+j-1] = 0
-			if j+2 <= ilast {
-				h[(j+2)*ldh+j-1] = 0
-			}
+			h[(j+2)*ldh+j-1] = 0
 		}
 
-		// Apply Householder from left to H.
-		jend := ilastm
-		for jc := j; jc <= jend; jc++ {
-			sum := h[j*ldh+jc] + v[1]*h[(j+1)*ldh+jc]
-			if j+2 <= ilast {
-				sum += v[2] * h[(j+2)*ldh+jc]
-			}
+		// Apply Householder from left to H and T.
+		t2 := tau * v[1]
+		t3 := tau * v[2]
+		for jc := j; jc <= ilastm; jc++ {
+			sum := h[j*ldh+jc] + v[1]*h[(j+1)*ldh+jc] + v[2]*h[(j+2)*ldh+jc]
 			h[j*ldh+jc] -= tau * sum
-			h[(j+1)*ldh+jc] -= tau * sum * v[1]
-			if j+2 <= ilast {
-				h[(j+2)*ldh+jc] -= tau * sum * v[2]
-			}
+			h[(j+1)*ldh+jc] -= t2 * sum
+			h[(j+2)*ldh+jc] -= t3 * sum
 		}
-
-		// Apply Householder from left to T.
-		for jc := j; jc <= jend; jc++ {
-			sum := t[j*ldt+jc] + v[1]*t[(j+1)*ldt+jc]
-			if j+2 <= ilast {
-				sum += v[2] * t[(j+2)*ldt+jc]
-			}
+		for jc := j; jc <= ilastm; jc++ {
+			sum := t[j*ldt+jc] + v[1]*t[(j+1)*ldt+jc] + v[2]*t[(j+2)*ldt+jc]
 			t[j*ldt+jc] -= tau * sum
-			t[(j+1)*ldt+jc] -= tau * sum * v[1]
-			if j+2 <= ilast {
-				t[(j+2)*ldt+jc] -= tau * sum * v[2]
-			}
+			t[(j+1)*ldt+jc] -= t2 * sum
+			t[(j+2)*ldt+jc] -= t3 * sum
 		}
-
-		// Update Q if needed.
 		if ilq {
 			for jr := 0; jr < n; jr++ {
-				sum := q[jr*ldq+j] + v[1]*q[jr*ldq+j+1]
-				if j+2 <= ilast {
-					sum += v[2] * q[jr*ldq+j+2]
-				}
+				sum := q[jr*ldq+j] + v[1]*q[jr*ldq+j+1] + v[2]*q[jr*ldq+j+2]
 				q[jr*ldq+j] -= tau * sum
-				q[jr*ldq+j+1] -= tau * sum * v[1]
-				if j+2 <= ilast {
-					q[jr*ldq+j+2] -= tau * sum * v[2]
+				q[jr*ldq+j+1] -= t2 * sum
+				q[jr*ldq+j+2] -= t3 * sum
+			}
+		}
+
+		// Restore T to upper triangular form.
+		// Solve 2x2 system to find Householder that zeros T[j+1,j] and T[j+2,j]
+		// simultaneously (LAPACK DLAGBC approach).
+		ilpivt := false
+		tmp1 := math.Max(math.Abs(t[(j+1)*ldt+j+1]), math.Abs(t[(j+1)*ldt+j+2]))
+		tmp2 := math.Max(math.Abs(t[(j+2)*ldt+j+1]), math.Abs(t[(j+2)*ldt+j+2]))
+
+		var w11, w12, w21, w22, u1, u2, scl float64
+		if math.Max(tmp1, tmp2) < safmin {
+			scl = 0
+			u1 = 1
+			u2 = 0
+		} else {
+			if tmp1 >= tmp2 {
+				w11 = t[(j+1)*ldt+j+1]
+				w21 = t[(j+2)*ldt+j+1]
+				w12 = t[(j+1)*ldt+j+2]
+				w22 = t[(j+2)*ldt+j+2]
+				u1 = t[(j+1)*ldt+j]
+				u2 = t[(j+2)*ldt+j]
+			} else {
+				w21 = t[(j+1)*ldt+j+1]
+				w11 = t[(j+2)*ldt+j+1]
+				w22 = t[(j+1)*ldt+j+2]
+				w12 = t[(j+2)*ldt+j+2]
+				u2 = t[(j+1)*ldt+j]
+				u1 = t[(j+2)*ldt+j]
+			}
+
+			if math.Abs(w12) > math.Abs(w11) {
+				ilpivt = true
+				w11, w12 = w12, w11
+				w21, w22 = w22, w21
+			}
+
+			tmp := w21 / w11
+			u2 -= tmp * u1
+			w22 -= tmp * w12
+
+			scl = 1
+			if math.Abs(w22) < safmin {
+				scl = 0
+				u2 = 1
+				u1 = -w12 / w11
+			} else {
+				if math.Abs(w22) < math.Abs(u2) {
+					scl = math.Abs(w22 / u2)
 				}
-			}
-		}
-
-		// Zero out T[j+2,j] and T[j+1,j] to restore triangular form.
-		// First handle T[j+2,j] if it exists.
-		if j+2 <= ilast && t[(j+2)*ldt+j] != 0 {
-			cs, sn, _ := impl.Dlartg(t[(j+2)*ldt+j+1], t[(j+2)*ldt+j])
-			t[(j+2)*ldt+j+1] = cs*t[(j+2)*ldt+j+1] + sn*t[(j+2)*ldt+j]
-			t[(j+2)*ldt+j] = 0
-
-			// Apply from right to H and T.
-			for jr := ifrstm; jr <= min(j+3, ilast); jr++ {
-				temp := cs*h[jr*ldh+j+1] + sn*h[jr*ldh+j]
-				h[jr*ldh+j] = -sn*h[jr*ldh+j+1] + cs*h[jr*ldh+j]
-				h[jr*ldh+j+1] = temp
-			}
-			for jr := ifrstm; jr <= j+1; jr++ {
-				temp := cs*t[jr*ldt+j+1] + sn*t[jr*ldt+j]
-				t[jr*ldt+j] = -sn*t[jr*ldt+j+1] + cs*t[jr*ldt+j]
-				t[jr*ldt+j+1] = temp
-			}
-			if ilz {
-				for jr := 0; jr < n; jr++ {
-					temp := cs*z[jr*ldz+j+1] + sn*z[jr*ldz+j]
-					z[jr*ldz+j] = -sn*z[jr*ldz+j+1] + cs*z[jr*ldz+j]
-					z[jr*ldz+j+1] = temp
+				if math.Abs(w11) < math.Abs(u1) {
+					scl = math.Min(scl, math.Abs(w11/u1))
 				}
+				u2 = (scl * u2) / w22
+				u1 = (scl*u1 - w12*u2) / w11
 			}
 		}
 
-		// Handle T[j+1,j].
-		if t[(j+1)*ldt+j] != 0 {
-			cs, sn, _ := impl.Dlartg(t[(j+1)*ldt+j+1], t[(j+1)*ldt+j])
-			t[(j+1)*ldt+j+1] = cs*t[(j+1)*ldt+j+1] + sn*t[(j+1)*ldt+j]
-			t[(j+1)*ldt+j] = 0
-
-			for jr := ifrstm; jr <= min(j+2, ilast); jr++ {
-				temp := cs*h[jr*ldh+j+1] + sn*h[jr*ldh+j]
-				h[jr*ldh+j] = -sn*h[jr*ldh+j+1] + cs*h[jr*ldh+j]
-				h[jr*ldh+j+1] = temp
-			}
-			for jr := ifrstm; jr <= j; jr++ {
-				temp := cs*t[jr*ldt+j+1] + sn*t[jr*ldt+j]
-				t[jr*ldt+j] = -sn*t[jr*ldt+j+1] + cs*t[jr*ldt+j]
-				t[jr*ldt+j+1] = temp
-			}
-			if ilz {
-				for jr := 0; jr < n; jr++ {
-					temp := cs*z[jr*ldz+j+1] + sn*z[jr*ldz+j]
-					z[jr*ldz+j] = -sn*z[jr*ldz+j+1] + cs*z[jr*ldz+j]
-					z[jr*ldz+j+1] = temp
-				}
-			}
+		if ilpivt {
+			u1, u2 = u2, u1
 		}
-	}
 
-	// Final step: handle the last 2x2 portion.
-	j := ilast - 1
-	temp := h[j*ldh+j-1]
-	temp2 := h[(j+1)*ldh+j-1]
-	cs, sn, _ := impl.Dlartg(temp, temp2)
-	h[j*ldh+j-1] = cs*temp + sn*temp2
-	h[(j+1)*ldh+j-1] = 0
+		// Compute right Householder vector from [scl, u1, u2].
+		t1 := math.Sqrt(scl*scl + u1*u1 + u2*u2)
+		tauR := 1 + scl/t1
+		vs := -1 / (scl + t1)
+		v[0] = 1
+		v[1] = vs * u1
+		v[2] = vs * u2
 
-	// Apply from left.
-	for jc := j; jc <= ilastm; jc++ {
-		temp = cs*h[j*ldh+jc] + sn*h[(j+1)*ldh+jc]
-		h[(j+1)*ldh+jc] = -sn*h[j*ldh+jc] + cs*h[(j+1)*ldh+jc]
-		h[j*ldh+jc] = temp
-	}
-	for jc := j; jc <= ilastm; jc++ {
-		temp = cs*t[j*ldt+jc] + sn*t[(j+1)*ldt+jc]
-		t[(j+1)*ldt+jc] = -sn*t[j*ldt+jc] + cs*t[(j+1)*ldt+jc]
-		t[j*ldt+jc] = temp
-	}
-	if ilq {
-		for jr := 0; jr < n; jr++ {
-			temp = cs*q[jr*ldq+j] + sn*q[jr*ldq+j+1]
-			q[jr*ldq+j+1] = -sn*q[jr*ldq+j] + cs*q[jr*ldq+j+1]
-			q[jr*ldq+j] = temp
+		// Apply right Householder to H, T, Z.
+		t2 = tauR * v[1]
+		t3 = tauR * v[2]
+		for jr := ifrstm; jr <= min(j+3, ilast); jr++ {
+			sum := h[jr*ldh+j] + v[1]*h[jr*ldh+j+1] + v[2]*h[jr*ldh+j+2]
+			h[jr*ldh+j] -= tauR * sum
+			h[jr*ldh+j+1] -= t2 * sum
+			h[jr*ldh+j+2] -= t3 * sum
 		}
-	}
-
-	// Restore T triangular.
-	if t[(j+1)*ldt+j] != 0 {
-		cs, sn, _ = impl.Dlartg(t[(j+1)*ldt+j+1], t[(j+1)*ldt+j])
-		t[(j+1)*ldt+j+1] = cs*t[(j+1)*ldt+j+1] + sn*t[(j+1)*ldt+j]
-		t[(j+1)*ldt+j] = 0
-
-		for jr := ifrstm; jr <= ilast; jr++ {
-			temp = cs*h[jr*ldh+j+1] + sn*h[jr*ldh+j]
-			h[jr*ldh+j] = -sn*h[jr*ldh+j+1] + cs*h[jr*ldh+j]
-			h[jr*ldh+j+1] = temp
-		}
-		for jr := ifrstm; jr <= j; jr++ {
-			temp = cs*t[jr*ldt+j+1] + sn*t[jr*ldt+j]
-			t[jr*ldt+j] = -sn*t[jr*ldt+j+1] + cs*t[jr*ldt+j]
-			t[jr*ldt+j+1] = temp
+		for jr := ifrstm; jr <= j+2; jr++ {
+			sum := t[jr*ldt+j] + v[1]*t[jr*ldt+j+1] + v[2]*t[jr*ldt+j+2]
+			t[jr*ldt+j] -= tauR * sum
+			t[jr*ldt+j+1] -= t2 * sum
+			t[jr*ldt+j+2] -= t3 * sum
 		}
 		if ilz {
 			for jr := 0; jr < n; jr++ {
-				temp = cs*z[jr*ldz+j+1] + sn*z[jr*ldz+j]
-				z[jr*ldz+j] = -sn*z[jr*ldz+j+1] + cs*z[jr*ldz+j]
-				z[jr*ldz+j+1] = temp
+				sum := z[jr*ldz+j] + v[1]*z[jr*ldz+j+1] + v[2]*z[jr*ldz+j+2]
+				z[jr*ldz+j] -= tauR * sum
+				z[jr*ldz+j+1] -= t2 * sum
+				z[jr*ldz+j+2] -= t3 * sum
 			}
 		}
+		t[(j+1)*ldt+j] = 0
+		t[(j+2)*ldt+j] = 0
 	}
 
-	_ = safmin
+	// Final step: handle the last 2x2 portion with Givens rotations.
+	bi := blas64.Implementation()
+	j := ilast - 1
+	tmp := h[j*ldh+j-1]
+	tmp2 := h[(j+1)*ldh+j-1]
+	cs, sn, r := impl.Dlartg(tmp, tmp2)
+	h[j*ldh+j-1] = r
+	h[(j+1)*ldh+j-1] = 0
+
+	nj := ilastm - j + 1
+	bi.Drot(nj, h[j*ldh+j:], 1, h[(j+1)*ldh+j:], 1, cs, sn)
+	bi.Drot(nj, t[j*ldt+j:], 1, t[(j+1)*ldt+j:], 1, cs, sn)
+	if ilq {
+		bi.Drot(n, q[j:], ldq, q[j+1:], ldq, cs, sn)
+	}
+
+	// Restore T triangular for the final 2x2 step.
+	tmp = t[(j+1)*ldt+j+1]
+	cs, sn, r = impl.Dlartg(tmp, t[(j+1)*ldt+j])
+	t[(j+1)*ldt+j+1] = r
+	t[(j+1)*ldt+j] = 0
+
+	nh := ilast - ifrstm + 1
+	bi.Drot(nh, h[ifrstm*ldh+j+1:], ldh, h[ifrstm*ldh+j:], ldh, cs, sn)
+	nt := ilast - 1 - ifrstm + 1
+	if nt > 0 {
+		bi.Drot(nt, t[ifrstm*ldt+j+1:], ldt, t[ifrstm*ldt+j:], ldt, cs, sn)
+	}
+	if ilz {
+		bi.Drot(n, z[j+1:], ldz, z[j:], ldz, cs, sn)
+	}
 }
 
 // standardize2x2Block puts a 2x2 block at position j into Schur canonical form.
@@ -646,52 +585,31 @@ func (impl Implementation) standardize2x2Block(n, j, ifrstm, ilastm int,
 	h[(j+1)*ldh+j] = cc
 	h[(j+1)*ldh+j+1] = dd
 
-	// Apply transformation to rest of H from left: rows j, j+1.
-	for jc := j + 2; jc <= ilastm; jc++ {
-		temp := cs*h[j*ldh+jc] + sn*h[(j+1)*ldh+jc]
-		h[(j+1)*ldh+jc] = -sn*h[j*ldh+jc] + cs*h[(j+1)*ldh+jc]
-		h[j*ldh+jc] = temp
-	}
+	bi := blas64.Implementation()
 
-	// Apply transformation to rest of H from right: columns j, j+1.
-	for jr := ifrstm; jr < j; jr++ {
-		temp := cs*h[jr*ldh+j] + sn*h[jr*ldh+j+1]
-		h[jr*ldh+j+1] = -sn*h[jr*ldh+j] + cs*h[jr*ldh+j+1]
-		h[jr*ldh+j] = temp
+	// Apply Dlanv2 transformation to rest of H from left: rows j, j+1.
+	nh := ilastm - (j + 2) + 1
+	if nh > 0 {
+		bi.Drot(nh, h[j*ldh+j+2:], 1, h[(j+1)*ldh+j+2:], 1, cs, sn)
 	}
-
-	// Apply transformation to T from left: rows j, j+1.
-	for jc := j; jc <= ilastm; jc++ {
-		temp := cs*t[j*ldt+jc] + sn*t[(j+1)*ldt+jc]
-		t[(j+1)*ldt+jc] = -sn*t[j*ldt+jc] + cs*t[(j+1)*ldt+jc]
-		t[j*ldt+jc] = temp
+	// Apply from right: columns j, j+1.
+	nh = j - ifrstm
+	if nh > 0 {
+		bi.Drot(nh, h[ifrstm*ldh+j:], ldh, h[ifrstm*ldh+j+1:], ldh, cs, sn)
 	}
-
-	// Apply transformation to T from right: columns j, j+1.
-	for jr := ifrstm; jr <= j+1; jr++ {
-		temp := cs*t[jr*ldt+j] + sn*t[jr*ldt+j+1]
-		t[jr*ldt+j+1] = -sn*t[jr*ldt+j] + cs*t[jr*ldt+j+1]
-		t[jr*ldt+j] = temp
+	// Apply to T from left: rows j, j+1.
+	nh = ilastm - j + 1
+	bi.Drot(nh, t[j*ldt+j:], 1, t[(j+1)*ldt+j:], 1, cs, sn)
+	// Apply to T from right: columns j, j+1.
+	nh = j + 2 - ifrstm
+	if nh > 0 {
+		bi.Drot(nh, t[ifrstm*ldt+j:], ldt, t[ifrstm*ldt+j+1:], ldt, cs, sn)
 	}
-
-	// Update Q if needed.
-	// For left transformation on H/T (rows j, j+1), we update Q = Q * G^T.
 	if ilq {
-		for jr := range n {
-			temp := cs*q[jr*ldq+j] + sn*q[jr*ldq+j+1]
-			q[jr*ldq+j+1] = -sn*q[jr*ldq+j] + cs*q[jr*ldq+j+1]
-			q[jr*ldq+j] = temp
-		}
+		bi.Drot(n, q[j:], ldq, q[j+1:], ldq, cs, sn)
 	}
-
-	// Update Z if needed.
-	// For right transformation on H/T (columns j, j+1), we update Z = Z * G.
 	if ilz {
-		for jr := range n {
-			temp := cs*z[jr*ldz+j] + sn*z[jr*ldz+j+1]
-			z[jr*ldz+j+1] = -sn*z[jr*ldz+j] + cs*z[jr*ldz+j+1]
-			z[jr*ldz+j] = temp
-		}
+		bi.Drot(n, z[j:], ldz, z[j+1:], ldz, cs, sn)
 	}
 
 	// Make T upper triangular with positive diagonal.
@@ -751,33 +669,17 @@ func (impl Implementation) standardize2x2Block(n, j, ifrstm, ilastm int,
 	// For the factorization H_orig = Q * H * Z^T, if H_new = D * H where D[j,j] = -1,
 	// then Q_new = Q * D (negate column j of Q).
 	if t[j*ldt+j] < 0 {
-		// Negate row j of H (from column ifrstm to ilastm, including subdiagonal).
-		for jc := ifrstm; jc <= ilastm; jc++ {
-			h[j*ldh+jc] = -h[j*ldh+jc]
-		}
-		// Negate row j of T (from column j to ilastm, T is upper triangular).
-		for jc := j; jc <= ilastm; jc++ {
-			t[j*ldt+jc] = -t[j*ldt+jc]
-		}
+		bi.Dscal(ilastm-ifrstm+1, -1, h[j*ldh+ifrstm:], 1)
+		bi.Dscal(ilastm-j+1, -1, t[j*ldt+j:], 1)
 		if ilq {
-			for jr := range n {
-				q[jr*ldq+j] = -q[jr*ldq+j]
-			}
+			bi.Dscal(n, -1, q[j:], ldq)
 		}
 	}
 	if t[(j+1)*ldt+j+1] < 0 {
-		// Negate row j+1 of H (from column ifrstm to ilastm).
-		for jc := ifrstm; jc <= ilastm; jc++ {
-			h[(j+1)*ldh+jc] = -h[(j+1)*ldh+jc]
-		}
-		// Negate row j+1 of T (from column j+1 to ilastm).
-		for jc := j + 1; jc <= ilastm; jc++ {
-			t[(j+1)*ldt+jc] = -t[(j+1)*ldt+jc]
-		}
+		bi.Dscal(ilastm-ifrstm+1, -1, h[(j+1)*ldh+ifrstm:], 1)
+		bi.Dscal(ilastm-j, -1, t[(j+1)*ldt+j+1:], 1)
 		if ilq {
-			for jr := range n {
-				q[jr*ldq+j+1] = -q[jr*ldq+j+1]
-			}
+			bi.Dscal(n, -1, q[j+1:], ldq)
 		}
 	}
 }

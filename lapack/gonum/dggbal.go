@@ -213,7 +213,8 @@ done:
 	sfmax := 1 / sfmin
 
 	conv := false
-	for !conv {
+	maxIter := 5 * nr
+	for iter := 0; !conv && iter < maxIter; iter++ {
 		conv = true
 		for i := ilo; i <= ihi; i++ {
 			// Compute row and column norms.

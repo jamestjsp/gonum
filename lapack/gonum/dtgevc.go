@@ -202,11 +202,11 @@ func (impl Implementation) Dtgevc(side lapack.EVSide, howmny lapack.EVHowMany, s
 						work[i] /= denom
 					} else {
 						// 2x2 system: use Dlaln2.
-						a2x2 := []float64{s[i*lds+i], s[i*lds+i+1], s[(i+1)*lds+i], s[(i+1)*lds+i+1]}
-						b2x2 := []float64{work[i], work[i+1]}
-						x2x2 := make([]float64, 2)
-						scale, _, _ := impl.Dlaln2(false, 2, 1, small, acoef, a2x2, 2,
-							bcoef*p[i*ldp+i], bcoef*p[(i+1)*ldp+i+1], b2x2, 2, bcoef, 0, x2x2, 2)
+						a2x2 := [4]float64{s[i*lds+i], s[i*lds+i+1], s[(i+1)*lds+i], s[(i+1)*lds+i+1]}
+						b2x2 := [2]float64{work[i], work[i+1]}
+						var x2x2 [2]float64
+						scale, _, _ := impl.Dlaln2(false, 2, 1, small, acoef, a2x2[:], 2,
+							bcoef*p[i*ldp+i], bcoef*p[(i+1)*ldp+i+1], b2x2[:], 2, bcoef, 0, x2x2[:], 2)
 						work[i] = x2x2[0] / scale
 						work[i+1] = x2x2[1] / scale
 						i--
@@ -280,11 +280,11 @@ func (impl Implementation) Dtgevc(side lapack.EVSide, howmny lapack.EVHowMany, s
 
 					if na == 1 {
 						// 1x1 block with complex shift.
-						a1x1 := []float64{s[i*lds+i]}
-						b1x1 := []float64{sumr, sumi}
-						x1x1 := make([]float64, 2)
-						scale, _, _ := impl.Dlaln2(false, 1, 2, small, acoef, a1x1, 1,
-							bcoefr*p[i*ldp+i], 0, b1x1, 1, bcoefr, bcoefi, x1x1, 1)
+						a1x1 := [1]float64{s[i*lds+i]}
+						b1x1 := [2]float64{sumr, sumi}
+						var x1x1 [2]float64
+						scale, _, _ := impl.Dlaln2(false, 1, 2, small, acoef, a1x1[:], 1,
+							bcoefr*p[i*ldp+i], 0, b1x1[:], 1, bcoefr, bcoefi, x1x1[:], 1)
 						work[i] = x1x1[0] / scale
 						work[n+i] = x1x1[1] / scale
 					} else {
@@ -297,11 +297,11 @@ func (impl Implementation) Dtgevc(side lapack.EVSide, howmny lapack.EVHowMany, s
 						sumi2 += bcoefr * bi.Ddot(je-2-i, p[(i+1)*ldp+i+2:], 1, work[n+i+2:], 1)
 						sumi2 += bcoefi * bi.Ddot(je-2-i, p[(i+1)*ldp+i+2:], 1, work[i+2:], 1)
 
-						a2x2 := []float64{s[i*lds+i], s[i*lds+i+1], s[(i+1)*lds+i], s[(i+1)*lds+i+1]}
-						b2x2 := []float64{sumr, sumi, sumr2, sumi2}
-						x2x2 := make([]float64, 4)
-						scale, _, _ := impl.Dlaln2(false, 2, 2, small, acoef, a2x2, 2,
-							bcoefr*p[i*ldp+i], bcoefr*p[(i+1)*ldp+i+1], b2x2, 2, bcoefr, bcoefi, x2x2, 2)
+						a2x2 := [4]float64{s[i*lds+i], s[i*lds+i+1], s[(i+1)*lds+i], s[(i+1)*lds+i+1]}
+						b2x2 := [4]float64{sumr, sumi, sumr2, sumi2}
+						var x2x2 [4]float64
+						scale, _, _ := impl.Dlaln2(false, 2, 2, small, acoef, a2x2[:], 2,
+							bcoefr*p[i*ldp+i], bcoefr*p[(i+1)*ldp+i+1], b2x2[:], 2, bcoefr, bcoefi, x2x2[:], 2)
 						work[i] = x2x2[0] / scale
 						work[n+i] = x2x2[1] / scale
 						work[i+1] = x2x2[2] / scale
@@ -401,11 +401,11 @@ func (impl Implementation) Dtgevc(side lapack.EVSide, howmny lapack.EVHowMany, s
 						work[i+1] = -acoef * bi.Ddot(i+1-je, s[je*lds+je:], 1, work[je:], 1)
 						work[i+1] += bcoef * bi.Ddot(i+1-je, p[je*ldp+je:], 1, work[je:], 1)
 
-						a2x2 := []float64{s[i*lds+i], s[(i+1)*lds+i], s[i*lds+i+1], s[(i+1)*lds+i+1]}
-						b2x2 := []float64{work[i], work[i+1]}
-						x2x2 := make([]float64, 2)
-						scale, _, _ := impl.Dlaln2(true, 2, 1, small, acoef, a2x2, 2,
-							bcoef*p[i*ldp+i], bcoef*p[(i+1)*ldp+i+1], b2x2, 2, bcoef, 0, x2x2, 2)
+						a2x2 := [4]float64{s[i*lds+i], s[(i+1)*lds+i], s[i*lds+i+1], s[(i+1)*lds+i+1]}
+						b2x2 := [2]float64{work[i], work[i+1]}
+						var x2x2 [2]float64
+						scale, _, _ := impl.Dlaln2(true, 2, 1, small, acoef, a2x2[:], 2,
+							bcoef*p[i*ldp+i], bcoef*p[(i+1)*ldp+i+1], b2x2[:], 2, bcoef, 0, x2x2[:], 2)
 						work[i] = x2x2[0] / scale
 						work[i+1] = x2x2[1] / scale
 						i++
@@ -476,11 +476,11 @@ func (impl Implementation) Dtgevc(side lapack.EVSide, howmny lapack.EVHowMany, s
 					sumi -= bcoefi * bi.Ddot(i-je, p[je*ldp+je:], 1, work[je:], 1)
 
 					if na == 1 {
-						a1x1 := []float64{s[i*lds+i]}
-						b1x1 := []float64{sumr, sumi}
-						x1x1 := make([]float64, 2)
-						scale, _, _ := impl.Dlaln2(true, 1, 2, small, acoef, a1x1, 1,
-							bcoefr*p[i*ldp+i], 0, b1x1, 1, bcoefr, bcoefi, x1x1, 1)
+						a1x1 := [1]float64{s[i*lds+i]}
+						b1x1 := [2]float64{sumr, sumi}
+						var x1x1 [2]float64
+						scale, _, _ := impl.Dlaln2(true, 1, 2, small, acoef, a1x1[:], 1,
+							bcoefr*p[i*ldp+i], 0, b1x1[:], 1, bcoefr, bcoefi, x1x1[:], 1)
 						work[i] = x1x1[0] / scale
 						work[n+i] = x1x1[1] / scale
 					} else {
@@ -492,11 +492,11 @@ func (impl Implementation) Dtgevc(side lapack.EVSide, howmny lapack.EVHowMany, s
 						sumi2 += bcoefr * bi.Ddot(i+1-je, p[je*ldp+je:], 1, work[n+je:], 1)
 						sumi2 -= bcoefi * bi.Ddot(i+1-je, p[je*ldp+je:], 1, work[je:], 1)
 
-						a2x2 := []float64{s[i*lds+i], s[(i+1)*lds+i], s[i*lds+i+1], s[(i+1)*lds+i+1]}
-						b2x2 := []float64{sumr, sumi, sumr2, sumi2}
-						x2x2 := make([]float64, 4)
-						scale, _, _ := impl.Dlaln2(true, 2, 2, small, acoef, a2x2, 2,
-							bcoefr*p[i*ldp+i], bcoefr*p[(i+1)*ldp+i+1], b2x2, 2, bcoefr, bcoefi, x2x2, 2)
+						a2x2 := [4]float64{s[i*lds+i], s[(i+1)*lds+i], s[i*lds+i+1], s[(i+1)*lds+i+1]}
+						b2x2 := [4]float64{sumr, sumi, sumr2, sumi2}
+						var x2x2 [4]float64
+						scale, _, _ := impl.Dlaln2(true, 2, 2, small, acoef, a2x2[:], 2,
+							bcoefr*p[i*ldp+i], bcoefr*p[(i+1)*ldp+i+1], b2x2[:], 2, bcoefr, bcoefi, x2x2[:], 2)
 						work[i] = x2x2[0] / scale
 						work[n+i] = x2x2[1] / scale
 						work[i+1] = x2x2[2] / scale

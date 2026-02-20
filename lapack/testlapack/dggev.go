@@ -29,6 +29,7 @@ func DggevTest(t *testing.T, impl Dggever) {
 
 	testDggevEigenvaluesOnly(t, impl)
 	testDggevEigenvectors(t, impl)
+	testDggevComplexEigenvalues(t, impl)
 }
 
 func testDggevWorkspace(t *testing.T, impl Dggever) {
@@ -257,5 +258,89 @@ func testDggevEigenvectors(t *testing.T, impl Dggever) {
 				t.Errorf("eigenvectors: right eigenvector residual at (%d,%d): |A*v - λ*B*v| = %v", i, j, math.Abs(av-lbv))
 			}
 		}
+	}
+}
+
+func testDggevComplexEigenvalues(t *testing.T, impl Dggever) {
+	// Test with matrices that produce complex conjugate eigenvalue pairs.
+	// A = rotation-like matrix, B = identity.
+	for _, tc := range []struct {
+		name string
+		n    int
+		a    []float64
+	}{
+		{
+			name: "4x4 rotation blocks",
+			n:    4,
+			a: []float64{
+				0, -1, 0, 0,
+				1, 0, 0, 0,
+				0, 0, 0, -2,
+				0, 0, 2, 0,
+			},
+		},
+		{
+			name: "6x6 mixed real and complex",
+			n:    6,
+			a: []float64{
+				3, 1, 0, 0, 0, 0,
+				-1, 3, 0, 0, 0, 0,
+				0, 0, 5, 0, 0, 0,
+				0, 0, 0, 0, -4, 0,
+				0, 0, 0, 4, 0, 0,
+				0, 0, 0, 0, 0, 7,
+			},
+		},
+		{
+			name: "5x5 dense with complex eigenvalues",
+			n:    5,
+			a: []float64{
+				1, 2, 3, 4, 5,
+				-2, 1, 0, 0, 0,
+				0, 0, 0, -1, 2,
+				0, 0, 1, 0, 3,
+				0, 0, 0, 0, 4,
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			n := tc.n
+			a := make([]float64, n*n)
+			copy(a, tc.a)
+			b := make([]float64, n*n)
+			for i := 0; i < n; i++ {
+				b[i*n+i] = 1
+			}
+
+			alphar := make([]float64, n)
+			alphai := make([]float64, n)
+			beta := make([]float64, n)
+
+			work := make([]float64, 1)
+			impl.Dggev(lapack.LeftEVNone, lapack.RightEVNone, n,
+				nil, n, nil, n, nil, nil, nil, nil, 1, nil, 1, work, -1)
+			lwork := int(work[0])
+			work = make([]float64, lwork)
+
+			ok := impl.Dggev(lapack.LeftEVNone, lapack.RightEVNone, n,
+				a, n, b, n,
+				alphar, alphai, beta,
+				nil, 1, nil, 1,
+				work, lwork)
+
+			if !ok {
+				t.Fatal("Dggev did not converge")
+			}
+
+			hasComplex := false
+			for i := 0; i < n; i++ {
+				if alphai[i] != 0 {
+					hasComplex = true
+				}
+			}
+			if !hasComplex {
+				t.Error("expected complex eigenvalues but found none")
+			}
+		})
 	}
 }
