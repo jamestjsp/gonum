@@ -4,7 +4,11 @@
 
 package gonum
 
-import "math"
+import (
+	"math"
+
+	"gonum.org/v1/gonum/blas/blas64"
+)
 
 // Dlaic1 applies one step of incremental condition estimation in its simplest
 // version. It is called as a part of the condition estimator in LAPACK routines
@@ -61,10 +65,8 @@ func (impl Implementation) Dlaic1(job int, j int, x []float64, sest float64, w [
 
 	eps := dlamchE
 
-	alpha := 0.0
-	for i := 0; i < j; i++ {
-		alpha += x[i] * w[i]
-	}
+	bi := blas64.Implementation()
+	alpha := bi.Ddot(j, x, 1, w, 1)
 
 	absalp := math.Abs(alpha)
 	absgam := math.Abs(gamma)
