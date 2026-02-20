@@ -206,7 +206,7 @@ func (impl Implementation) Dtgevc(side lapack.EVSide, howmny lapack.EVHowMany, s
 						b2x2 := [2]float64{work[i], work[i+1]}
 						var x2x2 [2]float64
 						scale, _, _ := impl.Dlaln2(false, 2, 1, small, acoef, a2x2[:], 2,
-							bcoef*p[i*ldp+i], bcoef*p[(i+1)*ldp+i+1], b2x2[:], 2, bcoef, 0, x2x2[:], 2)
+							bcoef*p[i*ldp+i], bcoef*p[(i+1)*ldp+i+1], b2x2[:], 1, bcoef, 0, x2x2[:], 1)
 						work[i] = x2x2[0] / scale
 						work[i+1] = x2x2[1] / scale
 						i--
@@ -284,7 +284,7 @@ func (impl Implementation) Dtgevc(side lapack.EVSide, howmny lapack.EVHowMany, s
 						b1x1 := [2]float64{sumr, sumi}
 						var x1x1 [2]float64
 						scale, _, _ := impl.Dlaln2(false, 1, 2, small, acoef, a1x1[:], 1,
-							bcoefr*p[i*ldp+i], 0, b1x1[:], 1, bcoefr, bcoefi, x1x1[:], 1)
+							bcoefr*p[i*ldp+i], 0, b1x1[:], 2, bcoefr, bcoefi, x1x1[:], 2)
 						work[i] = x1x1[0] / scale
 						work[n+i] = x1x1[1] / scale
 					} else {
@@ -405,7 +405,7 @@ func (impl Implementation) Dtgevc(side lapack.EVSide, howmny lapack.EVHowMany, s
 						b2x2 := [2]float64{work[i], work[i+1]}
 						var x2x2 [2]float64
 						scale, _, _ := impl.Dlaln2(true, 2, 1, small, acoef, a2x2[:], 2,
-							bcoef*p[i*ldp+i], bcoef*p[(i+1)*ldp+i+1], b2x2[:], 2, bcoef, 0, x2x2[:], 2)
+							bcoef*p[i*ldp+i], bcoef*p[(i+1)*ldp+i+1], b2x2[:], 1, bcoef, 0, x2x2[:], 1)
 						work[i] = x2x2[0] / scale
 						work[i+1] = x2x2[1] / scale
 						i++
@@ -480,7 +480,7 @@ func (impl Implementation) Dtgevc(side lapack.EVSide, howmny lapack.EVHowMany, s
 						b1x1 := [2]float64{sumr, sumi}
 						var x1x1 [2]float64
 						scale, _, _ := impl.Dlaln2(true, 1, 2, small, acoef, a1x1[:], 1,
-							bcoefr*p[i*ldp+i], 0, b1x1[:], 1, bcoefr, bcoefi, x1x1[:], 1)
+							bcoefr*p[i*ldp+i], 0, b1x1[:], 2, bcoefr, bcoefi, x1x1[:], 2)
 						work[i] = x1x1[0] / scale
 						work[n+i] = x1x1[1] / scale
 					} else {
