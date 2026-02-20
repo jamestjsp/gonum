@@ -407,8 +407,22 @@ func (impl Implementation) Dhgeqz(job lapack.SchurJob, compq, compz lapack.Schur
 			impl.doQZSweepSingle(ilschr, ilq, ilz, n, ifirst, ilast, ifrstm, ilastm,
 				h, ldh, t, ldt, q, ldq, z, ldz, s1, wr, safmin)
 		} else {
-			impl.doQZSweepDouble(ilschr, ilq, ilz, n, ifirst, ilast, ifrstm, ilastm,
-				h, ldh, t, ldt, q, ldq, z, ldz, ascale, bscale, safmin)
+			// Double-shift requires nonzero T diagonals for scaled pencil formula.
+			// Fall back to single-shift for singular pencils.
+			hasSmallTDiag := false
+			for k := ifirst; k <= ilast; k++ {
+				if math.Abs(t[k*ldt+k]) <= btol {
+					hasSmallTDiag = true
+					break
+				}
+			}
+			if hasSmallTDiag {
+				impl.doQZSweepSingle(ilschr, ilq, ilz, n, ifirst, ilast, ifrstm, ilastm,
+					h, ldh, t, ldt, q, ldq, z, ldz, s1, wr, safmin)
+			} else {
+				impl.doQZSweepDouble(ilschr, ilq, ilz, n, ifirst, ilast, ifrstm, ilastm,
+					h, ldh, t, ldt, q, ldq, z, ldz, ascale, bscale, safmin)
+			}
 		}
 	}
 
