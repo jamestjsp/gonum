@@ -6,6 +6,7 @@ package testlapack
 
 import (
 	"math"
+	"math/rand/v2"
 	"testing"
 
 	"gonum.org/v1/gonum/blas/blas64"
@@ -34,6 +35,8 @@ func DhgeqzTest(t *testing.T, impl Dhgeqzer) {
 	testDhgeqz3x3(t, impl)
 	testDhgeqzComplex4x4(t, impl)
 	testDhgeqzComplex6x6(t, impl)
+	testDhgeqzLargeN(t, impl, 50)
+	testDhgeqzLargeN(t, impl, 100)
 }
 
 func testDhgeqz2x2(t *testing.T, impl Dhgeqzer) {
@@ -316,4 +319,155 @@ func testDhgeqzComplex6x6(t *testing.T, impl Dhgeqzer) {
 	}
 
 	_ = tOrig
+}
+
+func testDhgeqzLargeN(t *testing.T, impl Dhgeqzer, n int) {
+	rng := rand.New(rand.NewPCG(uint64(n), 0))
+
+	// Generate random upper Hessenberg H.
+	hData := make([]float64, n*n)
+	for i := range n {
+		for j := range n {
+			if j >= i-1 {
+				hData[i*n+j] = rng.NormFloat64()
+			}
+		}
+	}
+	// Generate random upper triangular T with positive diagonal.
+	tData := make([]float64, n*n)
+	for i := range n {
+		for j := i; j < n; j++ {
+			tData[i*n+j] = rng.NormFloat64()
+		}
+		if tData[i*n+i] < 0 {
+			tData[i*n+i] = -tData[i*n+i]
+		}
+		tData[i*n+i] += 1
+	}
+
+	hOrig := make([]float64, len(hData))
+	tOrig := make([]float64, len(tData))
+	copy(hOrig, hData)
+	copy(tOrig, tData)
+
+	qData := make([]float64, n*n)
+	zData := make([]float64, n*n)
+	alphar := make([]float64, n)
+	alphai := make([]float64, n)
+	beta := make([]float64, n)
+
+	// Workspace query.
+	work := make([]float64, 1)
+	impl.Dhgeqz(lapack.EigenvaluesAndSchur, lapack.SchurHess, lapack.SchurHess, n, 0, n-1,
+		nil, max(1, n), nil, max(1, n), nil, nil, nil,
+		nil, max(1, n), nil, max(1, n), work, -1)
+	lwork := int(work[0])
+	work = make([]float64, lwork)
+
+	ok := impl.Dhgeqz(lapack.EigenvaluesAndSchur, lapack.SchurHess, lapack.SchurHess, n, 0, n-1,
+		hData, n, tData, n, alphar, alphai, beta,
+		qData, n, zData, n, work, lwork)
+
+	if !ok {
+		t.Fatalf("n=%d test: QZ iteration did not converge", n)
+	}
+
+	// Verify Q^T * H_orig * Z ≈ S.
+	const tol = 1e-9
+	tmp := make([]float64, n*n)
+	result := make([]float64, n*n)
+
+	for i := range n {
+		for j := range n {
+			var s float64
+			for k := range n {
+				s += hOrig[i*n+k] * zData[k*n+j]
+			}
+			tmp[i*n+j] = s
+		}
+	}
+	for i := range n {
+		for j := range n {
+			var s float64
+			for k := range n {
+				s += qData[k*n+i] * tmp[k*n+j]
+			}
+			result[i*n+j] = s
+		}
+	}
+	for i := range n {
+		for j := range n {
+			diff := math.Abs(result[i*n+j] - hData[i*n+j])
+			if diff > tol {
+				t.Errorf("n=%d test: Q^T*H*Z - S at (%d,%d): diff=%e", n, i, j, diff)
+				return
+			}
+		}
+	}
+
+	// Verify Q^T * T_orig * Z ≈ P.
+	for i := range n {
+		for j := range n {
+			var s float64
+			for k := range n {
+				s += tOrig[i*n+k] * zData[k*n+j]
+			}
+			tmp[i*n+j] = s
+		}
+	}
+	for i := range n {
+		for j := range n {
+			var s float64
+			for k := range n {
+				s += qData[k*n+i] * tmp[k*n+j]
+			}
+			result[i*n+j] = s
+		}
+	}
+	for i := range n {
+		for j := range n {
+			diff := math.Abs(result[i*n+j] - tData[i*n+j])
+			if diff > tol {
+				t.Errorf("n=%d test: Q^T*T*Z - P at (%d,%d): diff=%e", n, i, j, diff)
+				return
+			}
+		}
+	}
+
+	// Verify Q is orthogonal: Q^T * Q ≈ I.
+	for i := range n {
+		for j := range n {
+			var s float64
+			for k := range n {
+				s += qData[k*n+i] * qData[k*n+j]
+			}
+			expected := 0.0
+			if i == j {
+				expected = 1.0
+			}
+			if math.Abs(s-expected) > tol {
+				t.Errorf("n=%d test: Q not orthogonal at (%d,%d): got %e want %e", n, i, j, s, expected)
+				return
+			}
+		}
+	}
+
+	// Verify Z is orthogonal: Z^T * Z ≈ I.
+	for i := range n {
+		for j := range n {
+			var s float64
+			for k := range n {
+				s += zData[k*n+i] * zData[k*n+j]
+			}
+			expected := 0.0
+			if i == j {
+				expected = 1.0
+			}
+			if math.Abs(s-expected) > tol {
+				t.Errorf("n=%d test: Z not orthogonal at (%d,%d): got %e want %e", n, i, j, s, expected)
+				return
+			}
+		}
+	}
+
 }

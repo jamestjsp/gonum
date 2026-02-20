@@ -10,9 +10,11 @@ import (
 	"gonum.org/v1/gonum/lapack/testlapack"
 )
 
-func BenchmarkDgeev(b *testing.B)  { testlapack.DgeevBenchmark(b, impl) }
-func BenchmarkDggev(b *testing.B)  { testlapack.DggevBenchmark(b, impl) }
-func BenchmarkDhgeqz(b *testing.B) { testlapack.DhgeqzBenchmark(b, impl) }
-func BenchmarkDlangb(b *testing.B) { testlapack.DlangbBenchmark(b, impl) }
-func BenchmarkDlantb(b *testing.B) { testlapack.DlantbBenchmark(b, impl) }
-func BenchmarkDlaqr5(b *testing.B) { testlapack.Dlaqr5Benchmark(b, impl) }
+func BenchmarkDgeev(b *testing.B)         { testlapack.DgeevBenchmark(b, impl) }
+func BenchmarkDggev(b *testing.B)         { testlapack.DggevBenchmark(b, impl) }
+func BenchmarkDggevSingular(b *testing.B) { testlapack.DggevSingularBenchmark(b, impl) }
+func BenchmarkDgghrd(b *testing.B)        { testlapack.DgghrdBenchmark(b, impl) }
+func BenchmarkDhgeqz(b *testing.B)        { testlapack.DhgeqzBenchmark(b, impl) }
+func BenchmarkDlangb(b *testing.B)        { testlapack.DlangbBenchmark(b, impl) }
+func BenchmarkDlantb(b *testing.B)        { testlapack.DlantbBenchmark(b, impl) }
+func BenchmarkDlaqr5(b *testing.B)        { testlapack.Dlaqr5Benchmark(b, impl) }

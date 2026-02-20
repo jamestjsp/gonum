@@ -9,6 +9,7 @@ import (
 
 	"gonum.org/v1/gonum/blas"
 	"gonum.org/v1/gonum/blas/blas64"
+	"gonum.org/v1/gonum/lapack"
 )
 
 // Dtgsen reorders the generalized real Schur decomposition of a real matrix
@@ -274,19 +275,9 @@ extractEigenvalues:
 	if ijob == 1 || ijob == 2 || ijob == 4 {
 		// Compute Frobenius norm of the n1 x n2 blocks.
 		// A12 is at A[0:n1, n1:n], B12 is at B[0:n1, n1:n].
-		var sumn float64
-		for i := 0; i < n1; i++ {
-			for j := n1; j < n; j++ {
-				sumn += a[i*lda+j] * a[i*lda+j]
-				sumn += b[i*ldb+j] * b[i*ldb+j]
-			}
-		}
-		rdscal := 0.0
-		dsum := 1.0
-		if sumn > 0 {
-			rdscal = math.Sqrt(sumn)
-			dsum = 1.0
-		}
+		anorm := impl.Dlange(lapack.Frobenius, n1, n2, a[n1:], lda, nil)
+		bnorm := impl.Dlange(lapack.Frobenius, n1, n2, b[n1:], ldb, nil)
+		rdscal := math.Sqrt(anorm*anorm + bnorm*bnorm)
 
 		// Solve generalized Sylvester equation to estimate PL.
 		// A11*R - L*A22 = scale*A12
@@ -315,16 +306,8 @@ extractEigenvalues:
 			ok = false
 		}
 
-		// Compute norms for PL and PR.
-		var rnorm, fnorm float64
-		for i := 0; i < n1; i++ {
-			for j := 0; j < n2; j++ {
-				rnorm += c[i*n2+j] * c[i*n2+j]
-				fnorm += f[i*n2+j] * f[i*n2+j]
-			}
-		}
-		rnorm = math.Sqrt(rnorm)
-		fnorm = math.Sqrt(fnorm)
+		rnorm := impl.Dlange(lapack.Frobenius, n1, n2, c, n2, nil)
+		fnorm := impl.Dlange(lapack.Frobenius, n1, n2, f, n2, nil)
 
 		if rdscal != 0 {
 			pl = rdscal / (rdscal*rdscal + rnorm*rnorm + fnorm*fnorm)
@@ -333,7 +316,6 @@ extractEigenvalues:
 			pl = 1
 			pr = 1
 		}
-		_ = dsum
 	}
 
 	// Compute DIF (separation estimates).

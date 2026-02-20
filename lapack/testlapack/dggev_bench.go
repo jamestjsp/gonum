@@ -14,7 +14,7 @@ import (
 
 func DggevBenchmark(b *testing.B, impl Dggever) {
 	rnd := rand.New(rand.NewPCG(1, 1))
-	for _, n := range []int{10, 50, 100, 200} {
+	for _, n := range []int{10, 50, 100, 200, 500} {
 		a := make([]float64, n*n)
 		aOrig := make([]float64, n*n)
 		bm := make([]float64, n*n)
@@ -54,10 +54,9 @@ func DggevBenchmark(b *testing.B, impl Dggever) {
 
 func DhgeqzBenchmark(b *testing.B, impl Dhgeqzer) {
 	rnd := rand.New(rand.NewPCG(1, 1))
-	for _, n := range []int{10, 50, 100, 200} {
+	for _, n := range []int{10, 50, 100, 200, 500} {
 		hOrig := make([]float64, n*n)
 		tOrig := make([]float64, n*n)
-		// Generate random upper Hessenberg H.
 		for i := 0; i < n; i++ {
 			for j := 0; j < n; j++ {
 				if i <= j+1 {
@@ -65,7 +64,6 @@ func DhgeqzBenchmark(b *testing.B, impl Dhgeqzer) {
 				}
 			}
 		}
-		// Generate random upper triangular T with positive diagonal.
 		for i := 0; i < n; i++ {
 			for j := i; j < n; j++ {
 				tOrig[i*n+j] = rnd.NormFloat64()
@@ -80,7 +78,12 @@ func DhgeqzBenchmark(b *testing.B, impl Dhgeqzer) {
 		beta := make([]float64, n)
 		q := make([]float64, n*n)
 		z := make([]float64, n*n)
-		work := make([]float64, 4*n)
+		workQuery := make([]float64, 1)
+		impl.Dhgeqz(lapack.EigenvaluesAndSchur, lapack.SchurHess, lapack.SchurHess,
+			n, 0, n-1, nil, max(1, n), nil, max(1, n), nil, nil, nil,
+			nil, max(1, n), nil, max(1, n), workQuery, -1)
+		lwork := max(4*n, int(workQuery[0]))
+		work := make([]float64, lwork)
 
 		b.Run(fmt.Sprintf("n=%d", n), func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
@@ -91,6 +94,47 @@ func DhgeqzBenchmark(b *testing.B, impl Dhgeqzer) {
 				impl.Dhgeqz(lapack.EigenvaluesAndSchur, lapack.SchurHess, lapack.SchurHess,
 					n, 0, n-1, h, n, t, n, alphar, alphai, beta,
 					q, n, z, n, work, len(work))
+			}
+		})
+	}
+}
+
+func DggevSingularBenchmark(b *testing.B, impl Dggever) {
+	rnd := rand.New(rand.NewPCG(1, 1))
+	for _, n := range []int{10, 50, 100, 200} {
+		a := make([]float64, n*n)
+		aOrig := make([]float64, n*n)
+		bm := make([]float64, n*n)
+		bOrig := make([]float64, n*n)
+		for i := range aOrig {
+			aOrig[i] = rnd.NormFloat64()
+			bOrig[i] = rnd.NormFloat64()
+		}
+		// Make B singular by zeroing a row.
+		for j := 0; j < n; j++ {
+			bOrig[0*n+j] = 0
+		}
+
+		alphar := make([]float64, n)
+		alphai := make([]float64, n)
+		beta := make([]float64, n)
+
+		work := make([]float64, 1)
+		impl.Dggev(lapack.LeftEVNone, lapack.RightEVNone, n,
+			nil, n, nil, n, nil, nil, nil, nil, 1, nil, 1, work, -1)
+		work = make([]float64, int(work[0]))
+
+		b.Run(fmt.Sprintf("n=%d", n), func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				b.StopTimer()
+				copy(a, aOrig)
+				copy(bm, bOrig)
+				b.StartTimer()
+				impl.Dggev(lapack.LeftEVNone, lapack.RightEVNone, n,
+					a, n, bm, n,
+					alphar, alphai, beta,
+					nil, 1, nil, 1,
+					work, len(work))
 			}
 		})
 	}
