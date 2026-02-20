@@ -23,11 +23,19 @@ type Dggeser interface {
 }
 
 func DggesTest(t *testing.T, impl Dggeser) {
-	// Random matrix tests are skipped due to QZ convergence limitations.
-	// The current single-shift QZ implementation may not converge for all
-	// random matrices. This is a known limitation of the simplified algorithm.
-	// A full double-shift implicit QZ would be needed for robust convergence.
-	_ = rand.New(rand.NewPCG(1, 1))
+	rnd := rand.New(rand.NewPCG(1, 1))
+
+	for _, n := range []int{0, 1, 2, 3, 4, 5, 6, 10, 20, 50} {
+		for _, jobvsl := range []lapack.SchurComp{lapack.SchurNone, lapack.SchurHess} {
+			for _, jobvsr := range []lapack.SchurComp{lapack.SchurNone, lapack.SchurHess} {
+				for _, extra := range []int{0, 3} {
+					for _, wl := range []worklen{minimumWork, mediumWork, optimumWork} {
+						testDgges(t, impl, n, jobvsl, jobvsr, extra, wl, rnd)
+					}
+				}
+			}
+		}
+	}
 
 	// Test with special matrices.
 	for _, tc := range []struct {
