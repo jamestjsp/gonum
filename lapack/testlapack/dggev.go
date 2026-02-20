@@ -30,6 +30,7 @@ func DggevTest(t *testing.T, impl Dggever) {
 	testDggevEigenvaluesOnly(t, impl)
 	testDggevEigenvectors(t, impl)
 	testDggevComplexEigenvalues(t, impl)
+	testDggevSingularPencil(t, impl)
 }
 
 func testDggevWorkspace(t *testing.T, impl Dggever) {
@@ -258,6 +259,77 @@ func testDggevEigenvectors(t *testing.T, impl Dggever) {
 				t.Errorf("eigenvectors: right eigenvector residual at (%d,%d): |A*v - λ*B*v| = %v", i, j, math.Abs(av-lbv))
 			}
 		}
+	}
+}
+
+func testDggevSingularPencil(t *testing.T, impl Dggever) {
+	// Test singular pencils where B has zero rows/columns, producing
+	// infinite eigenvalues (beta=0). Regression test for issue #1.
+	for _, tc := range []struct {
+		name string
+		n    int
+		a, b []float64
+	}{
+		{
+			name: "9x9 Reinschke pencil",
+			n:    9,
+			a: []float64{
+				0, 0, 1, 0, 0, 0, 0, 0, 0,
+				2, 0, 0, 3, 4, 0, 0, 0, 0,
+				0, 0, 5, 0, 0, 6, 0, 0, 0,
+				0, 7, 0, 0, 0, 0, 0, 0, 0,
+				0, 0, 0, 8, 9, 0, 10, 0, 0,
+				0, 0, 0, 0, 0, 0, 0, 11, 0,
+				0, 12, 0, 0, 13, 0, 0, 0, 0,
+				14, 0, 0, 0, 0, 0, 0, 0, 0,
+				15, 0, 16, 0, 0, 0, 0, 0, 0,
+			},
+			b: func() []float64 {
+				b := make([]float64, 81)
+				for i := 0; i < 6; i++ {
+					b[i*9+i] = 1
+				}
+				return b
+			}(),
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			n := tc.n
+			a := make([]float64, n*n)
+			copy(a, tc.a)
+			b := make([]float64, n*n)
+			copy(b, tc.b)
+
+			alphar := make([]float64, n)
+			alphai := make([]float64, n)
+			beta := make([]float64, n)
+
+			work := make([]float64, 1)
+			impl.Dggev(lapack.LeftEVNone, lapack.RightEVNone, n,
+				nil, n, nil, n, nil, nil, nil, nil, 1, nil, 1, work, -1)
+			lwork := int(work[0])
+			work = make([]float64, lwork)
+
+			ok := impl.Dggev(lapack.LeftEVNone, lapack.RightEVNone, n,
+				a, n, b, n,
+				alphar, alphai, beta,
+				nil, 1, nil, 1,
+				work, lwork)
+
+			if !ok {
+				t.Fatal("Dggev did not converge on singular pencil")
+			}
+
+			nInf := 0
+			for i := 0; i < n; i++ {
+				if beta[i] == 0 {
+					nInf++
+				}
+			}
+			if nInf < 3 {
+				t.Errorf("expected at least 3 infinite eigenvalues, got %d", nInf)
+			}
+		})
 	}
 }
 

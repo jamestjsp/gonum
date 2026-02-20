@@ -249,16 +249,136 @@ func (impl Implementation) Dhgeqz(job lapack.SchurJob, compq, compz lapack.Schur
 			continue
 		}
 
-		// Handle zero diagonal in T (infinite eigenvalue).
-		if t[ilast*ldt+ilast] == 0 {
+		// Handle negligible T diagonals (infinite eigenvalues).
+		// Check T(ilast,ilast) first, then scan interior of block.
+		if math.Abs(t[ilast*ldt+ilast]) <= btol {
+			t[ilast*ldt+ilast] = 0
+			goto deflateInfinite
+		}
+
+		// Scan for zero T diagonals in the active block [ifirst, ilast-1].
+		// Chase any found zero down to T(ilast,ilast) and deflate.
+		{
+			bi := blas64.Implementation()
+			chased := false
+			for jj := ilast - 1; jj >= ifirst; jj-- {
+				if math.Abs(t[jj*ldt+jj]) > btol {
+					continue
+				}
+				t[jj*ldt+jj] = 0
+
+				if jj == ilo || h[jj*ldh+jj-1] == 0 {
+					// H also splits at jj. Chase zero down using
+					// left rotations on H (LAPACK DO 40 loop).
+					for jch := jj; jch < ilast; jch++ {
+						cs, sn, r := impl.Dlartg(h[jch*ldh+jch], h[(jch+1)*ldh+jch])
+						h[jch*ldh+jch] = r
+						h[(jch+1)*ldh+jch] = 0
+						nrot := ilastm - jch
+						if nrot > 0 {
+							bi.Drot(nrot, h[jch*ldh+jch+1:], 1, h[(jch+1)*ldh+jch+1:], 1, cs, sn)
+							bi.Drot(nrot, t[jch*ldt+jch+1:], 1, t[(jch+1)*ldt+jch+1:], 1, cs, sn)
+						}
+						if ilq {
+							bi.Drot(n, q[jch:], ldq, q[jch+1:], ldq, cs, sn)
+						}
+						if math.Abs(t[(jch+1)*ldt+jch+1]) >= btol {
+							// Block split found.
+							if jch+1 >= ilast {
+								goto deflateInfinite
+							}
+							ifirst = jch + 1
+							chased = true
+							break
+						}
+						t[(jch+1)*ldt+jch+1] = 0
+					}
+					if chased {
+						break
+					}
+					goto deflateInfinite
+				}
+
+				// H does not split at jj. Chase zero from T(jj,jj)
+				// down to T(ilast,ilast) using alternating left and
+				// right Givens rotations (LAPACK DO 50 loop).
+				for jch := jj; jch < ilast; jch++ {
+					// Left rotation on rows jch, jch+1 to zero T(jch+1,jch+1).
+					cs, sn, r := impl.Dlartg(t[jch*ldt+jch+1], t[(jch+1)*ldt+jch+1])
+					t[jch*ldt+jch+1] = r
+					t[(jch+1)*ldt+jch+1] = 0
+					if jch < ilastm-1 {
+						bi.Drot(ilastm-jch-1, t[jch*ldt+jch+2:], 1, t[(jch+1)*ldt+jch+2:], 1, cs, sn)
+					}
+					bi.Drot(ilastm-jch+2, h[jch*ldh+jch-1:], 1, h[(jch+1)*ldh+jch-1:], 1, cs, sn)
+					if ilq {
+						bi.Drot(n, q[jch:], ldq, q[jch+1:], ldq, cs, sn)
+					}
+					// Right rotation to restore H upper Hessenberg.
+					cs, sn, r = impl.Dlartg(h[(jch+1)*ldh+jch], h[(jch+1)*ldh+jch-1])
+					h[(jch+1)*ldh+jch] = r
+					h[(jch+1)*ldh+jch-1] = 0
+					bi.Drot(jch+1-ifrstm, h[ifrstm*ldh+jch:], ldh, h[ifrstm*ldh+jch-1:], ldh, cs, sn)
+					if jch > ifrstm {
+						bi.Drot(jch-ifrstm, t[ifrstm*ldt+jch:], ldt, t[ifrstm*ldt+jch-1:], ldt, cs, sn)
+					}
+					if ilz {
+						bi.Drot(n, z[jch:], ldz, z[jch-1:], ldz, cs, sn)
+					}
+				}
+				goto deflateInfinite
+			}
+			if chased {
+				// DO 40 found a block split; ifirst was updated.
+				// Continue to shift computation with the new block.
+				goto doQZStep
+			}
+		}
+
+		goto doQZStep
+
+	deflateInfinite:
+		// T(ilast,ilast) = 0: zero H(ilast,ilast-1) via right rotation
+		// and deflate as infinite eigenvalue (LAPACK label 70 + 80).
+		{
+			bi := blas64.Implementation()
+			cs, sn, r := impl.Dlartg(h[ilast*ldh+ilast], h[ilast*ldh+ilast-1])
+			h[ilast*ldh+ilast] = r
+			h[ilast*ldh+ilast-1] = 0
+			if ilast-ifrstm > 0 {
+				bi.Drot(ilast-ifrstm, h[ifrstm*ldh+ilast:], ldh, h[ifrstm*ldh+ilast-1:], ldh, cs, sn)
+				bi.Drot(ilast-ifrstm, t[ifrstm*ldt+ilast:], ldt, t[ifrstm*ldt+ilast-1:], ldt, cs, sn)
+			}
+			if ilz {
+				bi.Drot(n, z[ilast:], ldz, z[ilast-1:], ldz, cs, sn)
+			}
+			// Standardize sign: T(ilast,ilast) >= 0.
+			if t[ilast*ldt+ilast] < 0 {
+				if ilschr {
+					for j := ifrstm; j <= ilast; j++ {
+						h[j*ldh+ilast] = -h[j*ldh+ilast]
+						t[j*ldt+ilast] = -t[j*ldt+ilast]
+					}
+				} else {
+					h[ilast*ldh+ilast] = -h[ilast*ldh+ilast]
+					t[ilast*ldt+ilast] = -t[ilast*ldt+ilast]
+				}
+				if ilz {
+					for j := range n {
+						z[j*ldz+ilast] = -z[j*ldz+ilast]
+					}
+				}
+			}
 			alphar[ilast] = h[ilast*ldh+ilast]
 			alphai[ilast] = 0
-			beta[ilast] = 0
+			beta[ilast] = t[ilast*ldt+ilast]
 			ilast--
 			iiter = 0
+			eshift = 0
 			continue
 		}
 
+	doQZStep:
 		// Perform QZ step.
 		iiter++
 
