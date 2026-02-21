@@ -67,8 +67,8 @@ Gonum is a numerical computing library. Core packages:
 
 ## LAPACK Development
 
-See SPEC.md for detailed specifications on adding new LAPACK routines. Key points:
 - Implementation in `lapack/gonum/dXXXXX.go`
 - Tests in `lapack/testlapack/dXXXXX.go`
 - Panic on invalid inputs, return bool for numerical failures
 - Support workspace queries (lwork=-1)
+- Study Dgeev, Dhseqr as style references
