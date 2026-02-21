@@ -40,6 +40,7 @@ const (
 	badIfst     = "lapack: ifst out of range"
 	badIhi      = "lapack: ihi out of range"
 	badIhiz     = "lapack: ihiz out of range"
+	badIJob     = "lapack: bad ijob value"
 	badIlo      = "lapack: ilo out of range"
 	badIloz     = "lapack: iloz out of range"
 	badIlst     = "lapack: ilst out of range"

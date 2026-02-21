@@ -549,16 +549,15 @@ func (impl Implementation) doQZSweepDouble(ilschr, ilq, ilz bool, n, ifirst, ila
 		t2 := tau * v[1]
 		t3 := tau * v[2]
 		for jc := j; jc <= ilastm; jc++ {
-			sum := h[j*ldh+jc] + v[1]*h[(j+1)*ldh+jc] + v[2]*h[(j+2)*ldh+jc]
-			h[j*ldh+jc] -= tau * sum
-			h[(j+1)*ldh+jc] -= t2 * sum
-			h[(j+2)*ldh+jc] -= t3 * sum
-		}
-		for jc := j; jc <= ilastm; jc++ {
-			sum := t[j*ldt+jc] + v[1]*t[(j+1)*ldt+jc] + v[2]*t[(j+2)*ldt+jc]
-			t[j*ldt+jc] -= tau * sum
-			t[(j+1)*ldt+jc] -= t2 * sum
-			t[(j+2)*ldt+jc] -= t3 * sum
+			sumh := h[j*ldh+jc] + v[1]*h[(j+1)*ldh+jc] + v[2]*h[(j+2)*ldh+jc]
+			h[j*ldh+jc] -= tau * sumh
+			h[(j+1)*ldh+jc] -= t2 * sumh
+			h[(j+2)*ldh+jc] -= t3 * sumh
+
+			sumt := t[j*ldt+jc] + v[1]*t[(j+1)*ldt+jc] + v[2]*t[(j+2)*ldt+jc]
+			t[j*ldt+jc] -= tau * sumt
+			t[(j+1)*ldt+jc] -= t2 * sumt
+			t[(j+2)*ldt+jc] -= t3 * sumt
 		}
 		if ilq {
 			for jr := 0; jr < n; jr++ {
@@ -640,17 +639,23 @@ func (impl Implementation) doQZSweepDouble(ilschr, ilq, ilz bool, n, ifirst, ila
 		// Apply right Householder to H, T, Z.
 		t2 = tauR * v[1]
 		t3 = tauR * v[2]
-		for jr := ifrstm; jr <= min(j+3, ilast); jr++ {
-			sum := h[jr*ldh+j] + v[1]*h[jr*ldh+j+1] + v[2]*h[jr*ldh+j+2]
-			h[jr*ldh+j] -= tauR * sum
-			h[jr*ldh+j+1] -= t2 * sum
-			h[jr*ldh+j+2] -= t3 * sum
-		}
 		for jr := ifrstm; jr <= j+2; jr++ {
-			sum := t[jr*ldt+j] + v[1]*t[jr*ldt+j+1] + v[2]*t[jr*ldt+j+2]
-			t[jr*ldt+j] -= tauR * sum
-			t[jr*ldt+j+1] -= t2 * sum
-			t[jr*ldt+j+2] -= t3 * sum
+			sumh := h[jr*ldh+j] + v[1]*h[jr*ldh+j+1] + v[2]*h[jr*ldh+j+2]
+			h[jr*ldh+j] -= tauR * sumh
+			h[jr*ldh+j+1] -= t2 * sumh
+			h[jr*ldh+j+2] -= t3 * sumh
+
+			sumt := t[jr*ldt+j] + v[1]*t[jr*ldt+j+1] + v[2]*t[jr*ldt+j+2]
+			t[jr*ldt+j] -= tauR * sumt
+			t[jr*ldt+j+1] -= t2 * sumt
+			t[jr*ldt+j+2] -= t3 * sumt
+		}
+		if j+3 <= ilast {
+			jr := j + 3
+			sumh := h[jr*ldh+j] + v[1]*h[jr*ldh+j+1] + v[2]*h[jr*ldh+j+2]
+			h[jr*ldh+j] -= tauR * sumh
+			h[jr*ldh+j+1] -= t2 * sumh
+			h[jr*ldh+j+2] -= t3 * sumh
 		}
 		if ilz {
 			for jr := 0; jr < n; jr++ {
@@ -751,50 +756,24 @@ func (impl Implementation) standardize2x2Block(n, j, ifrstm, ilastm int,
 	// nonzero t21. We need to eliminate it using a right rotation.
 	// Also ensure T diagonals are positive.
 
-	t11 := t[j*ldt+j]
-	t12 := t[j*ldt+j+1]
 	t21 := t[(j+1)*ldt+j]
-	t22 := t[(j+1)*ldt+j+1]
 
 	// Eliminate t21 using a right rotation on columns j, j+1.
 	// Find R2 = [cs2 sn2; -sn2 cs2] such that [t21, t22] * R2 = [0, *]
 	// This means cs2*t21 - sn2*t22 = 0.
 	if t21 != 0 {
-		// Dlartg(a, b): c*a + s*b = r, -s*a + c*b = 0 => c*b = s*a
-		// We need c*t21 = s*t22, so call Dlartg(t22, t21).
-		cs2, sn2, _ := impl.Dlartg(t22, t21)
+		cs2, sn2, _ := impl.Dlartg(t[(j+1)*ldt+j+1], t21)
 
 		// Apply T = T * R2 (column operation).
-		// For T's 2x2 block:
-		t[j*ldt+j] = cs2*t11 - sn2*t12
-		t[j*ldt+j+1] = sn2*t11 + cs2*t12
+		bi.Drot(j+2-ifrstm, t[ifrstm*ldt+j:], ldt, t[ifrstm*ldt+j+1:], ldt, cs2, -sn2)
 		t[(j+1)*ldt+j] = 0
-		t[(j+1)*ldt+j+1] = sn2*t21 + cs2*t22
-
-		// For T rows above the 2x2 block:
-		for jr := ifrstm; jr < j; jr++ {
-			tj := t[jr*ldt+j]
-			tjp1 := t[jr*ldt+j+1]
-			t[jr*ldt+j] = cs2*tj - sn2*tjp1
-			t[jr*ldt+j+1] = sn2*tj + cs2*tjp1
-		}
 
 		// Apply H = H * R2 (column operation).
-		for jr := ifrstm; jr <= j+1; jr++ {
-			hj := h[jr*ldh+j]
-			hjp1 := h[jr*ldh+j+1]
-			h[jr*ldh+j] = cs2*hj - sn2*hjp1
-			h[jr*ldh+j+1] = sn2*hj + cs2*hjp1
-		}
+		bi.Drot(j+2-ifrstm, h[ifrstm*ldh+j:], ldh, h[ifrstm*ldh+j+1:], ldh, cs2, -sn2)
 
 		// Apply Z = Z * R2.
 		if ilz {
-			for jr := range n {
-				zj := z[jr*ldz+j]
-				zjp1 := z[jr*ldz+j+1]
-				z[jr*ldz+j] = cs2*zj - sn2*zjp1
-				z[jr*ldz+j+1] = sn2*zj + cs2*zjp1
-			}
+			bi.Drot(n, z[j:], ldz, z[j+1:], ldz, cs2, -sn2)
 		}
 	}
 

@@ -67,6 +67,11 @@ func TestDgees(t *testing.T) {
 	testlapack.DgeesTest(t, impl)
 }
 
+func TestDgeesSort(t *testing.T) {
+	t.Parallel()
+	testlapack.DgeesSortTest(t, impl)
+}
+
 func TestDgehd2(t *testing.T) {
 	t.Parallel()
 	testlapack.Dgehd2Test(t, impl)
@@ -691,6 +696,11 @@ func TestDtrevc3(t *testing.T) {
 func TestDtrexc(t *testing.T) {
 	t.Parallel()
 	testlapack.DtrexcTest(t, impl)
+}
+
+func TestDtrsen(t *testing.T) {
+	t.Parallel()
+	testlapack.DtrsenTest(t, impl)
 }
 
 func TestDtrsyl(t *testing.T) {

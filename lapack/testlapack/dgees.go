@@ -272,6 +272,93 @@ func checkSchurEigenvalues(t *testing.T, prefix string, T blas64.General, wr, wi
 	}
 }
 
+func DgeesSortTest(t *testing.T, impl Dgeeser) {
+	rnd := rand.New(rand.NewPCG(1, 1))
+
+	// Select eigenvalues with absolute value < 1.
+	selctg := func(wr, wi float64) bool {
+		return wr*wr+wi*wi < 1.0
+	}
+
+	for _, n := range []int{1, 2, 3, 4, 5, 10, 20, 50} {
+		for _, extra := range []int{0, 11} {
+			for cas := 0; cas < 10; cas++ {
+				testDgeesSort(t, impl, n, extra, selctg, rnd)
+			}
+		}
+	}
+}
+
+func testDgeesSort(t *testing.T, impl Dgeeser, n, extra int, selctg func(wr, wi float64) bool, rnd *rand.Rand) {
+	const tol = 100
+
+	a := randomGeneral(n, n, n+extra, rnd)
+	aCopy := cloneGeneral(a)
+
+	wr := make([]float64, n)
+	wi := make([]float64, n)
+
+	ldvs := max(1, n+extra)
+	vs := nanGeneral(n, n, ldvs)
+	bwork := make([]bool, n)
+
+	// Workspace query.
+	work := make([]float64, 1)
+	impl.Dgees(lapack.SchurHess, lapack.SortSelected, selctg, n, nil, max(1, a.Stride), nil, nil, nil, ldvs, work, -1, nil)
+	lwork := int(work[0])
+	work = make([]float64, lwork)
+
+	prefix := fmt.Sprintf("n=%d, extra=%d", n, extra)
+
+	sdim, ok := impl.Dgees(lapack.SchurHess, lapack.SortSelected, selctg, n, a.Data, a.Stride, wr, wi, vs.Data, ldvs, work, lwork, bwork)
+	if !ok {
+		t.Logf("%s: Dgees with sorting failed to converge", prefix)
+		return
+	}
+
+	// Verify Schur form.
+	if !isSchurCanonicalGeneral(a) {
+		t.Errorf("%s: result is not in Schur canonical form", prefix)
+	}
+
+	// Verify selected eigenvalues are at the top.
+	for j := 0; j < sdim; j++ {
+		if !selctg(wr[j], wi[j]) {
+			t.Errorf("%s: eigenvalue %d (wr=%v, wi=%v) at top should be selected", prefix, j, wr[j], wi[j])
+		}
+	}
+	for j := sdim; j < n; j++ {
+		if selctg(wr[j], wi[j]) {
+			t.Errorf("%s: eigenvalue %d (wr=%v, wi=%v) at bottom should NOT be selected", prefix, j, wr[j], wi[j])
+		}
+	}
+
+	// Verify eigenvalues match diagonal blocks.
+	evTol := 1e-10
+	checkSchurEigenvalues(t, prefix, a, wr, wi, evTol)
+
+	// Verify Schur vectors are orthogonal.
+	orthoTol := float64(n) * dlamchE
+	if orthoTol < 1e-13 {
+		orthoTol = 1e-13
+	}
+	resid := residualOrthogonal(vs, false)
+	if resid > orthoTol {
+		t.Errorf("%s: Schur vectors not orthogonal; |I - Z*Zᵀ|=%v, want<=%v", prefix, resid, orthoTol)
+	}
+
+	// Verify Schur factorization: A = Z * T * Zᵀ.
+	residSchur := residualSchurFactorization(aCopy, a, vs)
+	anorm := dlange(lapack.MaxColumnSum, n, n, aCopy.Data, aCopy.Stride)
+	if anorm == 0 {
+		anorm = 1
+	}
+	normRes := residSchur / (anorm * float64(n) * dlamchE)
+	if normRes > float64(tol) {
+		t.Errorf("%s: ||A - Z*T*Zᵀ||/(||A||*n*eps)=%v, want<=%v", prefix, normRes, tol)
+	}
+}
+
 // residualSchurFactorization computes ||A - Z*T*Zᵀ||_1.
 func residualSchurFactorization(A, T, Z blas64.General) float64 {
 	n := A.Rows

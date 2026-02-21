@@ -216,7 +216,6 @@ func (impl Implementation) Dtgevc(side lapack.EVSide, howmny lapack.EVHowMany, s
 				// Copy to output and normalize.
 				if over {
 					bi.Dgemv(blas.NoTrans, n, je+1, 1, vr, ldvr, work[:je+1], 1, 0, work[2*n:], 1)
-					copy(vr[im:], work[2*n:3*n])
 					for i := 0; i < n; i++ {
 						vr[i*ldvr+im] = work[2*n+i]
 					}

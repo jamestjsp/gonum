@@ -288,10 +288,8 @@ extractEigenvalues:
 		c := work[:n1*n2]
 		f := work[n1*n2 : 2*n1*n2]
 		for i := 0; i < n1; i++ {
-			for j := 0; j < n2; j++ {
-				c[i*n2+j] = a[i*lda+n1+j]
-				f[i*n2+j] = b[i*ldb+n1+j]
-			}
+			copy(c[i*n2:(i+1)*n2], a[i*lda+n1:i*lda+n1+n2])
+			copy(f[i*n2:(i+1)*n2], b[i*ldb+n1:i*ldb+n1+n2])
 		}
 
 		workTgsyl := work[2*n1*n2:]

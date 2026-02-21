@@ -42,9 +42,6 @@ import (
 // If sort is lapack.SortNone, eigenvalues are not ordered.
 // If sort is lapack.SortSelected, eigenvalues are reordered so that selected
 // eigenvalues appear in the leading diagonal blocks of the Schur form.
-// Note: sorting is not yet implemented; Dgees will panic if sort is
-// lapack.SortSelected.
-// For other values of sort, Dgees will panic.
 //
 // selctg is a function that selects eigenvalues. It is only used when sort is
 // lapack.SortSelected. An eigenvalue wr[j]+i*wi[j] is selected if
@@ -123,7 +120,14 @@ func (impl Implementation) Dgees(jobvs lapack.SchurComp, sort lapack.SchurSort, 
 				nil, n, nil, nil, nil, 1, work, -1)
 		}
 		hswork := int(work[0])
-		maxwrk = max(maxwrk, max(1, 2*n+hswork))
+
+		trsenwork := 0
+		if wantst {
+			var iwork [1]int
+			impl.Dtrsen(0, wantvs, nil, n, nil, n, nil, n, nil, nil, work, -1, iwork[:], -1)
+			trsenwork = int(work[0])
+		}
+		maxwrk = max(maxwrk, max(1, 2*n+hswork), 2*n+trsenwork)
 	}
 
 	if lwork == -1 {
@@ -150,11 +154,6 @@ func (impl Implementation) Dgees(jobvs lapack.SchurComp, sort lapack.SchurSort, 
 		panic("lapack: insufficient length of bwork")
 	case wantst && selctg == nil:
 		panic("lapack: selctg is nil but sort is SortSelected")
-	}
-
-	// Sorting not yet implemented.
-	if wantst {
-		panic("lapack: sorting not implemented in Dgees (requires Dtrsen)")
 	}
 
 	// Get machine constants.
@@ -211,8 +210,40 @@ func (impl Implementation) Dgees(jobvs lapack.SchurComp, sort lapack.SchurSort, 
 		ok = true
 	}
 
-	// Sort eigenvalues if desired (not implemented).
+	// Sort eigenvalues if desired.
 	sdim = 0
+	if ok && wantst {
+		// Populate bwork[] using selctg callback.
+		for i := 0; i < n; {
+			if i < n-1 && wi[i] != 0 {
+				// Complex conjugate pair at positions i and i+1.
+				// Both must be selected if either is selected.
+				sel1 := selctg(wr[i], wi[i])
+				sel2 := selctg(wr[i+1], wi[i+1])
+				bwork[i] = sel1 || sel2
+				bwork[i+1] = sel1 || sel2
+				i += 2
+			} else {
+				// Real eigenvalue.
+				bwork[i] = selctg(wr[i], wi[i])
+				i++
+			}
+		}
+
+		// Call Dtrsen to reorder eigenvalues.
+		liwork := 1
+		iwork := make([]int, liwork)
+
+		var trsenM int
+		var trsenOk bool
+		trsenM, _, _, trsenOk = impl.Dtrsen(0, wantvs, bwork, n,
+			a, lda, vs, ldvs, wr, wi, work[iwrk:], lwork-iwrk, iwork, liwork)
+
+		if !trsenOk {
+			ok = false
+		}
+		sdim = trsenM
+	}
 
 	if wantvs {
 		// Undo balancing (permutation only).
@@ -221,9 +252,7 @@ func (impl Implementation) Dgees(jobvs lapack.SchurComp, sort lapack.SchurSort, 
 
 	if scalea {
 		// Undo scaling for the Schur form of A.
-		// Use General since the result is upper quasi-triangular.
 		impl.Dlascl(lapack.General, 0, 0, cscale, anrm, n, n, a, lda)
-		// Undo scaling for eigenvalues.
 		impl.Dlascl(lapack.General, 0, 0, cscale, anrm, n, 1, wr, n)
 		impl.Dlascl(lapack.General, 0, 0, cscale, anrm, n, 1, wi, n)
 	}
