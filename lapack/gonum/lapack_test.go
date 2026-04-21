@@ -772,3 +772,33 @@ func TestIladlr(t *testing.T) {
 	t.Parallel()
 	testlapack.IladlrTest(t, impl)
 }
+
+func TestZlacpy(t *testing.T) {
+	t.Parallel()
+	testlapack.ZlacpyTest(t, impl)
+}
+
+func TestZlascl(t *testing.T) {
+	t.Parallel()
+	testlapack.ZlasclTest(t, impl)
+}
+
+func TestZlaset(t *testing.T) {
+	t.Parallel()
+	testlapack.ZlasetTest(t, impl)
+}
+
+func TestZlartg(t *testing.T) {
+	t.Parallel()
+	testlapack.ZlartgTest(t, impl)
+}
+
+func TestZlange(t *testing.T) {
+	t.Parallel()
+	testlapack.ZlangeTest(t, impl)
+}
+
+func TestZlanhs(t *testing.T) {
+	t.Parallel()
+	testlapack.ZlanhsTest(t, impl)
+}
