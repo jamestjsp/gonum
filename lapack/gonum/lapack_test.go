@@ -827,3 +827,18 @@ func TestZlasr(t *testing.T) {
 	t.Parallel()
 	testlapack.ZlasrTest(t, impl)
 }
+
+func TestZgetrf(t *testing.T) {
+	t.Parallel()
+	testlapack.ZgetrfTest(t, impl)
+}
+
+func TestZgetrs(t *testing.T) {
+	t.Parallel()
+	testlapack.ZgetrsTest(t, impl)
+}
+
+func TestZgesv(t *testing.T) {
+	t.Parallel()
+	testlapack.ZgesvTest(t, impl)
+}
