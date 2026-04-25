@@ -153,9 +153,14 @@ func dgemmParallel(aTrans, bTrans bool, m, n, k int, a []float64, lda int, b []f
 
 	maxKLen := k
 	parBlocks := blocks(m, blockSize) * blocks(n, blockSize)
-	if parBlocks < minParBlock {
+	// Two-condition gate (J10): need both enough (m,n) tiles to fan out across
+	// AND enough FLOPs to amortize goroutine overhead. The legacy gate only
+	// counted blocks, which over-fired for shapes like m=n=128, k=1 (4 blocks
+	// but only 16K ops).
+	if parBlocks < minParBlock || int64(m)*int64(n)*int64(k) < minParFLOPs {
 		// The matrix multiplication is small in the dimensions where it can be
-		// computed concurrently. Just do it in serial.
+		// computed concurrently, or too small overall to benefit from parallelism.
+		// Just do it in serial.
 		dgemmSerial(aTrans, bTrans, m, n, k, a, lda, b, ldb, c, ldc, alpha)
 		return
 	}

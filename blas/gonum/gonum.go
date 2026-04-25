@@ -18,7 +18,12 @@ type Implementation struct{}
 // way during single precision code generation.
 const (
 	blockSize   = 64 // b x b matrix
-	minParBlock = 4  // minimum number of blocks needed to go parallel
+	minParBlock = 4  // minimum number of (m,n) blocks needed to go parallel
+	// minParFLOPs is the FLOP-count cutoff (≈ 2*m*n*k) below which Dgemm stays
+	// serial regardless of block count. Tuned to ~1e6 ops via the J10 microbench
+	// (BenchmarkDgemmJ10*) so goroutine fan-out costs do not dominate small calls.
+	// Below this point, dgemmSerial wins on a 4-core 12th-gen i7-1270P.
+	minParFLOPs = 1 << 20
 )
 
 // blocks returns the number of divisions of the dimension length with the given
