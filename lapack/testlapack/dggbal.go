@@ -176,6 +176,19 @@ func testDggbalSpecial(t *testing.T, impl Dggbaler) {
 	work = make([]float64, 12)
 
 	ilo, ihi = impl.Dggbal(lapack.Scale, 2, a.Data, a.Stride, b.Data, b.Stride, lscale, rscale, work)
+	if lscale[0] == 1 && lscale[1] == 1 && rscale[0] == 1 && rscale[1] == 1 {
+		t.Error("badly scaled pair was left unscaled")
+	}
+	for i := 0; i < 2; i++ {
+		for j := 0; j < 2; j++ {
+			wantA := lscale[i] * aOrig.Data[i*aOrig.Stride+j] * rscale[j]
+			wantB := lscale[i] * bOrig.Data[i*bOrig.Stride+j] * rscale[j]
+			if a.Data[i*a.Stride+j] != wantA || b.Data[i*b.Stride+j] != wantB {
+				t.Errorf("scaled entry (%d,%d)=(%v,%v), want (%v,%v)", i, j,
+					a.Data[i*a.Stride+j], b.Data[i*b.Stride+j], wantA, wantB)
+			}
+		}
+	}
 
 	// Check that scaling reduced the condition number.
 	rowNormOrig := make([]float64, 2)

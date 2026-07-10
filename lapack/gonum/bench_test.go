@@ -14,6 +14,8 @@ func BenchmarkDgeev(b *testing.B)         { testlapack.DgeevBenchmark(b, impl) }
 func BenchmarkDggev(b *testing.B)         { testlapack.DggevBenchmark(b, impl) }
 func BenchmarkDggevRightEV(b *testing.B)  { testlapack.DggevRightEVBenchmark(b, impl) }
 func BenchmarkDggevSingular(b *testing.B) { testlapack.DggevSingularBenchmark(b, impl) }
+func BenchmarkDggbal(b *testing.B)        { testlapack.DggbalBenchmark(b, impl) }
+func BenchmarkDgges(b *testing.B)         { testlapack.DggesBenchmark(b, impl) }
 func BenchmarkDgghrd(b *testing.B)        { testlapack.DgghrdBenchmark(b, impl) }
 func BenchmarkDhgeqz(b *testing.B)        { testlapack.DhgeqzBenchmark(b, impl) }
 func BenchmarkDlangb(b *testing.B)        { testlapack.DlangbBenchmark(b, impl) }

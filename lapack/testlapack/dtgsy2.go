@@ -38,6 +38,25 @@ func Dtgsy2Test(t *testing.T, impl Dtgsy2er) {
 	}
 
 	testDtgsy2Special(t, impl)
+	testDtgsy2DifAccumulatorDoesNotScaleSystem(t, impl)
+}
+
+func testDtgsy2DifAccumulatorDoesNotScaleSystem(t *testing.T, impl Dtgsy2er) {
+	c := []float64{0}
+	f := []float64{0}
+	scale, _, _, pq, ok := impl.Dtgsy2(blas.NoTrans, 1, 1, 1,
+		[]float64{1e-200}, 1, []float64{0}, 1, c, 1,
+		[]float64{0}, 1, []float64{-1e-200}, 1, f, 1,
+		0, 1, make([]int, 8))
+	if !ok {
+		t.Fatal("scaled identity operator reported coincident eigenvalues")
+	}
+	if scale != 1 {
+		t.Fatalf("DIF accumulator changed equation scale to %v, want 1", scale)
+	}
+	if pq != 1 {
+		t.Fatalf("PQ=%d, want one solved 2x2 subsystem", pq)
+	}
 }
 
 func testDtgsy2(t *testing.T, impl Dtgsy2er, m, n int, trans blas.Transpose, ijob, extra int, rnd *rand.Rand) {

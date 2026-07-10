@@ -209,7 +209,7 @@ func (impl Implementation) Dggev(jobvl lapack.LeftEVJob, jobvr lapack.RightEVJob
 	iwrk := 3 * n
 
 	// Balance the matrix pair (A,B).
-	ilo, ihi := impl.Dggbal(lapack.PermuteScale, n, a, lda, b, ldb, lscale, rscale, work[iwrk:])
+	ilo, ihi := impl.Dggbal(lapack.Permute, n, a, lda, b, ldb, lscale, rscale, work[2*n:])
 
 	// Compute dimensions of the active submatrix.
 	irows := ihi - ilo + 1
@@ -301,47 +301,13 @@ func (impl Implementation) Dggev(jobvl lapack.LeftEVJob, jobvr lapack.RightEVJob
 
 	// Back-transform eigenvectors.
 	if wantvl {
-		impl.Dggbak(lapack.PermuteScale, blas.Left, n, ilo, ihi, lscale, rscale, n, vl, ldvl)
-
-		// Normalize left eigenvectors.
-		for j := 0; j < n; j++ {
-			if alphai[j] == 0 {
-				// Real eigenvalue.
-				temp := bi.Dnrm2(n, vl[j:], ldvl)
-				if temp > dlamchS {
-					bi.Dscal(n, 1/temp, vl[j:], ldvl)
-				}
-			} else if alphai[j] > 0 {
-				// Complex pair.
-				temp := impl.Dlapy2(bi.Dnrm2(n, vl[j:], ldvl), bi.Dnrm2(n, vl[j+1:], ldvl))
-				if temp > dlamchS {
-					bi.Dscal(n, 1/temp, vl[j:], ldvl)
-					bi.Dscal(n, 1/temp, vl[j+1:], ldvl)
-				}
-			}
-		}
+		impl.Dggbak(lapack.Permute, blas.Left, n, ilo, ihi, lscale, rscale, n, vl, ldvl)
+		normalizeDggevEigenvectors(bi, n, alphai, vl, ldvl)
 	}
 
 	if wantvr {
-		impl.Dggbak(lapack.PermuteScale, blas.Right, n, ilo, ihi, lscale, rscale, n, vr, ldvr)
-
-		// Normalize right eigenvectors.
-		for j := 0; j < n; j++ {
-			if alphai[j] == 0 {
-				// Real eigenvalue.
-				temp := bi.Dnrm2(n, vr[j:], ldvr)
-				if temp > dlamchS {
-					bi.Dscal(n, 1/temp, vr[j:], ldvr)
-				}
-			} else if alphai[j] > 0 {
-				// Complex pair.
-				temp := impl.Dlapy2(bi.Dnrm2(n, vr[j:], ldvr), bi.Dnrm2(n, vr[j+1:], ldvr))
-				if temp > dlamchS {
-					bi.Dscal(n, 1/temp, vr[j:], ldvr)
-					bi.Dscal(n, 1/temp, vr[j+1:], ldvr)
-				}
-			}
-		}
+		impl.Dggbak(lapack.Permute, blas.Right, n, ilo, ihi, lscale, rscale, n, vr, ldvr)
+		normalizeDggevEigenvectors(bi, n, alphai, vr, ldvr)
 	}
 
 	// Undo scaling.
@@ -355,4 +321,29 @@ func (impl Implementation) Dggev(jobvl lapack.LeftEVJob, jobvr lapack.RightEVJob
 
 	work[0] = float64(maxwrk)
 	return true
+}
+
+func normalizeDggevEigenvectors(bi blas.Float64, n int, alphai, v []float64, ldv int) {
+	for j := 0; j < n; j++ {
+		var vmax float64
+		switch {
+		case alphai[j] == 0:
+			for i := 0; i < n; i++ {
+				vmax = math.Max(vmax, math.Abs(v[i*ldv+j]))
+			}
+		case alphai[j] > 0:
+			for i := 0; i < n; i++ {
+				vmax = math.Max(vmax, math.Abs(v[i*ldv+j])+math.Abs(v[i*ldv+j+1]))
+			}
+		default:
+			continue
+		}
+		if vmax <= dlamchS {
+			continue
+		}
+		bi.Dscal(n, 1/vmax, v[j:], ldv)
+		if alphai[j] > 0 {
+			bi.Dscal(n, 1/vmax, v[j+1:], ldv)
+		}
+	}
 }

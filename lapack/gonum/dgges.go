@@ -88,8 +88,10 @@ func (impl Implementation) Dgges(jobvsl, jobvsr lapack.SchurComp, sort lapack.Sc
 	wantvsr := jobvsr == lapack.SchurHess
 	wantst := sort == lapack.SortSelected
 
-	// Minimum workspace: 3*n (lscale, rscale, tau) + 6*n (Dggbal) = 9*n.
-	minwrk := max(1, 9*n)
+	minwrk := 1
+	if n > 0 {
+		minwrk = max(8*n, 6*n+16)
+	}
 
 	switch {
 	case jobvsl != lapack.SchurHess && jobvsl != lapack.SchurNone:
@@ -249,7 +251,7 @@ func (impl Implementation) Dgges(jobvsl, jobvsr lapack.SchurComp, sort lapack.Sc
 	iwrk := 3 * n
 
 	// Balance the matrix pair (A,B).
-	ilo, ihi := impl.Dggbal(lapack.PermuteScale, n, a, lda, b, ldb, lscale, rscale, work[iwrk:])
+	ilo, ihi := impl.Dggbal(lapack.Permute, n, a, lda, b, ldb, lscale, rscale, work[2*n:])
 
 	// Compute dimensions of the active submatrix.
 	irows := ihi - ilo + 1
@@ -366,10 +368,10 @@ func (impl Implementation) Dgges(jobvsl, jobvsr lapack.SchurComp, sort lapack.Sc
 
 	// Back-transform eigenvectors.
 	if wantvsl {
-		impl.Dggbak(lapack.PermuteScale, blas.Left, n, ilo, ihi, lscale, rscale, n, vsl, ldvsl)
+		impl.Dggbak(lapack.Permute, blas.Left, n, ilo, ihi, lscale, rscale, n, vsl, ldvsl)
 	}
 	if wantvsr {
-		impl.Dggbak(lapack.PermuteScale, blas.Right, n, ilo, ihi, lscale, rscale, n, vsr, ldvsr)
+		impl.Dggbak(lapack.Permute, blas.Right, n, ilo, ihi, lscale, rscale, n, vsr, ldvsr)
 	}
 
 	// Undo scaling.
@@ -383,6 +385,39 @@ func (impl Implementation) Dgges(jobvsl, jobvsr lapack.SchurComp, sort lapack.Sc
 		impl.Dlascl(lapack.General, 0, 0, cscaleb, bnrm, n, 1, beta, n)
 	}
 
+	if wantst {
+		lastSelected := true
+		lastPairSelected := true
+		pair := 0
+		sdim = 0
+		for i := 0; i < n; i++ {
+			selected := selctg(alphar[i], alphai[i], beta[i])
+			if alphai[i] == 0 {
+				if selected {
+					sdim++
+				}
+				pair = 0
+				if selected && !lastSelected {
+					ok = false
+				}
+			} else if pair == 1 {
+				selected = selected || lastSelected
+				lastSelected = selected
+				if selected {
+					sdim += 2
+				}
+				pair = -1
+				if selected && !lastPairSelected {
+					ok = false
+				}
+			} else {
+				pair = 1
+			}
+			lastPairSelected = lastSelected
+			lastSelected = selected
+		}
+	}
+
 	work[0] = float64(maxwrk)
-	return sdim, true
+	return sdim, ok
 }

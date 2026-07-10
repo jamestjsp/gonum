@@ -99,6 +99,36 @@ func DggesTest(t *testing.T, impl Dggeser) {
 			},
 			b: eye(4, 4),
 		},
+		{
+			name: "Imbalanced dense pair",
+			a: blas64.General{
+				Rows: 3, Cols: 3, Stride: 3,
+				Data: []float64{
+					1, 2e-8, 3e-16,
+					4e8, 5, 6e-8,
+					7e16, 8e8, 10,
+				},
+			},
+			b: blas64.General{
+				Rows: 3, Cols: 3, Stride: 3,
+				Data: []float64{
+					2, 1e-8, 5e-17,
+					-1e8, 3, 2e-8,
+					2.5e15, -2e8, 4,
+				},
+			},
+		},
+		{
+			name: "Dggbal scaling pair",
+			a: blas64.General{
+				Rows: 2, Cols: 2, Stride: 2,
+				Data: []float64{1e-10, 1, 1, 1e10},
+			},
+			b: blas64.General{
+				Rows: 2, Cols: 2, Stride: 2,
+				Data: []float64{1, 1, 1, 1},
+			},
+		},
 	} {
 		testDggesMatrix(t, impl, tc.name, tc.a, tc.b, optimumWork)
 	}
@@ -108,6 +138,31 @@ func DggesTest(t *testing.T, impl Dggeser) {
 
 	// Test sorting.
 	testDggesSorting(t, impl)
+	testDggesSelectionRecheck(t, impl)
+}
+
+func testDggesSelectionRecheck(t *testing.T, impl Dggeser) {
+	n := 2
+	a := []float64{1, 0, 0, 2}
+	b := []float64{1, 0, 0, 1}
+	work := make([]float64, 1)
+	impl.Dgges(lapack.SchurNone, lapack.SchurNone, lapack.SortSelected, nil,
+		n, nil, n, nil, n, nil, nil, nil, nil, 1, nil, 1, work, -1, nil)
+	work = make([]float64, int(work[0]))
+	calls := 0
+	selector := func(alphar, alphai, beta float64) bool {
+		calls++
+		if calls <= n {
+			return alphar/beta > 1.5
+		}
+		return alphar/beta < 1.5
+	}
+	_, ok := impl.Dgges(lapack.SchurNone, lapack.SchurNone, lapack.SortSelected, selector,
+		n, a, n, b, n, make([]float64, n), make([]float64, n), make([]float64, n),
+		nil, 1, nil, 1, work, len(work), make([]bool, n))
+	if ok {
+		t.Fatal("sorting succeeded after selected eigenvalues no longer satisfied selector")
+	}
 }
 
 func testDgges(t *testing.T, impl Dggeser, n int, jobvsl, jobvsr lapack.SchurComp, extra int, wl worklen, rnd *rand.Rand) {
@@ -136,7 +191,10 @@ func testDgges(t *testing.T, impl Dggeser, n int, jobvsl, jobvsr lapack.SchurCom
 		vsr = nanGeneral(n, n, ldvsr)
 	}
 
-	minwork := max(1, 9*n)
+	minwork := 1
+	if n > 0 {
+		minwork = max(8*n, 6*n+16)
+	}
 	var lwork int
 	switch wl {
 	case minimumWork:

@@ -170,13 +170,14 @@ func (impl Implementation) Dtgsyl(trans blas.Transpose, ijob, m, n int,
 	}
 
 	var dscale, dsum, scaloc, scale2 float64
+	var pq int
 	var lok bool
 
 	for iround := 1; iround <= isolve; iround++ {
 		scale = 1
 		dscale = 0
 		dsum = 1
-		pq := 0
+		pq = 0
 
 		if notran {
 			// Solve (I, J) - subsystem:
@@ -202,10 +203,12 @@ func (impl Implementation) Dtgsyl(trans blas.Transpose, ijob, m, n int,
 					is-- // 0-based
 
 					// Solve the (I, J)-subsystem using Dtgsy2.
-					scaloc, dsum, dscale, _, lok = impl.Dtgsy2(trans, ifunc, mbi, nbj,
+					var ppqq int
+					scaloc, dsum, dscale, ppqq, lok = impl.Dtgsy2(trans, ifunc, mbi, nbj,
 						a[is*lda+is:], lda, b[js*ldb+js:], ldb, c[is*ldc+js:], ldc,
 						d[is*ldd+is:], ldd, e[js*lde+js:], lde, f[is*ldf+js:], ldf,
 						dsum, dscale, iwork[p+q+2:])
+					pq += ppqq
 					if !lok {
 						ok = false
 					}
@@ -265,10 +268,12 @@ func (impl Implementation) Dtgsyl(trans blas.Transpose, ijob, m, n int,
 					js-- // 0-based
 
 					// Solve the (I, J)-subsystem using Dtgsy2.
-					scaloc, dsum, dscale, _, lok = impl.Dtgsy2(trans, ifunc, mbi, nbj,
+					var ppqq int
+					scaloc, dsum, dscale, ppqq, lok = impl.Dtgsy2(trans, ifunc, mbi, nbj,
 						a[is*lda+is:], lda, b[js*ldb+js:], ldb, c[is*ldc+js:], ldc,
 						d[is*ldd+is:], ldd, e[js*lde+js:], lde, f[is*ldf+js:], ldf,
 						dsum, dscale, iwork[p+q+2:])
+					pq += ppqq
 					if !lok {
 						ok = false
 					}
@@ -306,11 +311,6 @@ func (impl Implementation) Dtgsyl(trans blas.Transpose, ijob, m, n int,
 			}
 		}
 
-		if ifunc > 0 {
-			pq = 0
-		}
-		_ = pq
-
 		if isolve == 2 && iround == 1 {
 			if notran {
 				ifunc = ijob
@@ -328,8 +328,13 @@ func (impl Implementation) Dtgsyl(trans blas.Transpose, ijob, m, n int,
 	}
 
 	// Compute Dif.
-	if ijob >= 1 && ijob <= 2 && notran {
-		dif = math.Sqrt(float64(2*m*n)) * dscale / dsum
+	if notran && dscale != 0 {
+		switch ijob {
+		case 1, 3:
+			dif = math.Sqrt(float64(2*m*n)) / (dscale * math.Sqrt(dsum))
+		case 2, 4:
+			dif = math.Sqrt(float64(pq)) / (dscale * math.Sqrt(dsum))
+		}
 	}
 
 	work[0] = float64(lwmin)

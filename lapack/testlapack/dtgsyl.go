@@ -39,6 +39,32 @@ func DtgsylTest(t *testing.T, impl Dtgsyler) {
 	}
 
 	testDtgsylWorkspace(t, impl)
+	testDtgsylDifIdentity(t, impl)
+}
+
+func testDtgsylDifIdentity(t *testing.T, impl Dtgsyler) {
+	for _, test := range []struct {
+		ijob int
+		want float64
+	}{
+		{ijob: 1, want: 2 * math.Sqrt2},
+		{ijob: 2, want: 2},
+		{ijob: 3, want: 2 * math.Sqrt2},
+		{ijob: 4, want: 2},
+	} {
+		work := make([]float64, 2)
+		iwork := make([]int, 8)
+		_, dif, ok := impl.Dtgsyl(blas.NoTrans, test.ijob, 1, 1,
+			[]float64{2}, 1, []float64{0}, 1, []float64{0}, 1,
+			[]float64{0}, 1, []float64{-2}, 1, []float64{0}, 1,
+			work, len(work), iwork)
+		if !ok {
+			t.Fatalf("ijob=%d: identity operator reported coincident eigenvalues", test.ijob)
+		}
+		if math.Abs(dif-test.want) > 1e-14 {
+			t.Fatalf("ijob=%d: scaled identity operator DIF=%v, want %v", test.ijob, dif, test.want)
+		}
+	}
 }
 
 func testDtgsyl(t *testing.T, impl Dtgsyler, m, n int, trans blas.Transpose, ijob, extra int, rnd *rand.Rand) {

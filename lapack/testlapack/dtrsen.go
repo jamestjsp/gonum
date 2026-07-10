@@ -35,6 +35,21 @@ func DtrsenTest(t *testing.T, impl Dtrsener) {
 	}
 
 	testDtrsenWorkspace(t, impl)
+	testDtrsenSelectSecondOfPair(t, impl)
+}
+
+func testDtrsenSelectSecondOfPair(t *testing.T, impl Dtrsener) {
+	work := make([]float64, 2)
+	iwork := make([]int, 1)
+	m, _, _, ok := impl.Dtrsen(0, false, []bool{false, true}, 2,
+		[]float64{1, 2, -3, 1}, 2, nil, 1,
+		make([]float64, 2), make([]float64, 2), work, len(work), iwork, len(iwork))
+	if !ok {
+		t.Fatal("complex pair selection failed")
+	}
+	if m != 2 {
+		t.Fatalf("selected subspace dimension=%d, want 2", m)
+	}
 }
 
 type eigPair struct{ wr, wi float64 }
@@ -133,7 +148,7 @@ func testDtrsen(t *testing.T, impl Dtrsener, n, extra int, selectPattern string,
 	// Workspace query.
 	var worksize [1]float64
 	var iworksize [1]int
-	impl.Dtrsen(ijob, wantq, selected, n, nil, max(1, tMat.Stride), nil, ldq, nil, nil, worksize[:], -1, iworksize[:], -1)
+	impl.Dtrsen(ijob, wantq, selected, n, tMat.Data, max(1, tMat.Stride), nil, ldq, nil, nil, worksize[:], -1, iworksize[:], -1)
 	lwork := int(worksize[0])
 	liwork := iworksize[0]
 
@@ -178,8 +193,9 @@ func testDtrsen(t *testing.T, impl Dtrsener, n, extra int, selectPattern string,
 		if wants && s != 1 {
 			t.Errorf("%s: s=%v, want 1 for m=0 or m=n", prefix, s)
 		}
-		if wantsp && sep != 0 {
-			t.Errorf("%s: sep=%v, want 0 for m=0 or m=n", prefix, sep)
+		wantSep := dlange(lapack.MaxColumnSum, n, n, tMat.Data, tMat.Stride)
+		if wantsp && sep != wantSep {
+			t.Errorf("%s: sep=%v, want %v for m=0 or m=n", prefix, sep, wantSep)
 		}
 	} else {
 		if wants {
@@ -240,6 +256,19 @@ func testDtrsenWorkspace(t *testing.T, impl Dtrsener) {
 		if liwork < 1 {
 			t.Errorf("n=%d: workspace query returned liwork=%d, want >= 1", n, liwork)
 		}
+	}
+
+	var worksize [1]float64
+	var iworksize [1]int
+	impl.Dtrsen(2, false, []bool{false, true, false, false}, 4,
+		[]float64{
+			1, 2, 0, 0,
+			-3, 1, 0, 0,
+			0, 0, 4, 0,
+			0, 0, 0, 5,
+		}, 4, nil, 1, nil, nil, worksize[:], -1, iworksize[:], -1)
+	if worksize[0] != 8 || iworksize[0] != 4 {
+		t.Fatalf("complex-pair workspace=(%v,%d), want (8,4)", worksize[0], iworksize[0])
 	}
 }
 

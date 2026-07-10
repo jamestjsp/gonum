@@ -25,7 +25,8 @@ import (
 // If wantq is true, the matrix Q of Schur vectors is updated.
 //
 // selected specifies which eigenvalues are to be moved to the top-left of T.
-// For complex conjugate pairs, both must be selected or both deselected.
+// For a complex conjugate pair, either or both corresponding elements may be
+// true; the pair is always moved together.
 //
 // On return, m is the dimension of the specified invariant subspace.
 // s is the reciprocal condition number for the average of the selected
@@ -55,35 +56,42 @@ func (impl Implementation) Dtrsen(ijob int, wantq bool, selected []bool, n int, 
 
 	// Workspace requirements.
 	var lwmin, liwmin int
+	msel := 0
 	if n == 0 {
 		lwmin = 1
 		liwmin = 1
 	} else {
-		if ijob > 0 && len(selected) < n {
-			panic(badLenSelected)
+		if ijob > 0 {
+			switch {
+			case len(selected) < n:
+				panic(badLenSelected)
+			case len(t) < (n-1)*ldt+n:
+				panic(shortT)
+			}
+			for k := 0; k < n; {
+				if k < n-1 && t[(k+1)*ldt+k] != 0 {
+					if selected[k] || selected[k+1] {
+						msel += 2
+					}
+					k += 2
+					continue
+				}
+				if selected[k] {
+					msel++
+				}
+				k++
+			}
 		}
 		switch ijob {
 		case 0:
 			lwmin = max(1, n)
 			liwmin = 1
 		case 1:
-			m = 0
-			for _, sel := range selected[:n] {
-				if sel {
-					m++
-				}
-			}
-			lwmin = max(1, n, m*(n-m))
+			lwmin = max(1, n, msel*(n-msel))
 			liwmin = 1
 		case 2, 3:
-			m = 0
-			for _, sel := range selected[:n] {
-				if sel {
-					m++
-				}
-			}
-			lwmin = max(1, n, 2*m*(n-m))
-			liwmin = max(1, m*(n-m))
+			lwmin = max(1, n, 2*msel*(n-msel))
+			liwmin = max(1, msel*(n-msel))
 		}
 	}
 
@@ -94,7 +102,7 @@ func (impl Implementation) Dtrsen(ijob int, wantq bool, selected []bool, n int, 
 		if liwork == -1 {
 			iwork[0] = liwmin
 		}
-		return 0, 0, 0, true
+		return msel, 0, 0, true
 	}
 
 	if n == 0 {
@@ -136,7 +144,11 @@ func (impl Implementation) Dtrsen(ijob int, wantq bool, selected []bool, n int, 
 			n2 = 1
 		}
 
-		if selected[k] {
+		swap := selected[k]
+		if n2 == 1 {
+			swap = swap || selected[k+1]
+		}
+		if swap {
 			if k > ks {
 				compq := lapack.UpdateSchurNone
 				if wantq {
@@ -176,6 +188,11 @@ func (impl Implementation) Dtrsen(ijob int, wantq bool, selected []bool, n int, 
 
 	s = 1
 	sep = 0
+	wants := ijob == 1 || ijob == 3
+	wantsp := ijob == 2 || ijob == 3
+	if (m == 0 || m == n) && wantsp {
+		sep = impl.Dlange(lapack.MaxColumnSum, n, n, t, ldt, work)
+	}
 	if ijob == 0 || m == 0 || m == n || !ok {
 		return m, s, sep, ok
 	}
@@ -183,9 +200,6 @@ func (impl Implementation) Dtrsen(ijob int, wantq bool, selected []bool, n int, 
 	n1 := m
 	n2 := n - m
 	nn := n1 * n2
-
-	wants := ijob == 1 || ijob == 3
-	wantsp := ijob == 2 || ijob == 3
 
 	if wants {
 		impl.Dlacpy(blas.All, n1, n2, t[n1:], ldt, work, n2)
