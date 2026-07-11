@@ -40,6 +40,24 @@ static lapack_int run_dgges_large_alpha(lapack_int n, double *a, double *b,
 		n, a, n, b, n, sdim, ar, ai, beta, vsl, n, vsr, n);
 }
 
+static lapack_int query_dtgsen(lapack_int ijob, lapack_int n, lapack_int lwork,
+		lapack_int liwork, double *work_out, lapack_int *iwork_out) {
+	lapack_logical select[2] = {1, 0};
+	double a[4] = {1, 0, 0, 2};
+	double b[4] = {1, 0, 0, 1};
+	double ar[2] = {0, 0}, ai[2] = {0, 0}, beta[2] = {0, 0};
+	double q[4] = {1, 0, 0, 1}, z[4] = {1, 0, 0, 1};
+	double dif[2] = {0, 0}, work[1] = {-1}, pl = 0, pr = 0;
+	lapack_int iwork[1] = {-1}, m = 0;
+	lapack_int ld = n > 0 ? n : 1;
+	lapack_int info = LAPACKE_dtgsen_work(LAPACK_ROW_MAJOR, ijob, 0, 0,
+		select, n, a, ld, b, ld, ar, ai, beta, q, ld, z, ld, &m, &pl, &pr,
+		dif, work, lwork, iwork, liwork);
+	*work_out = work[0];
+	*iwork_out = iwork[0];
+	return info;
+}
+
 extern void dtgex2_(int*, int*, int*, double*, int*, double*, int*, double*, int*,
 	double*, int*, int*, int*, int*, double*, int*, int*);
 
@@ -113,6 +131,14 @@ func netlibDggesLargeAlpha(n int, a, b []float64, ar, ai, beta, vsl, vsr []float
 		(*C.double)(unsafe.Pointer(&beta[0])), (*C.double)(unsafe.Pointer(&vsl[0])),
 		(*C.double)(unsafe.Pointer(&vsr[0])))
 	return int(csdim), int(cinfo)
+}
+
+func netlibDtgsenWorkspace(ijob, n, lwork, liwork int) (work float64, iwork, info int) {
+	var cwork C.double
+	var ciwork C.lapack_int
+	cinfo := C.query_dtgsen(C.lapack_int(ijob), C.lapack_int(n), C.lapack_int(lwork), C.lapack_int(liwork),
+		&cwork, &ciwork)
+	return float64(cwork), int(ciwork), int(cinfo)
 }
 
 func netlibDtgex2(n int, a, b []float64, j1, n1, n2 int) int {

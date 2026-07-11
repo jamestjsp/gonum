@@ -102,6 +102,39 @@ func TestDggesNetlibSelectorAlphaScale(t *testing.T) {
 	checkGeneralizedSchurResult(t, "Netlib alpha-scale selector", a, b, na, nb, nvsl, nvsr, n)
 }
 
+func TestDtgsenNetlibWorkspaceQueries(t *testing.T) {
+	for _, tc := range []struct {
+		name                   string
+		ijob, n, lwork, liwork int
+	}{
+		{name: "EmptyReorder", ijob: 0, n: 0, lwork: -1, liwork: -1},
+		{name: "EmptyCondition", ijob: 1, n: 0, lwork: -1, liwork: -1},
+		{name: "FloatOnly", ijob: 1, n: 2, lwork: -1, liwork: 1},
+		{name: "IntegerOnly", ijob: 1, n: 2, lwork: 1, liwork: -1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			work := []float64{-1}
+			iwork := []int{-1}
+			var selected []bool
+			var a []float64
+			if tc.n != 0 {
+				selected = []bool{true, false}
+				a = []float64{1, 0, 0, 2}
+			}
+			Implementation{}.Dtgsen(tc.ijob, false, false, selected, tc.n,
+				a, max(1, tc.n), nil, max(1, tc.n), nil, nil, nil,
+				nil, 1, nil, 1, work, tc.lwork, iwork, tc.liwork)
+			nwork, niwork, info := netlibDtgsenWorkspace(tc.ijob, tc.n, tc.lwork, tc.liwork)
+			if info != 0 {
+				t.Fatalf("Netlib workspace query failed with info=%d", info)
+			}
+			if work[0] != nwork || iwork[0] != niwork {
+				t.Fatalf("Gonum workspace=(%v,%d), Netlib=(%v,%d)", work[0], iwork[0], nwork, niwork)
+			}
+		})
+	}
+}
+
 func compareDggesWithNetlib(t *testing.T, a, b []float64, n int, dosort, compareEigenvalues bool) {
 	t.Helper()
 	ga, gb := append([]float64(nil), a...), append([]float64(nil), b...)

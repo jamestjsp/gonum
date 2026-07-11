@@ -25,6 +25,22 @@ func DtgexcTest(t *testing.T, impl Dtgexcer) {
 	if work[0] < 1 {
 		t.Errorf("Workspace query returned invalid size: %v", work[0])
 	}
+	for _, tc := range []struct {
+		name       string
+		ifst, ilst int
+	}{
+		{name: "IFST", ifst: -1, ilst: 0},
+		{name: "ILST", ifst: 0, ilst: 2},
+	} {
+		t.Run("QueryValidates"+tc.name, func(t *testing.T) {
+			if !dtgexcPanics(func() {
+				impl.Dtgexc(false, false, 2, nil, 2, nil, 2, nil, 1, nil, 1,
+					tc.ifst, tc.ilst, work, -1)
+			}) {
+				t.Fatal("workspace query accepted an invalid block position")
+			}
+		})
+	}
 
 	t.Run("SingleElementQuickReturn", func(t *testing.T) {
 		work := make([]float64, 1)
@@ -35,7 +51,7 @@ func DtgexcTest(t *testing.T, impl Dtgexcer) {
 		if work[0] != 1 {
 			t.Fatalf("workspace query returned %v, want 1", work[0])
 		}
-		ifst, ilst, ok := impl.Dtgexc(false, false, 1, []float64{1}, 1, []float64{1}, 1,
+		ifst, ilst, ok := impl.Dtgexc(false, false, 1, nil, 1, nil, 1,
 			nil, 1, nil, 1, 0, 0, work, 1)
 		if !ok || ifst != 0 || ilst != 0 {
 			t.Fatalf("quick return = (%d, %d, %v), want (0, 0, true)", ifst, ilst, ok)
@@ -47,6 +63,14 @@ func DtgexcTest(t *testing.T, impl Dtgexcer) {
 
 	// Test backward move.
 	testDtgexcBackward(t, impl)
+}
+
+func dtgexcPanics(f func()) (panicked bool) {
+	defer func() {
+		panicked = recover() != nil
+	}()
+	f()
+	return false
 }
 
 func testDtgexcForward(t *testing.T, impl Dtgexcer) {

@@ -83,13 +83,6 @@ func (impl Implementation) Dtgsen(ijob int, wantq, wantz bool, selected []bool, 
 
 	lquery := lwork == -1 || liwork == -1
 
-	// Quick return if possible.
-	if n == 0 {
-		work[0] = 1
-		iwork[0] = 1
-		return 0, 0, 0, dif, true
-	}
-
 	if !lquery || ijob != 0 {
 		switch {
 		case len(selected) < n:
@@ -127,13 +120,9 @@ func (impl Implementation) Dtgsen(ijob int, wantq, wantz bool, selected []bool, 
 		liwmin = 1
 	}
 
+	work[0] = float64(lwmin)
+	iwork[0] = liwmin
 	if lquery {
-		if lwork == -1 {
-			work[0] = float64(lwmin)
-		}
-		if liwork == -1 {
-			iwork[0] = liwmin
-		}
 		return m, 0, 0, dif, true
 	}
 

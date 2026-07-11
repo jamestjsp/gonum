@@ -42,6 +42,7 @@ func DtgsenTest(t *testing.T, impl Dtgsener) {
 	}
 
 	testDtgsenWorkspace(t, impl)
+	testDtgsenPartialWorkspaceQueries(t, impl)
 	testDtgsenTrivialSeparation(t, impl)
 	testDtgsenProjectionBounds(t, impl)
 	testDtgsenNormalizesRealEigenvalueSigns(t, impl)
@@ -164,12 +165,25 @@ func testDtgsen(t *testing.T, impl Dtgsener, n, ijob int, wantq, wantz bool, sel
 		n, ijob, wantq, wantz, selectPattern)
 
 	if n == 0 {
-		// Quick return test.
-		var work [1]float64
-		var iwork [1]int
+		var workQuery [1]float64
+		var iworkQuery [1]int
+		impl.Dtgsen(ijob, wantq, wantz, nil, 0,
+			nil, 1, nil, 1, nil, nil, nil, nil, 1, nil, 1,
+			workQuery[:], -1, iworkQuery[:], -1)
+		wantLWork := 16
+		wantLIWork := 1
+		if ijob != 0 {
+			wantLIWork = 6
+		}
+		if workQuery[0] != float64(wantLWork) || iworkQuery[0] != wantLIWork {
+			t.Errorf("%s: workspace query=(%v,%d), want (%d,%d)", prefix,
+				workQuery[0], iworkQuery[0], wantLWork, wantLIWork)
+		}
+		work := make([]float64, wantLWork)
+		iwork := make([]int, wantLIWork)
 		m, pl, pr, dif, ok := impl.Dtgsen(ijob, wantq, wantz, nil, 0,
 			nil, 1, nil, 1, nil, nil, nil, nil, 1, nil, 1,
-			work[:], 1, iwork[:], 1)
+			work, len(work), iwork, len(iwork))
 		if m != 0 || !ok {
 			t.Errorf("%s: unexpected result for n=0", prefix)
 		}
@@ -359,7 +373,7 @@ func testDtgsen(t *testing.T, impl Dtgsener, n, ijob int, wantq, wantz bool, sel
 }
 
 func testDtgsenWorkspace(t *testing.T, impl Dtgsener) {
-	for _, n := range []int{1, 5, 20} {
+	for _, n := range []int{0, 1, 5, 20} {
 		a := make([]float64, n*n)
 		selected := make([]bool, n)
 		for i := 0; i < n; i++ {
@@ -370,9 +384,10 @@ func testDtgsenWorkspace(t *testing.T, impl Dtgsener) {
 		for _, ijob := range []int{0, 1, 2, 3, 4, 5} {
 			var worksize [1]float64
 			var iworksize [1]int
+			ld := max(1, n)
 			impl.Dtgsen(ijob, true, true, selected, n,
-				a, n, nil, n, nil, nil, nil,
-				nil, n, nil, n,
+				a, ld, nil, ld, nil, nil, nil,
+				nil, ld, nil, ld,
 				worksize[:], -1, iworksize[:], -1)
 			lwork := int(worksize[0])
 			liwork := iworksize[0]
@@ -399,6 +414,33 @@ func testDtgsenWorkspace(t *testing.T, impl Dtgsener) {
 					n, ijob, liwork, liwmin)
 			}
 		}
+	}
+}
+
+func testDtgsenPartialWorkspaceQueries(t *testing.T, impl Dtgsener) {
+	const n = 2
+	a := []float64{1, 0, 0, 2}
+	selected := []bool{true, false}
+	const wantLWork = 24
+	const wantLIWork = 8
+	for _, tc := range []struct {
+		name          string
+		lwork, liwork int
+	}{
+		{name: "Float", lwork: -1, liwork: 1},
+		{name: "Integer", lwork: 1, liwork: -1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			work := []float64{-1}
+			iwork := []int{-1}
+			impl.Dtgsen(1, false, false, selected, n,
+				a, n, nil, n, nil, nil, nil,
+				nil, 1, nil, 1,
+				work, tc.lwork, iwork, tc.liwork)
+			if work[0] != wantLWork || iwork[0] != wantLIWork {
+				t.Fatalf("workspace query=(%v,%d), want (%d,%d)", work[0], iwork[0], wantLWork, wantLIWork)
+			}
+		})
 	}
 }
 

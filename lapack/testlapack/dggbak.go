@@ -25,6 +25,35 @@ func DggbakTest(t *testing.T, impl Dggbaker) {
 			}
 		}
 	}
+	testDggbakRectangularStride(t, impl)
+}
+
+func testDggbakRectangularStride(t *testing.T, impl Dggbaker) {
+	const n = 5
+	const m = 2
+	const ldv = 3
+	lscale := make([]float64, n)
+	rscale := make([]float64, n)
+	v := make([]float64, (n-1)*ldv+m)
+	for i := range n {
+		lscale[i] = 1
+		rscale[i] = float64(i + 1)
+		for j := range m {
+			v[i*ldv+j] = float64(i*m + j + 1)
+		}
+	}
+	want := append([]float64(nil), v...)
+	for i := range n {
+		for j := range m {
+			want[i*ldv+j] *= rscale[i]
+		}
+	}
+	impl.Dggbak(lapack.Scale, blas.Right, n, 0, n-1, lscale, rscale, m, v, ldv)
+	for i := range v {
+		if v[i] != want[i] {
+			t.Fatalf("v[%d]=%g, want %g", i, v[i], want[i])
+		}
+	}
 }
 
 func testDggbak(t *testing.T, impl Dggbaker, n int, job lapack.BalanceJob, side blas.Side) {

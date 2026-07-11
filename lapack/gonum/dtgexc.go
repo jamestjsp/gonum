@@ -45,18 +45,21 @@ func (impl Implementation) Dtgexc(wantq, wantz bool, n int, a []float64, lda int
 		panic(badLdQ)
 	case ldz < 1, wantz && ldz < n:
 		panic(badLdZ)
+	case ifst < 0 || ifst >= n:
+		panic(badIfst)
+	case ilst < 0 || ilst >= n:
+		panic(badIlst)
 	case lwork < minWork && lwork != -1:
 		panic(badLWork)
 	}
+	work[0] = float64(minWork)
 
 	// Workspace query.
 	if lwork == -1 {
-		work[0] = float64(minWork)
 		return ifst, ilst, true
 	}
 
-	if n == 0 {
-		work[0] = float64(minWork)
+	if n <= 1 {
 		return ifst, ilst, true
 	}
 
@@ -71,18 +74,6 @@ func (impl Implementation) Dtgexc(wantq, wantz bool, n int, a []float64, lda int
 		panic(shortZ)
 	case len(work) < lwork:
 		panic(shortWork)
-	}
-	work[0] = float64(minWork)
-
-	switch {
-	case ifst < 0 || ifst >= n:
-		panic(badIfst)
-	case ilst < 0 || ilst >= n:
-		panic(badIlst)
-	}
-
-	if n == 1 {
-		return ifst, ilst, true
 	}
 	if ifst > 0 && a[ifst*lda+ifst-1] != 0 {
 		ifst--
