@@ -32,11 +32,39 @@ func DhgeqzTest(t *testing.T, impl Dhgeqzer) {
 	}
 
 	testDhgeqz2x2(t, impl)
+	testDhgeqzIsolatedEigenvalueSigns(t, impl)
 	testDhgeqz3x3(t, impl)
 	testDhgeqzComplex4x4(t, impl)
 	testDhgeqzComplex6x6(t, impl)
 	testDhgeqzLargeN(t, impl, 50)
 	testDhgeqzLargeN(t, impl, 100)
+}
+
+func testDhgeqzIsolatedEigenvalueSigns(t *testing.T, impl Dhgeqzer) {
+	const n = 3
+	h := []float64{
+		2, 1, 0,
+		0, 3, 1,
+		0, 0, 4,
+	}
+	tt := []float64{
+		-1, 2, 0,
+		0, -2, 3,
+		0, 0, -4,
+	}
+	alphar := make([]float64, n)
+	alphai := make([]float64, n)
+	beta := make([]float64, n)
+	work := make([]float64, n)
+	if !impl.Dhgeqz(lapack.EigenvaluesAndSchur, lapack.SchurNone, lapack.SchurNone,
+		n, 1, 1, h, n, tt, n, alphar, alphai, beta, nil, 1, nil, 1, work, len(work)) {
+		t.Fatal("isolated eigenvalue case did not converge")
+	}
+	for i, v := range beta {
+		if v < 0 {
+			t.Errorf("beta[%d]=%v, want non-negative Netlib representation", i, v)
+		}
+	}
 }
 
 func testDhgeqz2x2(t *testing.T, impl Dhgeqzer) {

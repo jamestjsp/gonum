@@ -243,6 +243,15 @@ extractEigenvalues:
 				pair = true
 			} else {
 				// 1x1 block - real eigenvalue.
+				if math.Signbit(b[k*ldb+k]) {
+					for j := range n {
+						a[k*lda+j] = -a[k*lda+j]
+						b[k*ldb+j] = -b[k*ldb+j]
+						if wantq {
+							q[j*ldq+k] = -q[j*ldq+k]
+						}
+					}
+				}
 				alphar[k] = a[k*lda+k]
 				alphai[k] = 0
 				beta[k] = b[k*ldb+k]
@@ -301,8 +310,8 @@ extractEigenvalues:
 
 		rnorm := impl.Dlange(lapack.Frobenius, n1, n2, c, n2, nil)
 		lnorm := impl.Dlange(lapack.Frobenius, n1, n2, f, n2, nil)
-		pl = scale / math.Hypot(scale, lnorm)
-		pr = scale / math.Hypot(scale, rnorm)
+		pl = scale / math.Hypot(scale, rnorm)
+		pr = scale / math.Hypot(scale, lnorm)
 	}
 
 	// Compute DIF (separation estimates).

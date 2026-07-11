@@ -84,44 +84,47 @@ func (impl Implementation) Dggbal(job lapack.BalanceJob, n int, a []float64, lda
 
 	if job != lapack.Scale {
 		// Permute rows/columns to isolate eigenvalues.
+		k, l := 0, n-1
+		permute := func(i, j, m int) {
+			lscale[m] = float64(i)
+			rscale[m] = float64(j)
+			if i != m {
+				bi.Dswap(n-k, a[i*lda+k:], 1, a[m*lda+k:], 1)
+				bi.Dswap(n-k, b[i*ldb+k:], 1, b[m*ldb+k:], 1)
+			}
+			if j != m {
+				bi.Dswap(l+1, a[j:], lda, a[m:], lda)
+				bi.Dswap(l+1, b[j:], ldb, b[m:], ldb)
+			}
+		}
 
-		// Find rows/columns containing only zeros in one matrix.
-		// These correspond to infinite eigenvalues.
-
-		// Search for rows isolating an eigenvalue and push them down.
-		ihi = n - 1
 		for {
-			if ihi == 0 {
-				rscale[0] = 1
-				lscale[0] = 1
-				goto done
+			if l == 0 {
+				lscale[0] = 0
+				rscale[0] = 0
+				break
 			}
 			found := false
-		rowLoop:
-			for i := ihi; i >= 0; i-- {
-				foundNonzero := false
-				for j := 0; j <= ihi; j++ {
-					if i == j {
+			for i := l; i >= 0; i-- {
+				jFound := -1
+				for j := 0; j <= l; j++ {
+					if a[i*lda+j] == 0 && b[i*ldb+j] == 0 {
 						continue
 					}
-					if a[i*lda+j] != 0 || b[i*ldb+j] != 0 {
-						foundNonzero = true
+					if jFound != -1 {
+						jFound = -2
 						break
 					}
+					jFound = j
 				}
-				if !foundNonzero {
-					// Row i has only zero off-diagonal elements.
-					rscale[ihi] = float64(i)
-					lscale[ihi] = float64(i)
-					if i != ihi {
-						bi.Dswap(ihi+1, a[i:], lda, a[ihi:], lda)
-						bi.Dswap(n, a[i*lda:], 1, a[ihi*lda:], 1)
-						bi.Dswap(ihi+1, b[i:], ldb, b[ihi:], ldb)
-						bi.Dswap(n, b[i*ldb:], 1, b[ihi*ldb:], 1)
-					}
+				if jFound == -1 {
+					jFound = l
+				}
+				if jFound >= 0 {
+					permute(i, jFound, l)
+					l--
 					found = true
-					ihi--
-					break rowLoop
+					break
 				}
 			}
 			if !found {
@@ -129,51 +132,49 @@ func (impl Implementation) Dggbal(job lapack.BalanceJob, n int, a []float64, lda
 			}
 		}
 
-		// Search for columns isolating an eigenvalue and push them left.
-		ilo = 0
-		for {
-			found := false
-		colLoop:
-			for j := ilo; j <= ihi; j++ {
-				foundNonzero := false
-				for i := ilo; i <= ihi; i++ {
-					if i == j {
-						continue
+		if l > 0 {
+			for k <= l {
+				found := false
+				for j := k; j <= l; j++ {
+					iFound := -1
+					for i := k; i <= l; i++ {
+						if a[i*lda+j] == 0 && b[i*ldb+j] == 0 {
+							continue
+						}
+						if iFound != -1 {
+							iFound = -2
+							break
+						}
+						iFound = i
 					}
-					if a[i*lda+j] != 0 || b[i*ldb+j] != 0 {
-						foundNonzero = true
+					if iFound == -1 {
+						iFound = l
+					}
+					if iFound >= 0 {
+						permute(iFound, j, k)
+						k++
+						found = true
 						break
 					}
 				}
-				if !foundNonzero {
-					// Column j has only zero off-diagonal elements.
-					rscale[ilo] = float64(j)
-					lscale[ilo] = float64(j)
-					if j != ilo {
-						bi.Dswap(ihi+1, a[j:], lda, a[ilo:], lda)
-						bi.Dswap(n-ilo, a[j*lda+ilo:], 1, a[ilo*lda+ilo:], 1)
-						bi.Dswap(ihi+1, b[j:], ldb, b[ilo:], ldb)
-						bi.Dswap(n-ilo, b[j*ldb+ilo:], 1, b[ilo*ldb+ilo:], 1)
-					}
-					found = true
-					ilo++
-					break colLoop
+				if !found {
+					break
 				}
 			}
-			if !found {
-				break
-			}
 		}
+		ilo, ihi = k, l
 	}
 
-done:
-	// Initialize scaling factors.
-	for i := ilo; i <= ihi; i++ {
-		lscale[i] = 1
-		rscale[i] = 1
+	if job == lapack.Permute {
+		for i := ilo; i <= ihi; i++ {
+			lscale[i] = 1
+			rscale[i] = 1
+		}
+		return ilo, ihi
 	}
-
-	if job == lapack.Permute || ilo == ihi {
+	if ilo == ihi {
+		lscale[ilo] = 1
+		rscale[ilo] = 1
 		return ilo, ihi
 	}
 
@@ -181,8 +182,10 @@ done:
 	// conjugate-gradient iteration from reference LAPACK.
 	const sclfac = 10.0
 	nr := ihi - ilo + 1
-	for k := 0; k < 6; k++ {
-		for i := ilo; i <= ihi; i++ {
+	for i := ilo; i <= ihi; i++ {
+		lscale[i] = 0
+		rscale[i] = 0
+		for k := 0; k < 6; k++ {
 			work[k*n+i] = 0
 		}
 	}

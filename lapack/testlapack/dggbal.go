@@ -29,6 +29,55 @@ func DggbalTest(t *testing.T, impl Dggbaler) {
 	}
 
 	testDggbalSpecial(t, impl)
+	testDggbalReferenceScaling(t, impl)
+	testDggbalOffDiagonalIsolation(t, impl)
+}
+
+func testDggbalOffDiagonalIsolation(t *testing.T, impl Dggbaler) {
+	a := []float64{0, 1, 2, 3}
+	b := make([]float64, 4)
+	lscale := make([]float64, 2)
+	rscale := make([]float64, 2)
+	ilo, ihi := impl.Dggbal(lapack.Permute, 2, a, 2, b, 2,
+		lscale, rscale, make([]float64, 12))
+	if ilo != 0 || ihi != 0 {
+		t.Fatalf("active range=(%d,%d), want (0,0)", ilo, ihi)
+	}
+	wantA := []float64{2, 3, 0, 1}
+	for i, want := range wantA {
+		if a[i] != want {
+			t.Errorf("A[%d]=%v, want %v", i, a[i], want)
+		}
+	}
+	if lscale[1] != 0 || rscale[1] != 1 {
+		t.Errorf("isolated permutation=(%v,%v), want (0,1)", lscale[1], rscale[1])
+	}
+}
+
+func testDggbalReferenceScaling(t *testing.T, impl Dggbaler) {
+	a := []float64{1e-10, 1, 1, 1e10}
+	b := []float64{1, 1, 1, 1}
+	lscale := make([]float64, 2)
+	rscale := make([]float64, 2)
+	ilo, ihi := impl.Dggbal(lapack.PermuteScale, 2, a, 2, b, 2,
+		lscale, rscale, make([]float64, 12))
+	if ilo != 0 || ihi != 1 {
+		t.Fatalf("active range=(%d,%d), want (0,1)", ilo, ihi)
+	}
+	wantScale := []float64{1e3, 1e-3}
+	wantA := []float64{1e-4, 1, 1, 1e4}
+	wantB := []float64{1e6, 1, 1, 1e-6}
+	for i := range 2 {
+		if lscale[i] != wantScale[i] || rscale[i] != wantScale[i] {
+			t.Errorf("scales[%d]=(%g,%g), want (%g,%g)", i, lscale[i], rscale[i], wantScale[i], wantScale[i])
+		}
+	}
+	for i := range 4 {
+		if math.Abs(a[i]-wantA[i]) > 1e-14*math.Abs(wantA[i]) ||
+			math.Abs(b[i]-wantB[i]) > 1e-14*math.Abs(wantB[i]) {
+			t.Errorf("entry %d: (A,B)=(%g,%g), want (%g,%g)", i, a[i], b[i], wantA[i], wantB[i])
+		}
+	}
 }
 
 func testDggbal(t *testing.T, impl Dggbaler, n int, job lapack.BalanceJob, extra int, rnd *rand.Rand) {

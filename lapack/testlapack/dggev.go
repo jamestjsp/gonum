@@ -32,6 +32,30 @@ func DggevTest(t *testing.T, impl Dggever) {
 	testDggevEigenvectors(t, impl)
 	testDggevComplexEigenvalues(t, impl)
 	testDggevSingularPencil(t, impl)
+	testDggevExtremeScaleEigenvalueRepresentation(t, impl)
+}
+
+func testDggevExtremeScaleEigenvalueRepresentation(t *testing.T, impl Dggever) {
+	const n = 2
+	a := []float64{2e-105, -1e-105, 1e-105, 2e-105}
+	b := []float64{1e239, 0, 0, 1e239}
+	alphar := make([]float64, n)
+	alphai := make([]float64, n)
+	beta := make([]float64, n)
+	work := make([]float64, 8*n)
+	if !impl.Dggev(lapack.LeftEVNone, lapack.RightEVNone, n,
+		a, n, b, n, alphar, alphai, beta, nil, 1, nil, 1, work, len(work)) {
+		t.Fatal("extreme-scale solve did not converge")
+	}
+	for i := range n {
+		if math.IsInf(alphar[i], 0) || math.IsInf(alphai[i], 0) || math.IsInf(beta[i], 0) ||
+			math.IsNaN(alphar[i]) || math.IsNaN(alphai[i]) || math.IsNaN(beta[i]) {
+			t.Fatalf("non-finite eigenvalue representation at %d: alpha=(%g,%g), beta=%g", i, alphar[i], alphai[i], beta[i])
+		}
+		if beta[i] == 0 || alphai[i] == 0 {
+			t.Fatalf("lost finite complex eigenvalue at %d: alpha=(%g,%g), beta=%g", i, alphar[i], alphai[i], beta[i])
+		}
+	}
 }
 
 func testDggevMinimumWorkspace(t *testing.T, impl Dggever) {

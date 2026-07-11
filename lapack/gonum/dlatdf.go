@@ -117,7 +117,7 @@ func (impl Implementation) Dlatdf(job lapack.MaximizeNormXJob, n int, z []float6
 
 	// Solve for L-part choosing rhs either to +1 or -1.
 	pmone := -1.0
-	for j := 0; j < n-2; j++ {
+	for j := 0; j < n-1; j++ {
 		bp := rhs[j] + 1
 		bm := rhs[j] - 1
 

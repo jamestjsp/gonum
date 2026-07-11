@@ -124,9 +124,13 @@ func (impl Implementation) Dhgeqz(job lapack.SchurJob, compq, compz lapack.Schur
 
 	// Machine constants.
 	safmin := dlamchS
-	ulp := dlamchE
-	anorm := impl.Dlanhs(lapack.Frobenius, n, h, ldh, nil)
-	bnorm := impl.Dlantr(lapack.Frobenius, blas.Upper, blas.NonUnit, n, n, t, ldt, nil)
+	ulp := dlamchP
+	in := ihi - ilo + 1
+	var anorm, bnorm float64
+	if in > 0 {
+		anorm = impl.Dlanhs(lapack.Frobenius, in, h[ilo*ldh+ilo:], ldh, nil)
+		bnorm = impl.Dlanhs(lapack.Frobenius, in, t[ilo*ldt+ilo:], ldt, nil)
+	}
 	atol := math.Max(safmin, ulp*anorm)
 	btol := math.Max(safmin, ulp*bnorm)
 	ascale := 1 / math.Max(safmin, anorm)
@@ -134,11 +138,13 @@ func (impl Implementation) Dhgeqz(job lapack.SchurJob, compq, compz lapack.Schur
 
 	// Set eigenvalues for rows outside [ilo, ihi].
 	for j := 0; j < ilo; j++ {
+		standardizeDhgeqzRealEigenvalue(ilschr, ilz, n, j, 0, h, ldh, t, ldt, z, ldz)
 		alphar[j] = h[j*ldh+j]
 		alphai[j] = 0
 		beta[j] = t[j*ldt+j]
 	}
 	for j := ihi + 1; j < n; j++ {
+		standardizeDhgeqzRealEigenvalue(ilschr, ilz, n, j, 0, h, ldh, t, ldt, z, ldz)
 		alphar[j] = h[j*ldh+j]
 		alphai[j] = 0
 		beta[j] = t[j*ldt+j]
@@ -210,11 +216,19 @@ func (impl Implementation) Dhgeqz(job lapack.SchurJob, compq, compz lapack.Schur
 		// Handle different block types.
 		if ifirst == ilast {
 			// 1x1 block - single real eigenvalue.
+			standardizeDhgeqzRealEigenvalue(ilschr, ilz, n, ilast, ifrstm, h, ldh, t, ldt, z, ldz)
 			alphar[ilast] = h[ilast*ldh+ilast]
 			alphai[ilast] = 0
 			beta[ilast] = t[ilast*ldt+ilast]
 			ilast--
 			iiter = 0
+			eshift = 0
+			if !ilschr {
+				ilastm = ilast
+				if ifrstm > ilast {
+					ifrstm = ilo
+				}
+			}
 			continue
 		}
 
@@ -246,6 +260,13 @@ func (impl Implementation) Dhgeqz(job lapack.SchurJob, compq, compz lapack.Schur
 			}
 			ilast -= 2
 			iiter = 0
+			eshift = 0
+			if !ilschr {
+				ilastm = ilast
+				if ifrstm > ilast {
+					ifrstm = ilo
+				}
+			}
 			continue
 		}
 
@@ -375,12 +396,21 @@ func (impl Implementation) Dhgeqz(job lapack.SchurJob, compq, compz lapack.Schur
 			ilast--
 			iiter = 0
 			eshift = 0
+			if !ilschr {
+				ilastm = ilast
+				if ifrstm > ilast {
+					ifrstm = ilo
+				}
+			}
 			continue
 		}
 
 	doQZStep:
 		// Perform QZ step.
 		iiter++
+		if !ilschr {
+			ifrstm = ifirst
+		}
 
 		// Compute shifts from the trailing 2x2 block.
 		var s1, s2, wr, wr2, wi float64
@@ -399,13 +429,44 @@ func (impl Implementation) Dhgeqz(job lapack.SchurJob, compq, compz lapack.Schur
 		} else {
 			// Normal shift: eigenvalues of trailing 2x2.
 			s1, s2, wr, wr2, wi = impl.Dlag2(h[(ilast-1)*ldh+ilast-1:], ldh, t[(ilast-1)*ldt+ilast-1:], ldt)
-			_, _ = wr2, s2
+			if wi == 0 && math.Abs((wr/s1)*t[ilast*ldt+ilast]-h[ilast*ldh+ilast]) >
+				math.Abs((wr2/s2)*t[ilast*ldt+ilast]-h[ilast*ldh+ilast]) {
+				s1, s2 = s2, s1
+				wr, wr2 = wr2, wr
+			}
 		}
 
 		// Do one QZ sweep.
 		if wi == 0 {
-			impl.doQZSweepSingle(ilschr, ilq, ilz, n, ifirst, ilast, ifrstm, ilastm,
-				h, ldh, t, ldt, q, ldq, z, ldz, s1, wr, safmin)
+			safmax := 1 / safmin
+			temp := math.Min(ascale, 1) * (0.5 * safmax)
+			scale := 1.0
+			if s1 > temp {
+				scale = temp / s1
+			}
+			temp = math.Min(bscale, 1) * (0.5 * safmax)
+			if math.Abs(wr) > temp {
+				scale = math.Min(scale, temp/math.Abs(wr))
+			}
+			s1 *= scale
+			wr *= scale
+
+			istart := ifirst
+			for j := ilast - 1; j > ifirst; j-- {
+				temp := math.Abs(s1 * h[j*ldh+j-1])
+				temp2 := math.Abs(s1*h[j*ldh+j] - wr*t[j*ldt+j])
+				tempr := math.Max(temp, temp2)
+				if tempr < 1 && tempr != 0 {
+					temp /= tempr
+					temp2 /= tempr
+				}
+				if math.Abs((ascale*h[(j+1)*ldh+j])*temp) <= ascale*atol*temp2 {
+					istart = j
+					break
+				}
+			}
+			impl.doQZSweepSingle(ilschr, ilq, ilz, n, ilast, ifrstm, ilastm,
+				h, ldh, t, ldt, q, ldq, z, ldz, istart, s1, wr)
 		} else {
 			// Double-shift requires nonzero T diagonals for scaled pencil formula.
 			// Fall back to single-shift for singular pencils.
@@ -417,8 +478,8 @@ func (impl Implementation) Dhgeqz(job lapack.SchurJob, compq, compz lapack.Schur
 				}
 			}
 			if hasSmallTDiag {
-				impl.doQZSweepSingle(ilschr, ilq, ilz, n, ifirst, ilast, ifrstm, ilastm,
-					h, ldh, t, ldt, q, ldq, z, ldz, s1, wr, safmin)
+				impl.doQZSweepSingle(ilschr, ilq, ilz, n, ilast, ifrstm, ilastm,
+					h, ldh, t, ldt, q, ldq, z, ldz, ifirst, s1, wr)
 			} else {
 				impl.doQZSweepDouble(ilschr, ilq, ilz, n, ifirst, ilast, ifrstm, ilastm,
 					h, ldh, t, ldt, q, ldq, z, ldz, ascale, bscale, safmin)
@@ -434,19 +495,35 @@ func (impl Implementation) Dhgeqz(job lapack.SchurJob, compq, compz lapack.Schur
 	return true
 }
 
+func standardizeDhgeqzRealEigenvalue(ilschr, ilz bool, n, j, ifrstm int,
+	h []float64, ldh int, t []float64, ldt int, z []float64, ldz int) {
+	if t[j*ldt+j] >= 0 {
+		return
+	}
+	if ilschr {
+		for i := ifrstm; i <= j; i++ {
+			h[i*ldh+j] = -h[i*ldh+j]
+			t[i*ldt+j] = -t[i*ldt+j]
+		}
+	} else {
+		h[j*ldh+j] = -h[j*ldh+j]
+		t[j*ldt+j] = -t[j*ldt+j]
+	}
+	if ilz {
+		for i := range n {
+			z[i*ldz+j] = -z[i*ldz+j]
+		}
+	}
+}
+
 // doQZSweepSingle performs a single-shift QZ sweep.
-func (impl Implementation) doQZSweepSingle(ilschr, ilq, ilz bool, n, ifirst, ilast, ifrstm, ilastm int,
+func (impl Implementation) doQZSweepSingle(ilschr, ilq, ilz bool, n, ilast, ifrstm, ilastm int,
 	h []float64, ldh int, t []float64, ldt int, q []float64, ldq int, z []float64, ldz int,
-	s1, wr, safmin float64) {
+	istart int, s1, wr float64) {
 
 	bi := blas64.Implementation()
-	istart := ifirst
-
-	temp := h[istart*ldh+istart]
-	if s1 != 0 {
-		temp -= (wr / s1) * t[istart*ldt+istart]
-	}
-	temp2 := h[(istart+1)*ldh+istart]
+	temp := s1*h[istart*ldh+istart] - wr*t[istart*ldt+istart]
+	temp2 := s1 * h[(istart+1)*ldh+istart]
 
 	cs, sn, _ := impl.Dlartg(temp, temp2)
 

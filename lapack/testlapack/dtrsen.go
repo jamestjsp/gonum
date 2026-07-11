@@ -35,7 +35,22 @@ func DtrsenTest(t *testing.T, impl Dtrsener) {
 	}
 
 	testDtrsenWorkspace(t, impl)
+	testDtrsenWorkspaceOutputs(t, impl)
 	testDtrsenSelectSecondOfPair(t, impl)
+}
+
+func testDtrsenWorkspaceOutputs(t *testing.T, impl Dtrsener) {
+	work := []float64{math.NaN(), math.NaN()}
+	iwork := []int{-1}
+	_, _, _, ok := impl.Dtrsen(0, false, []bool{false, false}, 2,
+		[]float64{1, 0, 0, 2}, 2, nil, 1,
+		make([]float64, 2), make([]float64, 2), work, len(work), iwork, len(iwork))
+	if !ok {
+		t.Fatal("trivial reorder failed")
+	}
+	if work[0] != 2 || iwork[0] != 1 {
+		t.Errorf("workspace outputs=(%v,%d), want (2,1)", work[0], iwork[0])
+	}
 }
 
 func testDtrsenSelectSecondOfPair(t *testing.T, impl Dtrsener) {

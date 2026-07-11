@@ -168,8 +168,9 @@ func (impl Implementation) Dgges(jobvsl, jobvsr lapack.SchurComp, sort lapack.Sc
 			tgsenwork = int(work[0])
 		}
 
-		// Compute maximum workspace needed.
-		maxwrk = 3*n + max(qrwork, mqrwork, gqrwork, hqzwork, tgsenwork)
+		// QR routines use the three n-element prefix arrays. Once the
+		// reduction is complete, the tau region can be reused.
+		maxwrk = max(3*n+max(qrwork, mqrwork, gqrwork), 2*n+max(hqzwork, tgsenwork))
 		maxwrk = max(maxwrk, minwrk)
 	}
 
@@ -299,6 +300,7 @@ func (impl Implementation) Dgges(jobvsl, jobvsr lapack.SchurComp, sort lapack.Sc
 	impl.Dgghrd(compq, compz, n, ilo, ihi, a, lda, b, ldb, vsl, ldvsl, vsr, ldvsr)
 
 	// Perform QZ algorithm.
+	iwrk = 2 * n
 	var compqz, compzz lapack.SchurComp
 	if wantvsl {
 		compqz = lapack.SchurOrig
@@ -322,47 +324,32 @@ func (impl Implementation) Dgges(jobvsl, jobvsr lapack.SchurComp, sort lapack.Sc
 	// Sort eigenvalues if desired.
 	sdim = 0
 	if wantst {
-		// Populate bwork[] using selctg callback.
-		// For complex conjugate pairs, both must be selected together.
-		for i := 0; i < n; {
-			if i < n-1 && alphai[i] != 0 {
-				// Complex conjugate pair at positions i and i+1.
-				// Both must be selected if either is selected.
-				sel1 := selctg(alphar[i], alphai[i], beta[i])
-				sel2 := selctg(alphar[i+1], alphai[i+1], beta[i+1])
-				bwork[i] = sel1 || sel2
-				bwork[i+1] = sel1 || sel2
-				i += 2
-			} else {
-				// Real eigenvalue.
-				bwork[i] = selctg(alphar[i], alphai[i], beta[i])
-				i++
-			}
+		logAlphaScale := 0.0
+		logBetaScale := 0.0
+		if scalea {
+			logAlphaScale = math.Log(anrm) - math.Log(cscalea)
+		}
+		if scaleb {
+			logBetaScale = math.Log(bnrm) - math.Log(cscaleb)
+		}
+		if scalea || scaleb {
+			rescaleGeneralizedEigenvalues(alphar, alphai, beta, logAlphaScale, logBetaScale, math.Max(anrm, bnrm))
 		}
 
-		// Count selected eigenvalues.
-		for i := 0; i < n; i++ {
-			if bwork[i] {
-				sdim++
-			}
+		// Populate bwork[] using selctg callback.
+		for i := range n {
+			bwork[i] = selctg(alphar[i], alphai[i], beta[i])
 		}
 
 		// Call Dtgsen to reorder eigenvalues.
-		if sdim > 0 && sdim < n {
-			// Allocate iwork for Dtgsen (ijob=0 needs n+6).
-			liwork := n + 6
-			iwork := make([]int, liwork)
+		var iwork [1]int
+		sdim, _, _, _, ok = impl.Dtgsen(0, wantvsl, wantvsr, bwork, n,
+			a, lda, b, ldb, alphar, alphai, beta,
+			vsl, ldvsl, vsr, ldvsr, work[iwrk:], lwork-iwrk, iwork[:], len(iwork))
 
-			var tgsenM int
-			tgsenM, _, _, _, ok = impl.Dtgsen(0, wantvsl, wantvsr, bwork, n,
-				a, lda, b, ldb, alphar, alphai, beta,
-				vsl, ldvsl, vsr, ldvsr, work[iwrk:], lwork-iwrk, iwork, liwork)
-
-			if !ok {
-				work[0] = float64(maxwrk)
-				return 0, false
-			}
-			sdim = tgsenM
+		if !ok {
+			work[0] = float64(maxwrk)
+			return 0, false
 		}
 	}
 

@@ -188,6 +188,11 @@ func TestDlaic1(t *testing.T) {
 	testlapack.Dlaic1Test(t, impl)
 }
 
+func TestDlatdf(t *testing.T) {
+	t.Parallel()
+	testlapack.DlatdfTest(t, impl)
+}
+
 func TestDhgeqz(t *testing.T) {
 	t.Parallel()
 	testlapack.DhgeqzTest(t, impl)

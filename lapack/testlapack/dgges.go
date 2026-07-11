@@ -246,9 +246,39 @@ func DggesTest(t *testing.T, impl Dggeser) {
 	// Test sorting.
 	testDggesSorting(t, impl)
 	testDggesConjugatePairSorting(t, impl)
+	testDggesSortingUsesUnscaledEigenvalues(t, impl)
 	testDggesZeroAndInfiniteEigenvalues(t, impl)
 	testDggesExtremeScaleEigenvalueRepresentation(t, impl)
 	testDggesSelectionRecheck(t, impl)
+}
+
+func testDggesSortingUsesUnscaledEigenvalues(t *testing.T, impl Dggeser) {
+	const n = 2
+	a := []float64{1e-300, 0, 0, 2e-300}
+	b := []float64{1, 0, 0, 1}
+	alphar := make([]float64, n)
+	alphai := make([]float64, n)
+	beta := make([]float64, n)
+	bwork := make([]bool, n)
+	work := make([]float64, max(8*n, 6*n+16))
+	var seen []float64
+	selector := func(alphar, _, beta float64) bool {
+		seen = append(seen, alphar/beta)
+		return math.Abs(alphar/beta) > 1e-200
+	}
+	sdim, ok := impl.Dgges(lapack.SchurNone, lapack.SchurNone, lapack.SortSelected, selector,
+		n, a, n, b, n, alphar, alphai, beta, nil, 1, nil, 1, work, len(work), bwork)
+	if !ok {
+		t.Fatal("scaled sorting case failed")
+	}
+	if sdim != 0 {
+		t.Fatalf("sdim=%d, want 0 when selector sees unscaled eigenvalues", sdim)
+	}
+	for i, v := range seen[:n] {
+		if math.Abs(v) > 1e-200 {
+			t.Errorf("initial selector call %d saw scaled eigenvalue %v", i, v)
+		}
+	}
 }
 
 func testDggesExtremeScaleEigenvalueRepresentation(t *testing.T, impl Dggeser) {

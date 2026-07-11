@@ -40,6 +40,78 @@ func DtgsylTest(t *testing.T, impl Dtgsyler) {
 
 	testDtgsylWorkspace(t, impl)
 	testDtgsylDifIdentity(t, impl)
+	testDtgsylScalingAcrossBlocks(t, impl)
+	testDtgsylTransposedScalingAcrossBlocks(t, impl)
+}
+
+func testDtgsylTransposedScalingAcrossBlocks(t *testing.T, impl Dtgsyler) {
+	const m, n = 3, 1
+	a := []float64{3, 0, 0, 0, 4, 0, 0, 0, 5}
+	d := []float64{7, 0, 0, 0, 9, 0, 0, 0, 11}
+	b := []float64{1}
+	e := []float64{2}
+	cOrig := []float64{1e100, -2e307, 3e100}
+	fOrig := []float64{-3e100, 2e307, -1e100}
+	c := append([]float64(nil), cOrig...)
+	f := append([]float64(nil), fOrig...)
+	scale, _, ok := impl.Dtgsyl(blas.Trans, 0, m, n,
+		a, m, b, n, c, n, d, m, e, n, f, n,
+		make([]float64, 1), 1, make([]int, m+n+6))
+	if !ok {
+		t.Fatal("transposed scaled block solve reported coincident eigenvalues")
+	}
+	if scale >= 1 {
+		t.Fatalf("scale=%v, want scaling for extreme transposed right-hand side", scale)
+	}
+	for i := range m {
+		gotC := a[i*m+i]*c[i] + d[i*m+i]*f[i]
+		gotF := c[i]*b[0] + f[i]*e[0]
+		wantC := scale * cOrig[i]
+		wantF := -scale * fOrig[i]
+		tol := 1e-12 * math.Max(math.Abs(wantC), math.Abs(wantF))
+		if math.Abs(gotC-wantC) > tol || math.Abs(gotF-wantF) > tol {
+			t.Errorf("row %d residuals=(%g,%g), want (%g,%g)", i, gotC, gotF, wantC, wantF)
+		}
+	}
+}
+
+func testDtgsylScalingAcrossBlocks(t *testing.T, impl Dtgsyler) {
+	const m, n = 3, 1
+	a := []float64{
+		3, 0, 0,
+		0, 4, 0,
+		0, 0, 5,
+	}
+	d := []float64{
+		7, 0, 0,
+		0, 9, 0,
+		0, 0, 11,
+	}
+	b := []float64{1}
+	e := []float64{2}
+	cOrig := []float64{1e307, -2e307, 3e100}
+	fOrig := []float64{-3e307, 2e307, -1e100}
+	c := append([]float64(nil), cOrig...)
+	f := append([]float64(nil), fOrig...)
+	scale, _, ok := impl.Dtgsyl(blas.NoTrans, 0, m, n,
+		a, m, b, n, c, n, d, m, e, n, f, n,
+		make([]float64, 1), 1, make([]int, m+n+6))
+	if !ok {
+		t.Fatal("scaled block solve reported coincident eigenvalues")
+	}
+	if scale >= 1 {
+		t.Fatalf("scale=%v, want scaling for extreme right-hand side", scale)
+	}
+	for i := range m {
+		gotC := a[i*m+i]*c[i] - f[i]*b[0]
+		gotF := d[i*m+i]*c[i] - f[i]*e[0]
+		wantC := scale * cOrig[i]
+		wantF := scale * fOrig[i]
+		tol := 1e-12 * math.Max(math.Abs(wantC), math.Abs(wantF))
+		if math.Abs(gotC-wantC) > tol || math.Abs(gotF-wantF) > tol {
+			t.Errorf("row %d residuals=(%g,%g), want (%g,%g)", i, gotC, gotF, wantC, wantF)
+		}
+	}
 }
 
 func testDtgsylDifIdentity(t *testing.T, impl Dtgsyler) {
@@ -47,9 +119,9 @@ func testDtgsylDifIdentity(t *testing.T, impl Dtgsyler) {
 		ijob int
 		want float64
 	}{
-		{ijob: 1, want: 2 * math.Sqrt2},
+		{ijob: 1, want: 2},
 		{ijob: 2, want: 2},
-		{ijob: 3, want: 2 * math.Sqrt2},
+		{ijob: 3, want: 2},
 		{ijob: 4, want: 2},
 	} {
 		work := make([]float64, 2)

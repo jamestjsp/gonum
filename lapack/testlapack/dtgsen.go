@@ -44,8 +44,32 @@ func DtgsenTest(t *testing.T, impl Dtgsener) {
 	testDtgsenWorkspace(t, impl)
 	testDtgsenTrivialSeparation(t, impl)
 	testDtgsenProjectionBounds(t, impl)
+	testDtgsenNormalizesRealEigenvalueSigns(t, impl)
 	testDtgsenSeparationDirections(t, impl)
 	testDtgsenOneNormSeparation(t, impl)
+}
+
+func testDtgsenNormalizesRealEigenvalueSigns(t *testing.T, impl Dtgsener) {
+	const n = 2
+	a := []float64{1, 2, 0, 3}
+	b := []float64{-2, 4, 0, -5}
+	q := eye(n, n).Data
+	alphar := make([]float64, n)
+	alphai := make([]float64, n)
+	beta := make([]float64, n)
+	work := make([]float64, 4*n+16)
+	iwork := make([]int, 1)
+	_, _, _, _, ok := impl.Dtgsen(0, true, false, []bool{false, false}, n,
+		a, n, b, n, alphar, alphai, beta, q, n, nil, 1,
+		work, len(work), iwork, len(iwork))
+	if !ok {
+		t.Fatal("real eigenvalue normalization failed")
+	}
+	for i, v := range beta {
+		if v < 0 {
+			t.Errorf("beta[%d]=%v, want non-negative Netlib representation", i, v)
+		}
+	}
 }
 
 func testDtgsenOneNormSeparation(t *testing.T, impl Dtgsener) {
@@ -126,8 +150,8 @@ func testDtgsenProjectionBounds(t *testing.T, impl Dtgsener) {
 	if !ok {
 		t.Fatal("projection bound estimate failed")
 	}
-	wantPL := 1 / math.Sqrt2
-	wantPR := 1 / math.Sqrt(5)
+	wantPL := 1 / math.Sqrt(5)
+	wantPR := 1 / math.Sqrt2
 	if math.Abs(pl-wantPL) > 1e-14 || math.Abs(pr-wantPR) > 1e-14 {
 		t.Fatalf("PL=%v PR=%v, want PL=%v PR=%v", pl, pr, wantPL, wantPR)
 	}
