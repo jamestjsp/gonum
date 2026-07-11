@@ -162,8 +162,7 @@ func testDtgex2_1x2(t *testing.T, impl Dtgex2er) {
 		q.Data, q.Stride, z.Data, z.Stride, 0, 1, 2, work, 20)
 
 	if !ok {
-		t.Log("1x1-2x2 swap failed (may be expected for some matrices)")
-		return
+		t.Fatal("1x1-2x2 swap failed")
 	}
 	checkDtgex2Decomposition(t, "1x1-2x2", aOrig, bOrig, a, b, q, z)
 }
@@ -211,8 +210,7 @@ func testDtgex2_2x1(t *testing.T, impl Dtgex2er) {
 		q.Data, q.Stride, z.Data, z.Stride, 0, 2, 1, work, 20)
 
 	if !ok {
-		t.Log("2x1-1x1 swap failed (may be expected for some matrices)")
-		return
+		t.Fatal("2x2-1x1 swap failed")
 	}
 	checkDtgex2Decomposition(t, "2x2-1x1", aOrig, bOrig, a, b, q, z)
 }
@@ -264,8 +262,7 @@ func testDtgex2_2x2(t *testing.T, impl Dtgex2er) {
 		q.Data, q.Stride, z.Data, z.Stride, 0, 2, 2, work, 40)
 
 	if !ok {
-		t.Log("2x2-2x2 swap failed (may be expected for some matrices)")
-		return
+		t.Fatal("2x2-2x2 swap failed")
 	}
 	checkDtgex2Decomposition(t, "2x2-2x2", aOrig, bOrig, a, b, q, z)
 }

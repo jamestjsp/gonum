@@ -310,9 +310,8 @@ func testDtgsen(t *testing.T, impl Dtgsener, n, ijob int, wantq, wantz bool, sel
 		}
 	}
 
-	// Check ok is true (unless we expect failure).
 	if !ok {
-		t.Logf("%s: reordering failed (ok=false), continuing checks", prefix)
+		t.Fatalf("%s: reordering failed", prefix)
 	}
 
 	// Check that selected eigenvalues are in the leading m positions.

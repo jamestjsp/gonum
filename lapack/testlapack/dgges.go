@@ -242,6 +242,7 @@ func DggesTest(t *testing.T, impl Dggeser) {
 
 	// Test 2x2 block standardization specifically.
 	testDggesBlockStandardization(t, impl)
+	testDggesTwoByTwoShiftFallback(t, impl)
 
 	// Test sorting.
 	testDggesSorting(t, impl)
@@ -250,6 +251,32 @@ func DggesTest(t *testing.T, impl Dggeser) {
 	testDggesZeroAndInfiniteEigenvalues(t, impl)
 	testDggesExtremeScaleEigenvalueRepresentation(t, impl)
 	testDggesSelectionRecheck(t, impl)
+}
+
+func testDggesTwoByTwoShiftFallback(t *testing.T, impl Dggeser) {
+	const n = 14
+	rnd := rand.New(rand.NewPCG(93, 93))
+	var a, b []float64
+	for k := 0; k <= 396; k++ {
+		a = make([]float64, n*n)
+		b = make([]float64, n*n)
+		for i := range a {
+			exp := rnd.IntN(601) - 300
+			a[i] = rnd.NormFloat64() * math.Pow10(exp)
+			exp = rnd.IntN(601) - 300
+			b[i] = rnd.NormFloat64() * math.Pow10(exp)
+		}
+	}
+	work := make([]float64, 1)
+	impl.Dgges(lapack.SchurHess, lapack.SchurHess, lapack.SortNone, nil, n,
+		nil, n, nil, n, nil, nil, nil, nil, n, nil, n, work, -1, nil)
+	work = make([]float64, int(work[0]))
+	_, ok := impl.Dgges(lapack.SchurHess, lapack.SchurHess, lapack.SortNone, nil, n,
+		a, n, b, n, make([]float64, n), make([]float64, n), make([]float64, n),
+		make([]float64, n*n), n, make([]float64, n*n), n, work, len(work), nil)
+	if !ok {
+		t.Fatal("badly scaled 2x2 shift fallback did not converge")
+	}
 }
 
 func testDggesSortingUsesUnscaledEigenvalues(t *testing.T, impl Dggeser) {

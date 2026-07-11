@@ -75,12 +75,12 @@ func testDlagv2Real(t *testing.T, impl Dlagv2er) {
 
 	// Check eigenvalues are real.
 	if alphai0 != 0 || alphai1 != 0 {
-		t.Logf("Real case: imaginary parts non-zero: alphai0=%v, alphai1=%v", alphai0, alphai1)
+		t.Errorf("Real case: imaginary parts non-zero: alphai0=%v, alphai1=%v", alphai0, alphai1)
 	}
 
 	// Check scale factors are positive.
 	if scale1 <= 0 || scale2 <= 0 {
-		t.Logf("Real case: scale factors not positive: scale1=%v, scale2=%v", scale1, scale2)
+		t.Errorf("Real case: scale factors not positive: scale1=%v, scale2=%v", scale1, scale2)
 	}
 
 	_ = alphar0
@@ -121,7 +121,7 @@ func testDlagv2Complex(t *testing.T, impl Dlagv2er) {
 
 	// Complex eigenvalues should have conjugate pairs.
 	if alphai0 != -alphai1 {
-		t.Logf("Complex case: eigenvalues not conjugate: alphai0=%v, alphai1=%v", alphai0, alphai1)
+		t.Errorf("Complex case: eigenvalues not conjugate: alphai0=%v, alphai1=%v", alphai0, alphai1)
 	}
 
 	_ = alphar0

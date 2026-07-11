@@ -80,9 +80,9 @@ import (
 //
 // On return, ok reports whether the QZ iteration converged, all requested block
 // swaps were accepted, and the selected eigenvalues occupy the leading Schur
-// blocks. If ok is false, a and b contain the best partially converged or
-// partially reordered Schur form. Requested Schur vectors are back-permuted and
-// all outputs are returned on the original input scale even when ok is false.
+// blocks. If QZ iteration fails, the partial outputs are returned without
+// back-permutation or unscaling, matching LAPACK. A rejected reorder is returned
+// after back-permutation and unscaling.
 //
 // Dgges is an internal routine. It is exported for testing purposes.
 func (impl Implementation) Dgges(jobvsl, jobvsr lapack.SchurComp, sort lapack.SchurSort, selctg lapack.SchurSelect, n int, a []float64, lda int, b []float64, ldb int, alphar, alphai, beta []float64, vsl []float64, ldvsl int, vsr []float64, ldvsr int, work []float64, lwork int, bwork []bool) (sdim int, ok bool) {
@@ -317,6 +317,10 @@ func (impl Implementation) Dgges(jobvsl, jobvsr lapack.SchurComp, sort lapack.Sc
 	ok = impl.Dhgeqz(lapack.EigenvaluesAndSchur, compqz, compzz, n, ilo, ihi,
 		a, lda, b, ldb, alphar, alphai, beta,
 		vsl, ldvsl, vsr, ldvsr, work[iwrk:], lwork-iwrk)
+	if !ok {
+		work[0] = float64(maxwrk)
+		return 0, false
+	}
 
 	// Sort eigenvalues if desired.
 	sdim = 0

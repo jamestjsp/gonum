@@ -198,7 +198,7 @@ func testDhgeqz3x3(t *testing.T, impl Dhgeqzer) {
 		q.Data, q.Stride, z.Data, z.Stride, work, 20)
 
 	if !ok {
-		t.Log("3x3 test: QZ iteration did not converge")
+		t.Fatal("3x3 test: QZ iteration did not converge")
 	}
 
 	// Check that beta values are non-zero for non-infinite eigenvalues.
@@ -260,7 +260,7 @@ func testDhgeqzComplex4x4(t *testing.T, impl Dhgeqzer) {
 		}
 	}
 	if !hasComplex {
-		t.Log("4x4 complex test: no complex eigenvalues detected (may be OK if exceptional shifts resolved them)")
+		t.Error("4x4 complex test: no complex eigenvalues detected")
 	}
 
 	// Verify Schur decomposition: Q^T * H_orig * Z ≈ S.

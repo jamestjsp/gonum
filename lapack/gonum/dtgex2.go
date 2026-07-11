@@ -79,12 +79,13 @@ func (impl Implementation) Dtgex2(wantq, wantz bool, n int, a []float64, lda int
 	copyLocalBlock(m, a[j1*lda+j1:], lda, s[:], ld)
 	copyLocalBlock(m, b[j1*ldb+j1:], ldb, tt[:], ld)
 
-	dnorm := combinedNorm(m, s[:], tt[:], ld)
 	eps := dlamchP
-	thresh := math.Max(20*eps*dnorm, dlamchS/eps)
+	smlnum := dlamchS / eps
+	threshA := math.Max(20*eps*localNorm(m, s[:], ld), smlnum)
+	threshB := math.Max(20*eps*localNorm(m, tt[:], ld), smlnum)
 
 	if m == 2 {
-		if !impl.dtgex2Swap11(s[:], tt[:], li[:], ir[:], ld, thresh,
+		if !impl.dtgex2Swap11(s[:], tt[:], li[:], ir[:], ld, threshA, threshB,
 			a[j1*lda+j1:], lda, b[j1*ldb+j1:], ldb) {
 			return false
 		}
@@ -92,7 +93,7 @@ func (impl Implementation) Dtgex2(wantq, wantz bool, n int, a []float64, lda int
 		return true
 	}
 
-	if !impl.dtgex2SwapLarge(m, n1, n2, s[:], tt[:], li[:], ir[:], ld, thresh,
+	if !impl.dtgex2SwapLarge(m, n1, n2, s[:], tt[:], li[:], ir[:], ld, threshA, threshB,
 		a[j1*lda+j1:], lda, b[j1*ldb+j1:], ldb, work) {
 		return false
 	}
@@ -110,8 +111,10 @@ func (impl Implementation) Dtgex2(wantq, wantz bool, n int, a []float64, lda int
 	return true
 }
 
-func (impl Implementation) dtgex2Swap11(s, t, li, ir []float64, ld int, thresh float64,
+func (impl Implementation) dtgex2Swap11(s, t, li, ir []float64, ld int, threshA, threshB float64,
 	a []float64, lda int, b []float64, ldb int) bool {
+	sa := math.Abs(s[ld+1]) * math.Abs(t[0])
+	sb := math.Abs(s[0]) * math.Abs(t[ld+1])
 	f := s[ld+1]*t[0] - t[ld+1]*s[0]
 	g := s[ld+1]*t[1] - t[ld+1]*s[1]
 	c, sn, _ := impl.Dlartg(f, g)
@@ -120,7 +123,7 @@ func (impl Implementation) dtgex2Swap11(s, t, li, ir []float64, ld int, thresh f
 	bi := blas64.Implementation()
 	bi.Drot(2, s, ld, s[1:], ld, ir[0], ir[ld])
 	bi.Drot(2, t, ld, t[1:], ld, ir[0], ir[ld])
-	if math.Abs(s[ld+1]) >= math.Abs(t[ld+1]) {
+	if sa >= sb {
 		li[0], li[ld], _ = impl.Dlartg(s[0], s[ld])
 	} else {
 		li[0], li[ld], _ = impl.Dlartg(t[0], t[ld])
@@ -128,10 +131,11 @@ func (impl Implementation) dtgex2Swap11(s, t, li, ir []float64, ld int, thresh f
 	li[1], li[ld+1] = -li[ld], li[0]
 	bi.Drot(2, s, 1, s[ld:], 1, li[0], li[ld])
 	bi.Drot(2, t, 1, t[ld:], 1, li[0], li[ld])
-	if math.Abs(s[ld])+math.Abs(t[ld]) > thresh {
+	if math.Abs(s[ld]) > threshA || math.Abs(t[ld]) > threshB {
 		return false
 	}
-	if localStrongResidual(2, a, lda, b, ldb, li, s, ir, t, ld, true) > thresh {
+	residA, residB := localStrongResidual(2, a, lda, b, ldb, li, s, ir, t, ld, true)
+	if residA > threshA || residB > threshB {
 		return false
 	}
 	s[ld], t[ld] = 0, 0
@@ -154,7 +158,7 @@ func (impl Implementation) dtgex2Apply11(wantq, wantz bool, n int, a []float64, 
 	}
 }
 
-func (impl Implementation) dtgex2SwapLarge(m, n1, n2 int, s, t, li, ir []float64, ld int, thresh float64,
+func (impl Implementation) dtgex2SwapLarge(m, n1, n2 int, s, t, li, ir []float64, ld int, threshA, threshB float64,
 	a []float64, lda int, b []float64, ldb int, work []float64) bool {
 	for i := 0; i < n1; i++ {
 		for j := 0; j < n2; j++ {
@@ -205,12 +209,12 @@ func (impl Implementation) dtgex2SwapLarge(m, n1, n2 int, s, t, li, ir []float64
 	impl.Dorm2r(blas.Right, blas.NoTrans, m, m, m, tcpy[:], ld, taul[:m], licopy[:], ld, work)
 	bqra21 := lowerLeftNorm(m, n1, n2, scpy[:], ld)
 
-	if bqra21 <= brqa21 && bqra21 <= thresh {
+	if bqra21 <= brqa21 && bqra21 <= threshA {
 		copy(s, scpy[:])
 		copy(t, tcpy[:])
 		copy(li, licopy[:])
 		copy(ir, ircopy[:])
-	} else if brqa21 >= thresh {
+	} else if brqa21 >= threshA {
 		return false
 	}
 	for i := 1; i < m; i++ {
@@ -218,7 +222,8 @@ func (impl Implementation) dtgex2SwapLarge(m, n1, n2 int, s, t, li, ir []float64
 			t[i*ld+j] = 0
 		}
 	}
-	return localStrongResidual(m, a, lda, b, ldb, li, s, ir, t, ld, false) <= thresh
+	residA, residB := localStrongResidual(m, a, lda, b, ldb, li, s, ir, t, ld, false)
+	return residA <= threshA && residB <= threshB
 }
 
 func (impl Implementation) dtgex2Canonicalize(n1, n2 int, a []float64, lda int, b []float64, ldb int,
@@ -298,35 +303,34 @@ func applyDtgex2Transforms(wantq, wantz bool, n, m int, a []float64, lda int, b 
 }
 
 func localStrongResidual(m int, a []float64, lda int, b []float64, ldb int,
-	li, s, ir, t []float64, ld int, transposeIR bool) float64 {
+	li, s, ir, t []float64, ld int, transposeIR bool) (residA, residB float64) {
 	var tmp, got [16]float64
 	localMul(m, li, false, s, false, tmp[:], ld)
 	localMul(m, tmp[:], false, ir, transposeIR, got[:], ld)
-	scale, sumsq := 0.0, 1.0
+	scaleA, sumsqA := 0.0, 1.0
 	for i := 0; i < m; i++ {
 		for j := 0; j < m; j++ {
 			d := a[i*lda+j] - got[i*ld+j]
-			scale, sumsq = updateScaledSquare(scale, sumsq, d)
+			scaleA, sumsqA = updateScaledSquare(scaleA, sumsqA, d)
 		}
 	}
 	localMul(m, li, false, t, false, tmp[:], ld)
 	localMul(m, tmp[:], false, ir, transposeIR, got[:], ld)
+	scaleB, sumsqB := 0.0, 1.0
 	for i := 0; i < m; i++ {
 		for j := 0; j < m; j++ {
 			d := b[i*ldb+j] - got[i*ld+j]
-			scale, sumsq = updateScaledSquare(scale, sumsq, d)
+			scaleB, sumsqB = updateScaledSquare(scaleB, sumsqB, d)
 		}
 	}
-	return scale * math.Sqrt(sumsq)
+	return scaleA * math.Sqrt(sumsqA), scaleB * math.Sqrt(sumsqB)
 }
 
-func combinedNorm(m int, a, b []float64, ld int) float64 {
+func localNorm(m int, a []float64, ld int) float64 {
 	scale, sumsq := 0.0, 1.0
-	for _, x := range []([]float64){a, b} {
-		for i := 0; i < m; i++ {
-			for j := 0; j < m; j++ {
-				scale, sumsq = updateScaledSquare(scale, sumsq, x[i*ld+j])
-			}
+	for i := 0; i < m; i++ {
+		for j := 0; j < m; j++ {
+			scale, sumsq = updateScaledSquare(scale, sumsq, a[i*ld+j])
 		}
 	}
 	return scale * math.Sqrt(sumsq)

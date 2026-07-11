@@ -438,7 +438,7 @@ func (impl Implementation) Dhgeqz(job lapack.SchurJob, compq, compz lapack.Schur
 		}
 
 		// Do one QZ sweep.
-		if wi == 0 {
+		if wi == 0 || ilast-ifirst+1 < 3 {
 			safmax := 1 / safmin
 			temp := math.Min(ascale, 1) * (0.5 * safmax)
 			scale := 1.0
