@@ -58,7 +58,7 @@ func (impl Implementation) Dtgsyl(trans blas.Transpose, ijob, m, n int,
 		panic(badTrans)
 	}
 	switch {
-	case ijob < 0 || ijob > 4:
+	case notran && (ijob < 0 || ijob > 4):
 		panic("lapack: invalid ijob")
 	case m < 0:
 		panic(mLT0)
@@ -78,7 +78,7 @@ func (impl Implementation) Dtgsyl(trans blas.Transpose, ijob, m, n int,
 		panic(badLdF)
 	case lwork < 1 && lwork != -1:
 		panic(badLWork)
-	case len(work) < max(1, lwork) && lwork != -1:
+	case len(work) < max(1, lwork):
 		panic(shortWork)
 	}
 
@@ -92,7 +92,7 @@ func (impl Implementation) Dtgsyl(trans blas.Transpose, ijob, m, n int,
 
 	// Compute workspace.
 	lwmin := 1
-	if ijob == 1 || ijob == 2 {
+	if notran && (ijob == 1 || ijob == 2) {
 		lwmin = max(1, 2*m*n)
 	}
 

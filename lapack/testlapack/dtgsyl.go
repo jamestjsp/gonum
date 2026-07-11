@@ -42,6 +42,29 @@ func DtgsylTest(t *testing.T, impl Dtgsyler) {
 	testDtgsylDifIdentity(t, impl)
 	testDtgsylScalingAcrossBlocks(t, impl)
 	testDtgsylTransposedScalingAcrossBlocks(t, impl)
+	testDtgsylTransIgnoresIjob(t, impl)
+}
+
+func testDtgsylTransIgnoresIjob(t *testing.T, impl Dtgsyler) {
+	for _, ijob := range []int{-1, 5} {
+		work := make([]float64, 1)
+		impl.Dtgsyl(blas.Trans, ijob, 1, 1,
+			nil, 1, nil, 1, nil, 1, nil, 1, nil, 1, nil, 1,
+			work, -1, nil)
+		if work[0] != 1 {
+			t.Errorf("ijob=%d: transposed workspace query=%v, want 1", ijob, work[0])
+		}
+
+		c := []float64{1}
+		f := []float64{1}
+		_, _, ok := impl.Dtgsyl(blas.Trans, ijob, 1, 1,
+			[]float64{2}, 1, []float64{3}, 1, c, 1,
+			[]float64{5}, 1, []float64{7}, 1, f, 1,
+			work, 1, make([]int, 8))
+		if !ok {
+			t.Errorf("ijob=%d: transposed solve reported coincident eigenvalues", ijob)
+		}
+	}
 }
 
 func testDtgsylTransposedScalingAcrossBlocks(t *testing.T, impl Dtgsyler) {
@@ -232,6 +255,17 @@ func testDtgsyl(t *testing.T, impl Dtgsyler, m, n int, trans blas.Transpose, ijo
 }
 
 func testDtgsylWorkspace(t *testing.T, impl Dtgsyler) {
+	t.Run("MissingQueryOutput", func(t *testing.T) {
+		defer func() {
+			if recover() == nil {
+				t.Fatal("workspace query accepted a missing output slot")
+			}
+		}()
+		impl.Dtgsyl(blas.NoTrans, 0, 1, 1,
+			nil, 1, nil, 1, nil, 1, nil, 1, nil, 1, nil, 1,
+			nil, -1, nil)
+	})
+
 	// Test workspace query.
 	for _, m := range []int{1, 5, 10} {
 		for _, n := range []int{1, 5, 10} {
