@@ -50,6 +50,9 @@ func (impl Implementation) Dtgex2(wantq, wantz bool, n int, a []float64, lda int
 	m := n1 + n2
 	minWork := max(1, n*m, 2*m*m)
 	if lwork == -1 {
+		if len(work) < 1 {
+			panic(shortWork)
+		}
 		work[0] = float64(minWork)
 		return true
 	}
