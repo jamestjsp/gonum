@@ -10,6 +10,7 @@ package gonum
 #cgo CFLAGS: -I/opt/homebrew/opt/lapack/include
 #cgo LDFLAGS: -L/opt/homebrew/opt/lapack/lib -Wl,-rpath,/opt/homebrew/opt/lapack/lib -llapacke -llapack -lblas
 #include <lapacke.h>
+#include <stdint.h>
 #include <stdlib.h>
 
 static lapack_logical select_negative(const double *ar, const double *ai, const double *beta) {
@@ -81,8 +82,25 @@ static lapack_int run_dtgsen_singular(void) {
 		ar, ai, beta, q, 2, z, 2, &m, &pl, &pr, dif);
 }
 
+static lapack_int run_dtgsen_case(lapack_int ijob, lapack_logical wantq,
+		lapack_logical wantz, uint64_t mask, lapack_int n, double *a, double *b,
+		double *ar, double *ai, double *beta, double *q, double *z, lapack_int *m,
+		double *pl, double *pr, double *dif) {
+	lapack_logical *select = malloc((size_t)n*sizeof(lapack_logical));
+	for (lapack_int i = 0; i < n; i++) select[i] = (mask >> i) & 1;
+	lapack_int info = LAPACKE_dtgsen(LAPACK_ROW_MAJOR, ijob, wantq, wantz,
+		select, n, a, n, b, n, ar, ai, beta, q, n, z, n, m, pl, pr, dif);
+	free(select);
+	return info;
+}
+
 extern void dtgex2_(int*, int*, int*, double*, int*, double*, int*, double*, int*,
 	double*, int*, int*, int*, int*, double*, int*, int*);
+extern void dgetc2_(int*, double*, int*, int*, int*, int*);
+extern void dlatdf_(int*, int*, double*, int*, double*, double*, double*, int*, int*);
+extern void dtgsy2_(char*, int*, int*, int*, double*, int*, double*, int*,
+		double*, int*, double*, int*, double*, int*, double*, int*, double*,
+		double*, double*, int*, int*, int*);
 
 static void row_to_col(int n, const double *src, double *dst) {
 	for (int i = 0; i < n; i++)
@@ -92,6 +110,52 @@ static void row_to_col(int n, const double *src, double *dst) {
 static void col_to_row(int n, const double *src, double *dst) {
 	for (int i = 0; i < n; i++)
 		for (int j = 0; j < n; j++) dst[i*n+j] = src[j*n+i];
+}
+
+static void row_to_col_rect(int m, int n, const double *src, double *dst) {
+	for (int i = 0; i < m; i++)
+		for (int j = 0; j < n; j++) dst[i+j*m] = src[i*n+j];
+}
+
+static void col_to_row_rect(int m, int n, const double *src, double *dst) {
+	for (int i = 0; i < m; i++)
+		for (int j = 0; j < n; j++) dst[i*n+j] = src[i+j*m];
+}
+
+static int run_dlatdf(int job, int n, const double *z, double *rhs,
+		double *rdsum, double *rdscal) {
+	double *zc = malloc((size_t)n*n*sizeof(double));
+	int *ipiv = malloc((size_t)n*sizeof(int));
+	int *jpiv = malloc((size_t)n*sizeof(int));
+	row_to_col(n, z, zc);
+	int info = 0, ldz = n;
+	dgetc2_(&n, zc, &ldz, ipiv, jpiv, &info);
+	dlatdf_(&job, &n, zc, &ldz, rhs, rdsum, rdscal, ipiv, jpiv);
+	free(zc); free(ipiv); free(jpiv);
+	return info;
+}
+
+static int run_dtgsy2(char trans, int ijob, int m, int n,
+		const double *a, const double *b, double *c, const double *d,
+		const double *e, double *f, double *scale, double *rdsum,
+		double *rdscal, int *pq) {
+	double *ac = malloc((size_t)m*m*sizeof(double));
+	double *bc = malloc((size_t)n*n*sizeof(double));
+	double *cc = malloc((size_t)m*n*sizeof(double));
+	double *dc = malloc((size_t)m*m*sizeof(double));
+	double *ec = malloc((size_t)n*n*sizeof(double));
+	double *fc = malloc((size_t)m*n*sizeof(double));
+	int *iwork = malloc((size_t)(m+n+2)*sizeof(int));
+	row_to_col(m, a, ac); row_to_col(n, b, bc);
+	row_to_col_rect(m, n, c, cc);
+	row_to_col(m, d, dc); row_to_col(n, e, ec);
+	row_to_col_rect(m, n, f, fc);
+	int info = 0, lda = m, ldb = n, ldc = m, ldd = m, lde = n, ldf = m;
+	dtgsy2_(&trans, &ijob, &m, &n, ac, &lda, bc, &ldb, cc, &ldc,
+		dc, &ldd, ec, &lde, fc, &ldf, scale, rdsum, rdscal, iwork, pq, &info);
+	col_to_row_rect(m, n, cc, c); col_to_row_rect(m, n, fc, f);
+	free(ac); free(bc); free(cc); free(dc); free(ec); free(fc); free(iwork);
+	return info;
 }
 
 static int run_dtgex2(int n, double *a, double *b, int j1, int n1, int n2) {
@@ -136,7 +200,11 @@ static lapack_int run_dtgexc(lapack_int n, double *a, double *b, lapack_int *ifs
 */
 import "C"
 
-import "unsafe"
+import (
+	"unsafe"
+
+	"gonum.org/v1/gonum/lapack"
+)
 
 func netlibDgges(n int, a, b []float64, dosort bool, ar, ai, beta, vsl, vsr []float64) (sdim, info int) {
 	var csdim C.lapack_int
@@ -174,6 +242,59 @@ func netlibDhgeqz(job, compq, compz byte, n, ilo, ihi int, h, t, ar, ai, beta, q
 
 func netlibDtgsenSingular() int {
 	return int(C.run_dtgsen_singular())
+}
+
+func netlibDtgsen(ijob int, wantq, wantz bool, selected []bool, n int,
+	a, b, ar, ai, beta, q, z []float64) (m int, pl, pr float64, dif [2]float64, info int) {
+	var mask uint64
+	for i, selected := range selected {
+		if selected {
+			mask |= 1 << i
+		}
+	}
+	var cm C.lapack_int
+	var cpl, cpr C.double
+	var cdif [2]C.double
+	cinfo := C.run_dtgsen_case(C.lapack_int(ijob), C.lapack_logical(boolInt(wantq)),
+		C.lapack_logical(boolInt(wantz)), C.uint64_t(mask), C.lapack_int(n),
+		(*C.double)(unsafe.Pointer(&a[0])), (*C.double)(unsafe.Pointer(&b[0])),
+		(*C.double)(unsafe.Pointer(&ar[0])), (*C.double)(unsafe.Pointer(&ai[0])),
+		(*C.double)(unsafe.Pointer(&beta[0])), (*C.double)(unsafe.Pointer(&q[0])),
+		(*C.double)(unsafe.Pointer(&z[0])), &cm, &cpl, &cpr, &cdif[0])
+	return int(cm), float64(cpl), float64(cpr),
+		[2]float64{float64(cdif[0]), float64(cdif[1])}, int(cinfo)
+}
+
+func netlibDtgsyl(trans byte, ijob, m, n int,
+	a, b, c, d, e, f []float64) (scale, dif float64, info int) {
+	var cscale, cdif C.double
+	cinfo := C.LAPACKE_dtgsyl(C.int(C.LAPACK_ROW_MAJOR), C.char(trans), C.lapack_int(ijob),
+		C.lapack_int(m), C.lapack_int(n), (*C.double)(unsafe.Pointer(&a[0])), C.lapack_int(m),
+		(*C.double)(unsafe.Pointer(&b[0])), C.lapack_int(n), (*C.double)(unsafe.Pointer(&c[0])), C.lapack_int(n),
+		(*C.double)(unsafe.Pointer(&d[0])), C.lapack_int(m), (*C.double)(unsafe.Pointer(&e[0])), C.lapack_int(n),
+		(*C.double)(unsafe.Pointer(&f[0])), C.lapack_int(n), &cscale, &cdif)
+	return float64(cscale), float64(cdif), int(cinfo)
+}
+
+func netlibDtgsy2(trans byte, ijob, m, n int,
+	a, b, c, d, e, f []float64, rdsum, rdscal float64) (scale, sum, scal float64, pq, info int) {
+	var cscale C.double
+	csum, cscal := C.double(rdsum), C.double(rdscal)
+	var cpq C.int
+	cinfo := C.run_dtgsy2(C.char(trans), C.int(ijob), C.int(m), C.int(n),
+		(*C.double)(unsafe.Pointer(&a[0])), (*C.double)(unsafe.Pointer(&b[0])),
+		(*C.double)(unsafe.Pointer(&c[0])), (*C.double)(unsafe.Pointer(&d[0])),
+		(*C.double)(unsafe.Pointer(&e[0])), (*C.double)(unsafe.Pointer(&f[0])),
+		&cscale, &csum, &cscal, &cpq)
+	return float64(cscale), float64(csum), float64(cscal), int(cpq), int(cinfo)
+}
+
+func netlibDlatdf(job lapack.MaximizeNormXJob, n int, z, rhs []float64,
+	rdsum, rdscal float64) (sum, scale float64, info int) {
+	csum, cscale := C.double(rdsum), C.double(rdscal)
+	cinfo := C.run_dlatdf(C.int(job), C.int(n), (*C.double)(unsafe.Pointer(&z[0])),
+		(*C.double)(unsafe.Pointer(&rhs[0])), &csum, &cscale)
+	return float64(csum), float64(cscale), int(cinfo)
 }
 
 func netlibDtgex2(n int, a, b []float64, j1, n1, n2 int) int {

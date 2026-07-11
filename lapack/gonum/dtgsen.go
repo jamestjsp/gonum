@@ -165,8 +165,23 @@ func (impl Implementation) Dtgsen(ijob int, wantq, wantz bool, selected []bool, 
 
 	ok = true
 
+	n1 := m
+	n2 := n - m
 	if m == 0 || m == n {
-		// Nothing to do.
+		if ijob == 1 || ijob >= 4 {
+			pl = 1
+			pr = 1
+		}
+		if ijob >= 2 {
+			dscale := 0.0
+			dsum := 1.0
+			for i := 0; i < n; i++ {
+				dscale, dsum = impl.Dlassq(n, a[i*lda:], 1, dscale, dsum)
+				dscale, dsum = impl.Dlassq(n, b[i*ldb:], 1, dscale, dsum)
+			}
+			dif[0] = dscale * math.Sqrt(dsum)
+			dif[1] = dif[0]
+		}
 		goto extractEigenvalues
 	}
 
@@ -210,80 +225,11 @@ func (impl Implementation) Dtgsen(ijob int, wantq, wantz bool, selected []bool, 
 			}
 		}
 	}
-
-extractEigenvalues:
-	// Extract eigenvalues from the reordered (A, B).
-	// Real eigenvalues: alphar[k] = A[k,k], alphai[k] = 0, beta[k] = B[k,k]
-	// Complex pairs: use Dlag2 to compute.
-	{
-		pair := false
-		for k := 0; k < n; k++ {
-			if pair {
-				pair = false
-				continue
-			}
-
-			if k < n-1 && a[(k+1)*lda+k] != 0 {
-				// 2x2 block - complex eigenvalue pair.
-				var scale1, scale2, wr1, wr2, wi float64
-				scale1, scale2, wr1, wr2, wi = impl.Dlag2(
-					a[k*lda+k:], lda,
-					b[k*ldb+k:], ldb,
-				)
-				alphar[k] = wr1
-				alphar[k+1] = wr2
-				alphai[k] = wi
-				alphai[k+1] = -wi
-				beta[k] = scale1
-				beta[k+1] = scale2
-				pair = true
-			} else {
-				// 1x1 block - real eigenvalue.
-				if math.Signbit(b[k*ldb+k]) {
-					for j := range n {
-						a[k*lda+j] = -a[k*lda+j]
-						b[k*ldb+j] = -b[k*ldb+j]
-						if wantq {
-							q[j*ldq+k] = -q[j*ldq+k]
-						}
-					}
-				}
-				alphar[k] = a[k*lda+k]
-				alphai[k] = 0
-				beta[k] = b[k*ldb+k]
-			}
-		}
-	}
-
-	if ijob == 0 || !ok {
-		work[0] = float64(lwmin)
-		iwork[0] = liwmin
-		return m, pl, pr, dif, ok
+	if ijob == 0 {
+		goto extractEigenvalues
 	}
 
 	// Compute condition estimates.
-	n1 := m
-	n2 := n - m
-	if n1 == 0 || n2 == 0 {
-		if ijob == 1 || ijob >= 4 {
-			pl = 1
-			pr = 1
-		}
-		if ijob >= 2 {
-			dscale := 0.0
-			dsum := 1.0
-			for i := 0; i < n; i++ {
-				dscale, dsum = impl.Dlassq(n, a[i*lda:], 1, dscale, dsum)
-				dscale, dsum = impl.Dlassq(n, b[i*ldb:], 1, dscale, dsum)
-			}
-			dif[0] = dscale * math.Sqrt(dsum)
-			dif[1] = dif[0]
-		}
-		work[0] = float64(lwmin)
-		iwork[0] = liwmin
-		return m, pl, pr, dif, ok
-	}
-
 	// Compute PL and PR (reciprocal norms for eigenvalue averaging).
 	if ijob == 1 || ijob >= 4 {
 		// Copy A12 and B12 to work arrays.
@@ -332,6 +278,50 @@ extractEigenvalues:
 				a[n1*lda+n1:], lda, a, lda,
 				b[n1*ldb+n1:], ldb, b, ldb,
 				work, iwork)
+		}
+	}
+
+extractEigenvalues:
+	// Extract eigenvalues from the reordered (A, B).
+	// Real eigenvalues: alphar[k] = A[k,k], alphai[k] = 0, beta[k] = B[k,k]
+	// Complex pairs: use Dlag2 to compute.
+	{
+		pair := false
+		for k := 0; k < n; k++ {
+			if pair {
+				pair = false
+				continue
+			}
+
+			if k < n-1 && a[(k+1)*lda+k] != 0 {
+				// 2x2 block - complex eigenvalue pair.
+				var scale1, scale2, wr1, wr2, wi float64
+				scale1, scale2, wr1, wr2, wi = impl.Dlag2(
+					a[k*lda+k:], lda,
+					b[k*ldb+k:], ldb,
+				)
+				alphar[k] = wr1
+				alphar[k+1] = wr2
+				alphai[k] = wi
+				alphai[k+1] = -wi
+				beta[k] = scale1
+				beta[k+1] = scale2
+				pair = true
+			} else {
+				// 1x1 block - real eigenvalue.
+				if math.Signbit(b[k*ldb+k]) {
+					for j := range n {
+						a[k*lda+j] = -a[k*lda+j]
+						b[k*ldb+j] = -b[k*ldb+j]
+						if wantq {
+							q[j*ldq+k] = -q[j*ldq+k]
+						}
+					}
+				}
+				alphar[k] = a[k*lda+k]
+				alphai[k] = 0
+				beta[k] = b[k*ldb+k]
+			}
 		}
 	}
 

@@ -12,6 +12,7 @@ import (
 	"math/rand/v2"
 	"testing"
 
+	"gonum.org/v1/gonum/blas"
 	"gonum.org/v1/gonum/lapack"
 )
 
@@ -185,6 +186,375 @@ func TestDtgsenNetlibSingularConditionEstimate(t *testing.T) {
 	info := netlibDtgsenSingular()
 	if ok != (info == 0) {
 		t.Fatalf("success mismatch: Gonum=%v Netlib info=%d", ok, info)
+	}
+}
+
+func TestDtgsenNetlibDifferential(t *testing.T) {
+	const n = 5
+	aOrig, bOrig, selected := dtgsenOraclePencil()
+
+	for ijob := 0; ijob <= 5; ijob++ {
+		for _, wantq := range []bool{false, true} {
+			for _, wantz := range []bool{false, true} {
+				name := fmt.Sprintf("ijob=%d/Q=%v/Z=%v", ijob, wantq, wantz)
+				t.Run(name, func(t *testing.T) {
+					ga, gb := append([]float64(nil), aOrig...), append([]float64(nil), bOrig...)
+					na, nb := append([]float64(nil), aOrig...), append([]float64(nil), bOrig...)
+					gar, gai, gbet := make([]float64, n), make([]float64, n), make([]float64, n)
+					nar, nai, nbet := make([]float64, n), make([]float64, n), make([]float64, n)
+					gq, gz := identityData(n), identityData(n)
+					nq, nz := identityData(n), identityData(n)
+
+					workQuery := make([]float64, 1)
+					iworkQuery := make([]int, 1)
+					Implementation{}.Dtgsen(ijob, wantq, wantz, selected, n,
+						ga, n, gb, n, gar, gai, gbet, gq, n, gz, n,
+						workQuery, -1, iworkQuery, -1)
+					work := make([]float64, int(workQuery[0]))
+					iwork := make([]int, iworkQuery[0])
+					gm, gpl, gpr, gdif, gok := Implementation{}.Dtgsen(ijob, wantq, wantz, selected, n,
+						ga, n, gb, n, gar, gai, gbet, gq, n, gz, n,
+						work, len(work), iwork, len(iwork))
+					nm, npl, npr, ndif, info := netlibDtgsen(ijob, wantq, wantz, selected, n,
+						na, nb, nar, nai, nbet, nq, nz)
+					if gok != (info == 0) || gm != nm {
+						t.Fatalf("Gonum=(m=%d,ok=%v), Netlib=(m=%d,info=%d)", gm, gok, nm, info)
+					}
+					if !gok {
+						return
+					}
+					compareGeneralizedEigenvalues(t, gar, gai, gbet, nar, nai, nbet)
+					checkGeneralizedSchurStructure(t, "Gonum DTGSEN", ga, gb, n)
+					checkGeneralizedSchurStructure(t, "Netlib DTGSEN", na, nb, n)
+					if wantq && wantz {
+						checkGeneralizedSchurResult(t, "Gonum DTGSEN", aOrig, bOrig, ga, gb, gq, gz, n)
+						checkGeneralizedSchurResult(t, "Netlib DTGSEN", aOrig, bOrig, na, nb, nq, nz, n)
+					}
+					if ijob == 1 || ijob >= 4 {
+						checkCloseNetlib(t, "pl", gpl, npl)
+						checkCloseNetlib(t, "pr", gpr, npr)
+					}
+					if ijob >= 2 {
+						if ijob == 2 || ijob == 4 {
+							checkEstimateNetlib(t, "dif[0]", gdif[0], ndif[0])
+							checkEstimateNetlib(t, "dif[1]", gdif[1], ndif[1])
+						} else {
+							checkCloseNetlib(t, "dif[0]", gdif[0], ndif[0])
+							checkCloseNetlib(t, "dif[1]", gdif[1], ndif[1])
+						}
+					}
+				})
+			}
+		}
+	}
+}
+
+func TestDtgsenNetlibConditionBeforeNormalization(t *testing.T) {
+	const n = 4
+	a := []float64{
+		-3, 0.2, 0.1, 0.3,
+		0, 1, 0.4, -0.2,
+		0, 0, 4, 0.7,
+		0, 0, 0, -2,
+	}
+	b := []float64{
+		-1, 0.1, -0.2, 0.05,
+		0, 2, 0.2, -0.1,
+		0, 0, -1.5, -0.2,
+		0, 0, 0, 0.8,
+	}
+	selected := []bool{true, true, false, false}
+	for _, ijob := range []int{2, 4} {
+		ga, gb := append([]float64(nil), a...), append([]float64(nil), b...)
+		na, nb := append([]float64(nil), a...), append([]float64(nil), b...)
+		work := make([]float64, max(4*n+16, 2*2*(n-2)))
+		iwork := make([]int, n+6)
+		gm, gpl, gpr, gdif, gok := Implementation{}.Dtgsen(ijob, false, false, selected, n,
+			ga, n, gb, n, make([]float64, n), make([]float64, n), make([]float64, n),
+			nil, 1, nil, 1, work, len(work), iwork, len(iwork))
+		nm, npl, npr, ndif, info := netlibDtgsen(ijob, false, false, selected, n,
+			na, nb, make([]float64, n), make([]float64, n), make([]float64, n),
+			identityData(n), identityData(n))
+		if gok != (info == 0) || gm != nm {
+			t.Fatalf("ijob=%d: Gonum=(m=%d,ok=%v), Netlib=(m=%d,info=%d)", ijob, gm, gok, nm, info)
+		}
+		checkCloseNetlib(t, "dif[0]", gdif[0], ndif[0])
+		checkCloseNetlib(t, "dif[1]", gdif[1], ndif[1])
+		if ijob == 4 {
+			checkCloseNetlib(t, "pl", gpl, npl)
+			checkCloseNetlib(t, "pr", gpr, npr)
+		}
+	}
+}
+
+func TestDtgsenNetlibFrobeniusEstimate(t *testing.T) {
+	const n = 5
+	rnd := rand.New(rand.NewPCG(11, 11))
+	selected := []bool{false, false, false, true, true}
+	accepted := 0
+	for k := 0; k < 100; k++ {
+		a := make([]float64, n*n)
+		b := make([]float64, n*n)
+		a[0], a[1], a[n], a[n+1] = -3, 0.5+rnd.Float64(), -0.5-rnd.Float64(), -3
+		b[0], b[1], b[n+1] = 1, 0.1*rnd.NormFloat64(), 1.2
+		a[2*n+2], b[2*n+2] = 4, 0.8
+		a[3*n+3], a[3*n+4], a[4*n+3], a[4*n+4] = 1, 0.5+rnd.Float64(), -0.5-rnd.Float64(), 1
+		b[3*n+3], b[3*n+4], b[4*n+4] = 1.5, 0.1*rnd.NormFloat64(), 1.1
+		for i := 0; i < n; i++ {
+			for j := i + 1; j < n; j++ {
+				if a[i*n+j] == 0 {
+					a[i*n+j] = 0.2 * rnd.NormFloat64()
+				}
+				if b[i*n+j] == 0 {
+					b[i*n+j] = 0.2 * rnd.NormFloat64()
+				}
+			}
+		}
+		ga, gb := append([]float64(nil), a...), append([]float64(nil), b...)
+		na, nb := append([]float64(nil), a...), append([]float64(nil), b...)
+		work := make([]float64, 4*n+16)
+		iwork := make([]int, n+6)
+		gm, _, _, gdif, gok := Implementation{}.Dtgsen(2, false, false, selected, n,
+			ga, n, gb, n, make([]float64, n), make([]float64, n), make([]float64, n),
+			nil, 1, nil, 1, work, len(work), iwork, len(iwork))
+		nm, _, _, ndif, info := netlibDtgsen(2, false, false, selected, n,
+			na, nb, make([]float64, n), make([]float64, n), make([]float64, n),
+			identityData(n), identityData(n))
+		if gok != (info == 0) || gm != nm {
+			t.Fatalf("case %d: Gonum=(m=%d,ok=%v), Netlib=(m=%d,info=%d)", k, gm, gok, nm, info)
+		}
+		if !gok {
+			continue
+		}
+		accepted++
+		for i := range gdif {
+			checkEstimateNetlib(t, fmt.Sprintf("case %d dif[%d]", k, i), gdif[i], ndif[i])
+		}
+	}
+	if accepted < 90 {
+		t.Fatalf("only %d of 100 oracle cases were accepted", accepted)
+	}
+}
+
+func TestDtgsenNetlibReverseDifKernel(t *testing.T) {
+	const n = 5
+	a, b, selected := dtgsenOraclePencil()
+	work := make([]float64, 4*n+16)
+	iwork := make([]int, n+6)
+	m, _, _, _, ok := Implementation{}.Dtgsen(0, false, false, selected, n,
+		a, n, b, n, make([]float64, n), make([]float64, n), make([]float64, n),
+		nil, 1, nil, 1, work, len(work), iwork, 1)
+	if !ok || m != 2 {
+		t.Fatalf("reorder=(m=%d,ok=%v), want (2,true)", m, ok)
+	}
+
+	m1, n1 := n-m, m
+	a22, a11 := make([]float64, m1*m1), make([]float64, n1*n1)
+	b22, b11 := make([]float64, m1*m1), make([]float64, n1*n1)
+	copyLocalBlock(m1, a[m*n+m:], n, a22, m1)
+	copyLocalBlock(n1, a, n, a11, n1)
+	copyLocalBlock(m1, b[m*n+m:], n, b22, m1)
+	copyLocalBlock(n1, b, n, b11, n1)
+	gc, gf := make([]float64, m1*n1), make([]float64, m1*n1)
+	nc, nf := make([]float64, m1*n1), make([]float64, m1*n1)
+	_, gdif, gok := Implementation{}.Dtgsyl(blas.NoTrans, 3, m1, n1,
+		a22, m1, a11, n1, gc, n1,
+		b22, m1, b11, n1, gf, n1,
+		[]float64{0}, 1, make([]int, n+6))
+	_, ndif, info := netlibDtgsyl(byte(blas.NoTrans), 3, m1, n1,
+		a22, a11, nc, b22, b11, nf)
+	if gok != (info == 0) {
+		t.Fatalf("Gonum ok=%v, Netlib info=%d", gok, info)
+	}
+	checkCloseNetlib(t, "reverse dif", gdif, ndif)
+	gc, gf = make([]float64, m1*n1), make([]float64, m1*n1)
+	_, gdif, gok = Implementation{}.Dtgsyl(blas.NoTrans, 3, m1, n1,
+		a[m*n+m:], n, a, n, gc, n1,
+		b[m*n+m:], n, b, n, gf, n1,
+		[]float64{0}, 1, make([]int, n+6))
+	if !gok {
+		t.Fatal("strided reverse kernel reported coincident eigenvalues")
+	}
+	checkCloseNetlib(t, "strided reverse dif", gdif, ndif)
+}
+
+func dtgsenOraclePencil() (a, b []float64, selected []bool) {
+	a = []float64{
+		-3, 0.2, 0.1, 0.3, 0.4,
+		0, 1, 2, 0.2, -0.1,
+		0, -1, 1, 0.5, 0.25,
+		0, 0, 0, 4, 0.7,
+		0, 0, 0, 0, -2,
+	}
+	b = []float64{
+		1, 0.1, -0.2, 0.05, 0.3,
+		0, 2, 0, 0.2, -0.1,
+		0, 0, 3, 0.15, 0.25,
+		0, 0, 0, 1.5, -0.2,
+		0, 0, 0, 0, 0.8,
+	}
+	return a, b, []bool{false, false, false, true, true}
+}
+
+func TestDtgsylNetlibBlockDifferential(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		m, n       int
+		a, b, d, e []float64
+	}{
+		{
+			name: "1x2",
+			m:    1,
+			n:    2,
+			a:    []float64{2},
+			b:    []float64{1, 2, -1, 1},
+			d:    []float64{3},
+			e:    []float64{2, 0.2, 0, 3},
+		},
+		{
+			name: "2x1",
+			m:    2,
+			n:    1,
+			a:    []float64{1, 2, -1, 1},
+			b:    []float64{4},
+			d:    []float64{2, 0.2, 0, 3},
+			e:    []float64{1.5},
+		},
+		{
+			name: "2x2",
+			m:    2,
+			n:    2,
+			a:    []float64{1, 2, -1, 1},
+			b:    []float64{3, 1, -0.5, 3},
+			d:    []float64{2, 0.2, 0, 3},
+			e:    []float64{1.5, -0.1, 0, 2.5},
+		},
+		{
+			name: "3x2-multiblock",
+			m:    3,
+			n:    2,
+			a: []float64{
+				-3, 0.1, 0.2,
+				0, 1, 2,
+				0, -1, 1,
+			},
+			b: []float64{4, 0.7, 0, -2},
+			d: []float64{
+				1, 0.1, -0.2,
+				0, 2, 0,
+				0, 0, 3,
+			},
+			e: []float64{1.5, -0.2, 0, 0.8},
+		},
+	} {
+		for _, ijob := range []int{3, 4} {
+			t.Run(fmt.Sprintf("%s/ijob=%d", test.name, ijob), func(t *testing.T) {
+				gc := make([]float64, test.m*test.n)
+				gf := make([]float64, test.m*test.n)
+				nc := make([]float64, test.m*test.n)
+				nf := make([]float64, test.m*test.n)
+				work := make([]float64, 1)
+				gscale, gdif, gok := Implementation{}.Dtgsyl(blas.NoTrans, ijob, test.m, test.n,
+					test.a, test.m, test.b, test.n, gc, test.n,
+					test.d, test.m, test.e, test.n, gf, test.n,
+					work, len(work), make([]int, test.m+test.n+6))
+				nscale, ndif, info := netlibDtgsyl(byte(blas.NoTrans), ijob, test.m, test.n,
+					test.a, test.b, nc, test.d, test.e, nf)
+				if gok != (info == 0) {
+					t.Fatalf("Gonum ok=%v, Netlib info=%d", gok, info)
+				}
+				checkCloseNetlib(t, "scale", gscale, nscale)
+				checkCloseNetlib(t, "dif", gdif, ndif)
+			})
+		}
+	}
+}
+
+func TestDtgsy2NetlibSuccessiveBlocks(t *testing.T) {
+	const n = 3
+	a := []float64{
+		2, 0.1, 0.2,
+		0, 1, 2,
+		0, -1, 1,
+	}
+	b := []float64{
+		4, 0.2, 0.3,
+		0, 3, 1,
+		0, -0.5, 3,
+	}
+	d := []float64{
+		1, 0.1, -0.2,
+		0, 2, 0.2,
+		0, 0, 3,
+	}
+	e := []float64{
+		1.5, -0.1, 0.2,
+		0, 2.5, 0.3,
+		0, 0, 0.7,
+	}
+	c := []float64{1, -2, 0.5, 0.7, 1.2, -0.3, -0.8, 0.4, 2}
+	f := []float64{-0.5, 1, 0.2, 1.5, -0.7, 0.9, 0.3, -1.1, 0.6}
+	for _, trans := range []blas.Transpose{blas.NoTrans, blas.Trans} {
+		gc, gf := append([]float64(nil), c...), append([]float64(nil), f...)
+		nc, nf := append([]float64(nil), c...), append([]float64(nil), f...)
+		gscale, gsum, gscal, gpq, gok := Implementation{}.Dtgsy2(trans, 0, n, n,
+			a, n, b, n, gc, n, d, n, e, n, gf, n, 1, 0, make([]int, 2*n+2))
+		nscale, nsum, nscal, npq, info := netlibDtgsy2(byte(trans), 0, n, n,
+			a, b, nc, d, e, nf, 1, 0)
+		if gok != (info == 0) || gpq != npq {
+			t.Fatalf("trans=%v: Gonum=(pq=%d,ok=%v), Netlib=(pq=%d,info=%d)", trans, gpq, gok, npq, info)
+		}
+		checkCloseNetlib(t, "scale", gscale, nscale)
+		checkCloseNetlib(t, "rdsum", gsum, nsum)
+		checkCloseNetlib(t, "rdscal", gscal, nscal)
+		for i := range gc {
+			checkCloseNetlib(t, fmt.Sprintf("trans=%v C[%d]", trans, i), gc[i], nc[i])
+			checkCloseNetlib(t, fmt.Sprintf("trans=%v F[%d]", trans, i), gf[i], nf[i])
+		}
+	}
+}
+
+func TestDlatdfNetlibEightByEight(t *testing.T) {
+	z := []float64{
+		1, 2, 0, 0, -3, 0, 0.5, 0,
+		-1, 1, 0, 0, 0, -3, 0, 0.5,
+		0, 0, 1, 2, -1, 0, -3, 0,
+		0, 0, -1, 1, 0, -1, 0, -3,
+		2, 0.2, 0, 0, -1.5, 0, 0.1, 0,
+		0, 3, 0, 0, 0, -1.5, 0, 0.1,
+		0, 0, 2, 0.2, 0, 0, -2.5, 0,
+		0, 0, 0, 3, 0, 0, 0, -2.5,
+	}
+	gz := append([]float64(nil), z...)
+	nz := append([]float64(nil), z...)
+	grhs := make([]float64, 8)
+	nrhs := make([]float64, 8)
+	ipiv := make([]int, 8)
+	jpiv := make([]int, 8)
+	Implementation{}.Dgetc2(8, gz, 8, ipiv, jpiv)
+	gscale, gsum := Implementation{}.Dlatdf(lapack.LocalLookAhead, 8, gz, 8,
+		grhs, 1, 0, ipiv, jpiv)
+	nsum, nscale, _ := netlibDlatdf(lapack.LocalLookAhead, 8, nz, nrhs, 1, 0)
+	checkCloseNetlib(t, "scale", gscale, nscale)
+	checkCloseNetlib(t, "sum", gsum, nsum)
+	for i := range grhs {
+		checkCloseNetlib(t, fmt.Sprintf("rhs[%d]", i), grhs[i], nrhs[i])
+	}
+}
+
+func checkCloseNetlib(t *testing.T, name string, got, want float64) {
+	t.Helper()
+	tol := 5e-11 * math.Max(1, math.Abs(want))
+	if math.Abs(got-want) > tol {
+		t.Errorf("%s=%g, want Netlib %g (tolerance %g)", name, got, want, tol)
+	}
+}
+
+func checkEstimateNetlib(t *testing.T, name string, got, want float64) {
+	t.Helper()
+	tol := 0.1 * math.Max(math.Abs(want), math.SmallestNonzeroFloat64)
+	if math.Abs(got-want) > tol {
+		t.Errorf("%s=%g, want Netlib estimate %g (tolerance %g)", name, got, want, tol)
 	}
 }
 
