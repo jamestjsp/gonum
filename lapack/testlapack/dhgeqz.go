@@ -32,6 +32,7 @@ func DhgeqzTest(t *testing.T, impl Dhgeqzer) {
 	}
 
 	testDhgeqz2x2(t, impl)
+	testDhgeqzComplex2x2NonDiagonalT(t, impl)
 	testDhgeqzIsolatedEigenvalueSigns(t, impl)
 	testDhgeqz3x3(t, impl)
 	testDhgeqzComplex4x4(t, impl)
@@ -108,7 +109,13 @@ func testDhgeqz2x2(t *testing.T, impl Dhgeqzer) {
 		q.Data, q.Stride, z.Data, z.Stride, work, 10)
 
 	if !ok {
-		t.Log("2x2 test: QZ iteration did not converge")
+		t.Fatal("2x2 test: QZ iteration did not converge")
+	}
+	if alphai[0] != 0 || alphai[1] != 0 {
+		t.Fatalf("2x2 test: expected two real eigenvalues, got alphai=%v", alphai)
+	}
+	if math.Abs(h.Data[h.Stride]) > 1e-14 {
+		t.Fatalf("2x2 test: real block was not split: H[1,0]=%g", h.Data[h.Stride])
 	}
 
 	// Check that beta values are non-zero for non-infinite eigenvalues.
@@ -116,6 +123,33 @@ func testDhgeqz2x2(t *testing.T, impl Dhgeqzer) {
 		if math.Abs(beta[i]) > 1e-10 && math.IsNaN(alphar[i]/beta[i]) {
 			t.Errorf("2x2 test: eigenvalue %d is NaN", i)
 		}
+	}
+}
+
+func testDhgeqzComplex2x2NonDiagonalT(t *testing.T, impl Dhgeqzer) {
+	h := []float64{0, -1, 1, 0}
+	tt := []float64{2, 1, 0, 3}
+	q := make([]float64, 4)
+	z := make([]float64, 4)
+	alphar := make([]float64, 2)
+	alphai := make([]float64, 2)
+	beta := make([]float64, 2)
+	work := make([]float64, 2)
+
+	ok := impl.Dhgeqz(lapack.EigenvaluesAndSchur, lapack.SchurHess, lapack.SchurHess,
+		2, 0, 1, h, 2, tt, 2, alphar, alphai, beta, q, 2, z, 2, work, len(work))
+	if !ok {
+		t.Fatal("complex 2x2 test: QZ iteration did not converge")
+	}
+	if alphai[0] <= 0 || alphai[1] >= 0 {
+		t.Fatalf("complex 2x2 test: expected a conjugate pair, got alphai=%v", alphai)
+	}
+	const tol = 1e-14
+	if math.Abs(tt[1]) > tol || math.Abs(tt[2]) > tol {
+		t.Fatalf("complex 2x2 test: T is not diagonal: %v", tt)
+	}
+	if tt[0] <= 0 || tt[3] <= 0 {
+		t.Fatalf("complex 2x2 test: T diagonal is not positive: %v", tt)
 	}
 }
 

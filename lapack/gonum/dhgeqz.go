@@ -236,28 +236,29 @@ func (impl Implementation) Dhgeqz(job lapack.SchurJob, compq, compz lapack.Schur
 			// 2x2 block - compute eigenvalues.
 			s1, s2, wr1, wr2, wi := impl.Dlag2(h[ifirst*ldh+ifirst:], ldh, t[ifirst*ldt+ifirst:], ldt)
 			if wi == 0 {
-				// Two real eigenvalues.
-				alphar[ifirst] = wr1
-				alphai[ifirst] = 0
-				beta[ifirst] = s1
-				alphar[ilast] = wr2
-				alphai[ilast] = 0
-				beta[ilast] = s2
-			} else {
-				// Complex conjugate pair - standardize the 2x2 block.
-				// H block should have equal diagonals and H(i+1,i)*H(i,i+1) < 0.
-				// T block should be upper triangular with positive entries.
-				if ilschr {
-					impl.standardize2x2Block(n, ifirst, ifrstm, ilastm,
-						h, ldh, t, ldt, q, ldq, z, ldz, ilq, ilz)
-				}
-				alphar[ifirst] = wr1
-				alphai[ifirst] = wi
-				beta[ifirst] = s1
-				alphar[ilast] = wr1
-				alphai[ilast] = -wi
-				beta[ilast] = s1
+				// A real pair must be split into two 1x1 blocks by a
+				// single-shift QZ step before it can be deflated.
+				goto doQZStep
 			}
+
+			// Complex conjugate pair - diagonalize T with distinct left
+			// and right rotations, as required by generalized Schur form.
+			if ilschr {
+				impl.standardize2x2Block(n, ifirst, ifrstm, ilastm,
+					h, ldh, t, ldt, q, ldq, z, ldz, ilq, ilz)
+				s1, s2, wr1, wr2, wi = impl.Dlag2(h[ifirst*ldh+ifirst:], ldh, t[ifirst*ldt+ifirst:], ldt)
+				if wi == 0 {
+					goto doQZStep
+				}
+			}
+			_ = s2
+			_ = wr2
+			alphar[ifirst] = wr1
+			alphai[ifirst] = wi
+			beta[ifirst] = s1
+			alphar[ilast] = wr1
+			alphai[ilast] = -wi
+			beta[ilast] = s1
 			ilast -= 2
 			iiter = 0
 			eshift = 0
@@ -779,97 +780,46 @@ func (impl Implementation) doQZSweepDouble(ilschr, ilq, ilz bool, n, ifirst, ila
 	}
 }
 
-// standardize2x2Block puts a 2x2 block at position j into Schur canonical form.
-// For H: equal diagonals with H(j+1,j)*H(j,j+1) < 0.
-// For T: diagonal with positive entries.
+// standardize2x2Block diagonalizes the T part of a complex 2x2 Schur block
+// and makes its diagonal positive.
 func (impl Implementation) standardize2x2Block(n, j, ifrstm, ilastm int,
 	h []float64, ldh int, t []float64, ldt int,
 	q []float64, ldq int, z []float64, ldz int, ilq, ilz bool) {
 
-	// Extract 2x2 block from H.
-	a := h[j*ldh+j]
-	b := h[j*ldh+j+1]
-	c := h[(j+1)*ldh+j]
-	d := h[(j+1)*ldh+j+1]
-
-	// Use Dlanv2 to standardize H's 2x2 block.
-	aa, bb, cc, dd, _, _, _, _, cs, sn := impl.Dlanv2(a, b, c, d)
-
-	// Store standardized H block.
-	h[j*ldh+j] = aa
-	h[j*ldh+j+1] = bb
-	h[(j+1)*ldh+j] = cc
-	h[(j+1)*ldh+j+1] = dd
-
 	bi := blas64.Implementation()
+	b22, b11, sr, cr, sl, cl := impl.Dlasv2(t[j*ldt+j], t[j*ldt+j+1], t[(j+1)*ldt+j+1])
+	if b11 < 0 {
+		cr = -cr
+		sr = -sr
+		b11 = -b11
+		b22 = -b22
+	}
 
-	// Apply Dlanv2 transformation to rest of H from left: rows j, j+1.
-	nh := ilastm - (j + 2) + 1
-	if nh > 0 {
-		bi.Drot(nh, h[j*ldh+j+2:], 1, h[(j+1)*ldh+j+2:], 1, cs, sn)
+	bi.Drot(ilastm-j+1, h[j*ldh+j:], 1, h[(j+1)*ldh+j:], 1, cl, sl)
+	bi.Drot(j+2-ifrstm, h[ifrstm*ldh+j:], ldh, h[ifrstm*ldh+j+1:], ldh, cr, sr)
+	if j+1 < ilastm {
+		bi.Drot(ilastm-j-1, t[j*ldt+j+2:], 1, t[(j+1)*ldt+j+2:], 1, cl, sl)
 	}
-	// Apply from right: columns j, j+1.
-	nh = j - ifrstm
-	if nh > 0 {
-		bi.Drot(nh, h[ifrstm*ldh+j:], ldh, h[ifrstm*ldh+j+1:], ldh, cs, sn)
-	}
-	// Apply to T from left: rows j, j+1.
-	nh = ilastm - j + 1
-	bi.Drot(nh, t[j*ldt+j:], 1, t[(j+1)*ldt+j:], 1, cs, sn)
-	// Apply to T from right: columns j, j+1.
-	nh = j + 2 - ifrstm
-	if nh > 0 {
-		bi.Drot(nh, t[ifrstm*ldt+j:], ldt, t[ifrstm*ldt+j+1:], ldt, cs, sn)
+	if ifrstm < j {
+		bi.Drot(j-ifrstm, t[ifrstm*ldt+j:], ldt, t[ifrstm*ldt+j+1:], ldt, cr, sr)
 	}
 	if ilq {
-		bi.Drot(n, q[j:], ldq, q[j+1:], ldq, cs, sn)
+		bi.Drot(n, q[j:], ldq, q[j+1:], ldq, cl, sl)
 	}
 	if ilz {
-		bi.Drot(n, z[j:], ldz, z[j+1:], ldz, cs, sn)
+		bi.Drot(n, z[j:], ldz, z[j+1:], ldz, cr, sr)
 	}
-
-	// Make T upper triangular with positive diagonal.
-	// After applying the Dlanv2 similarity transformation, T may have
-	// nonzero t21. We need to eliminate it using a right rotation.
-	// Also ensure T diagonals are positive.
-
-	t21 := t[(j+1)*ldt+j]
-
-	// Eliminate t21 using a right rotation on columns j, j+1.
-	// Find R2 = [cs2 sn2; -sn2 cs2] such that [t21, t22] * R2 = [0, *]
-	// This means cs2*t21 - sn2*t22 = 0.
-	if t21 != 0 {
-		cs2, sn2, _ := impl.Dlartg(t[(j+1)*ldt+j+1], t21)
-
-		// Apply T = T * R2 (column operation).
-		bi.Drot(j+2-ifrstm, t[ifrstm*ldt+j:], ldt, t[ifrstm*ldt+j+1:], ldt, cs2, -sn2)
-		t[(j+1)*ldt+j] = 0
-
-		// Apply H = H * R2 (column operation).
-		bi.Drot(j+2-ifrstm, h[ifrstm*ldh+j:], ldh, h[ifrstm*ldh+j+1:], ldh, cs2, -sn2)
-
-		// Apply Z = Z * R2.
+	t[j*ldt+j] = b11
+	t[j*ldt+j+1] = 0
+	t[(j+1)*ldt+j] = 0
+	t[(j+1)*ldt+j+1] = b22
+	if b22 < 0 {
+		for i := ifrstm; i <= j+1; i++ {
+			h[i*ldh+j+1] = -h[i*ldh+j+1]
+			t[i*ldt+j+1] = -t[i*ldt+j+1]
+		}
 		if ilz {
-			bi.Drot(n, z[j:], ldz, z[j+1:], ldz, cs2, -sn2)
-		}
-	}
-
-	// Ensure T diagonals are positive.
-	// This is a left (row) transformation: negate row j of H and T.
-	// For the factorization H_orig = Q * H * Z^T, if H_new = D * H where D[j,j] = -1,
-	// then Q_new = Q * D (negate column j of Q).
-	if t[j*ldt+j] < 0 {
-		bi.Dscal(ilastm-ifrstm+1, -1, h[j*ldh+ifrstm:], 1)
-		bi.Dscal(ilastm-j+1, -1, t[j*ldt+j:], 1)
-		if ilq {
-			bi.Dscal(n, -1, q[j:], ldq)
-		}
-	}
-	if t[(j+1)*ldt+j+1] < 0 {
-		bi.Dscal(ilastm-ifrstm+1, -1, h[(j+1)*ldh+ifrstm:], 1)
-		bi.Dscal(ilastm-j, -1, t[(j+1)*ldt+j+1:], 1)
-		if ilq {
-			bi.Dscal(n, -1, q[j+1:], ldq)
+			bi.Dscal(n, -1, z[j+1:], ldz)
 		}
 	}
 }
