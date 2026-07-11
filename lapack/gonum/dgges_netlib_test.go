@@ -728,6 +728,58 @@ func TestDtgsylNetlibBlockDifferential(t *testing.T) {
 	}
 }
 
+func TestDtgsylNetlibSolveAndEstimate(t *testing.T) {
+	const (
+		m = 3
+		n = 2
+	)
+	a := []float64{
+		-3, 0.1, 0.2,
+		0, 1, 2,
+		0, -1, 1,
+	}
+	b := []float64{4, 0.7, 0, -2}
+	d := []float64{
+		1, 0.1, -0.2,
+		0, 2, 0,
+		0, 0, 3,
+	}
+	e := []float64{1.5, -0.2, 0, 0.8}
+	c := []float64{1, -2, 0.5, 0.7, -0.3, 1.2}
+	f := []float64{-0.5, 1, 1.5, -0.7, 0.3, -1.1}
+	for _, tc := range []struct {
+		trans blas.Transpose
+		ijob  int
+	}{
+		{trans: blas.NoTrans, ijob: 0},
+		{trans: blas.NoTrans, ijob: 1},
+		{trans: blas.NoTrans, ijob: 2},
+		{trans: blas.Trans, ijob: -3},
+		{trans: blas.Trans, ijob: 0},
+		{trans: blas.Trans, ijob: 7},
+	} {
+		t.Run(fmt.Sprintf("Trans=%c/IJob=%d", tc.trans, tc.ijob), func(t *testing.T) {
+			gc, gf := append([]float64(nil), c...), append([]float64(nil), f...)
+			nc, nf := append([]float64(nil), c...), append([]float64(nil), f...)
+			work := make([]float64, 2*m*n)
+			gscale, gdif, gok := Implementation{}.Dtgsyl(tc.trans, tc.ijob, m, n,
+				a, m, b, n, gc, n, d, m, e, n, gf, n,
+				work, len(work), make([]int, m+n+6))
+			nscale, ndif, info := netlibDtgsyl(byte(tc.trans), tc.ijob, m, n,
+				a, b, nc, d, e, nf)
+			if gok != (info == 0) {
+				t.Fatalf("Gonum ok=%v, Netlib info=%d", gok, info)
+			}
+			checkCloseNetlib(t, "scale", gscale, nscale)
+			checkCloseNetlib(t, "dif", gdif, ndif)
+			for i := range gc {
+				checkCloseNetlib(t, fmt.Sprintf("C[%d]", i), gc[i], nc[i])
+				checkCloseNetlib(t, fmt.Sprintf("F[%d]", i), gf[i], nf[i])
+			}
+		})
+	}
+}
+
 func TestDtgsy2NetlibSuccessiveBlocks(t *testing.T) {
 	const n = 3
 	a := []float64{
@@ -752,23 +804,35 @@ func TestDtgsy2NetlibSuccessiveBlocks(t *testing.T) {
 	}
 	c := []float64{1, -2, 0.5, 0.7, 1.2, -0.3, -0.8, 0.4, 2}
 	f := []float64{-0.5, 1, 0.2, 1.5, -0.7, 0.9, 0.3, -1.1, 0.6}
-	for _, trans := range []blas.Transpose{blas.NoTrans, blas.Trans} {
-		gc, gf := append([]float64(nil), c...), append([]float64(nil), f...)
-		nc, nf := append([]float64(nil), c...), append([]float64(nil), f...)
-		gscale, gsum, gscal, gpq, gok := Implementation{}.Dtgsy2(trans, 0, n, n,
-			a, n, b, n, gc, n, d, n, e, n, gf, n, 1, 0, make([]int, 2*n+2))
-		nscale, nsum, nscal, npq, info := netlibDtgsy2(byte(trans), 0, n, n,
-			a, b, nc, d, e, nf, 1, 0)
-		if gok != (info == 0) || gpq != npq {
-			t.Fatalf("trans=%v: Gonum=(pq=%d,ok=%v), Netlib=(pq=%d,info=%d)", trans, gpq, gok, npq, info)
-		}
-		checkCloseNetlib(t, "scale", gscale, nscale)
-		checkCloseNetlib(t, "rdsum", gsum, nsum)
-		checkCloseNetlib(t, "rdscal", gscal, nscal)
-		for i := range gc {
-			checkCloseNetlib(t, fmt.Sprintf("trans=%v C[%d]", trans, i), gc[i], nc[i])
-			checkCloseNetlib(t, fmt.Sprintf("trans=%v F[%d]", trans, i), gf[i], nf[i])
-		}
+	for _, tc := range []struct {
+		trans blas.Transpose
+		ijob  int
+	}{
+		{trans: blas.NoTrans, ijob: 0},
+		{trans: blas.NoTrans, ijob: 1},
+		{trans: blas.NoTrans, ijob: 2},
+		{trans: blas.Trans, ijob: -3},
+		{trans: blas.Trans, ijob: 0},
+		{trans: blas.Trans, ijob: 7},
+	} {
+		t.Run(fmt.Sprintf("Trans=%c/IJob=%d", tc.trans, tc.ijob), func(t *testing.T) {
+			gc, gf := append([]float64(nil), c...), append([]float64(nil), f...)
+			nc, nf := append([]float64(nil), c...), append([]float64(nil), f...)
+			gscale, gsum, gscal, gpq, gok := Implementation{}.Dtgsy2(tc.trans, tc.ijob, n, n,
+				a, n, b, n, gc, n, d, n, e, n, gf, n, 1, 0, make([]int, 2*n+2))
+			nscale, nsum, nscal, npq, info := netlibDtgsy2(byte(tc.trans), tc.ijob, n, n,
+				a, b, nc, d, e, nf, 1, 0)
+			if gok != (info == 0) || gpq != npq {
+				t.Fatalf("Gonum=(pq=%d,ok=%v), Netlib=(pq=%d,info=%d)", gpq, gok, npq, info)
+			}
+			checkCloseNetlib(t, "scale", gscale, nscale)
+			checkCloseNetlib(t, "rdsum", gsum, nsum)
+			checkCloseNetlib(t, "rdscal", gscal, nscal)
+			for i := range gc {
+				checkCloseNetlib(t, fmt.Sprintf("C[%d]", i), gc[i], nc[i])
+				checkCloseNetlib(t, fmt.Sprintf("F[%d]", i), gf[i], nf[i])
+			}
+		})
 	}
 }
 
