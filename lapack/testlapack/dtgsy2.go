@@ -39,6 +39,21 @@ func Dtgsy2Test(t *testing.T, impl Dtgsy2er) {
 
 	testDtgsy2Special(t, impl)
 	testDtgsy2DifAccumulatorDoesNotScaleSystem(t, impl)
+	testDtgsy2TransIgnoresIjob(t, impl)
+}
+
+func testDtgsy2TransIgnoresIjob(t *testing.T, impl Dtgsy2er) {
+	for _, ijob := range []int{-1, 3} {
+		c := []float64{1}
+		f := []float64{1}
+		_, _, _, _, ok := impl.Dtgsy2(blas.Trans, ijob, 1, 1,
+			[]float64{2}, 1, []float64{3}, 1, c, 1,
+			[]float64{5}, 1, []float64{7}, 1, f, 1,
+			0, 1, make([]int, 4))
+		if !ok {
+			t.Errorf("ijob=%d: transposed solve reported coincident eigenvalues", ijob)
+		}
+	}
 }
 
 func testDtgsy2DifAccumulatorDoesNotScaleSystem(t *testing.T, impl Dtgsy2er) {

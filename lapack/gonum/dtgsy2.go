@@ -50,7 +50,7 @@ func (impl Implementation) Dtgsy2(trans blas.Transpose, ijob, m, n int, a []floa
 		panic(badTrans)
 	}
 	switch {
-	case ijob < 0 || ijob > 2:
+	case trans == blas.NoTrans && (ijob < 0 || ijob > 2):
 		panic("lapack: invalid ijob")
 	case m < 0:
 		panic(mLT0)
