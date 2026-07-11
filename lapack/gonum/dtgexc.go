@@ -51,6 +51,8 @@ func (impl Implementation) Dtgexc(wantq, wantz bool, n int, a []float64, lda int
 		panic(badIlst)
 	case lwork < minWork && lwork != -1:
 		panic(badLWork)
+	case len(work) < 1:
+		panic(shortWork)
 	}
 	work[0] = float64(minWork)
 
