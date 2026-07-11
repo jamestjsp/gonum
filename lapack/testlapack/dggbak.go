@@ -32,6 +32,8 @@ func DggbakTest(t *testing.T, impl Dggbaker) {
 func testDggbakUnusedInputs(t *testing.T, impl Dggbaker) {
 	impl.Dggbak(lapack.BalanceNone, blas.Right, 3, 0, 2, nil, nil, 2, nil, 2)
 	impl.Dggbak(lapack.Scale, blas.Left, 3, 1, 1, nil, nil, 2, nil, 2)
+	impl.Dggbak(lapack.Permute, blas.Right, 3, 0, 2, nil, nil, 2, nil, 2)
+	impl.Dggbak(lapack.PermuteScale, blas.Left, 1, 0, 0, nil, nil, 1, nil, 1)
 
 	v := []float64{1, 2, 3, 4}
 	impl.Dggbak(lapack.Scale, blas.Right, 2, 0, 1, nil, []float64{2, 3}, 2, v, 2)

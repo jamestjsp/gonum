@@ -63,7 +63,9 @@ func (impl Implementation) Dggbak(job lapack.BalanceJob, side blas.Side, n, ilo,
 	if n == 0 || m == 0 {
 		return
 	}
-	if job == lapack.BalanceNone || (job == lapack.Scale && ilo == ihi) {
+	doScale := (job == lapack.Scale || job == lapack.PermuteScale) && ilo != ihi
+	doPermute := (job == lapack.Permute || job == lapack.PermuteScale) && (ilo != 0 || ihi != n-1)
+	if !doScale && !doPermute {
 		return
 	}
 
@@ -86,13 +88,13 @@ func (impl Implementation) Dggbak(job lapack.BalanceJob, side blas.Side, n, ilo,
 	bi := blas64.Implementation()
 
 	// Backward scaling.
-	if ilo != ihi && job != lapack.Permute {
+	if doScale {
 		for i := ilo; i <= ihi; i++ {
 			bi.Dscal(m, scale[i], v[i*ldv:], 1)
 		}
 	}
 
-	if job == lapack.Scale {
+	if !doPermute {
 		return
 	}
 
