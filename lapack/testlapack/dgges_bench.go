@@ -74,3 +74,41 @@ func DggesBenchmark(b *testing.B, impl Dggeser) {
 		})
 	}
 }
+
+func DggesScaledSortBenchmark(b *testing.B, impl Dggeser) {
+	rnd := rand.New(rand.NewPCG(2, 2))
+	selector := func(_, _, _ float64) bool { return false }
+	for _, n := range []int{10, 50, 100, 200} {
+		aOrig := make([]float64, n*n)
+		bOrig := make([]float64, n*n)
+		for i := range aOrig {
+			aOrig[i] = rnd.NormFloat64() * 1e-200
+			bOrig[i] = rnd.NormFloat64() * 1e-200
+		}
+		for i := 0; i < n; i++ {
+			bOrig[i*n+i] += float64(n) * 1e-200
+		}
+		a := make([]float64, len(aOrig))
+		bm := make([]float64, len(bOrig))
+		alphar := make([]float64, n)
+		alphai := make([]float64, n)
+		beta := make([]float64, n)
+		bwork := make([]bool, n)
+		work := make([]float64, 1)
+		impl.Dgges(lapack.SchurNone, lapack.SchurNone, lapack.SortSelected, selector,
+			n, nil, n, nil, n, nil, nil, nil, nil, 1, nil, 1, work, -1, nil)
+		work = make([]float64, int(work[0]))
+
+		b.Run(fmt.Sprintf("n=%d", n), func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				b.StopTimer()
+				copy(a, aOrig)
+				copy(bm, bOrig)
+				b.StartTimer()
+				impl.Dgges(lapack.SchurNone, lapack.SchurNone, lapack.SortSelected, selector,
+					n, a, n, bm, n, alphar, alphai, beta,
+					nil, 1, nil, 1, work, len(work), bwork)
+			}
+		})
+	}
+}

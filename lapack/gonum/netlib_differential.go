@@ -17,6 +17,12 @@ static lapack_logical select_negative(const double *ar, const double *ai, const 
 	return *beta != 0 && *ar < 0;
 }
 
+static lapack_logical select_large_alpha(const double *ar, const double *ai, const double *beta) {
+	(void)ai;
+	(void)beta;
+	return *ar > 1e-299;
+}
+
 static void row_to_col(int n, const double *src, double *dst);
 static void col_to_row(int n, const double *src, double *dst);
 
@@ -26,6 +32,12 @@ static lapack_int run_dgges(lapack_int n, double *a, double *b, lapack_int dosor
 		dosort ? select_negative : NULL, n, a, n, b, n, sdim, ar, ai, beta,
 		vsl, n, vsr, n);
 	return info;
+}
+
+static lapack_int run_dgges_large_alpha(lapack_int n, double *a, double *b,
+		lapack_int *sdim, double *ar, double *ai, double *beta, double *vsl, double *vsr) {
+	return LAPACKE_dgges(LAPACK_ROW_MAJOR, 'V', 'V', 'S', select_large_alpha,
+		n, a, n, b, n, sdim, ar, ai, beta, vsl, n, vsr, n);
 }
 
 extern void dtgex2_(int*, int*, int*, double*, int*, double*, int*, double*, int*,
@@ -91,6 +103,15 @@ func netlibDgges(n int, a, b []float64, dosort bool, ar, ai, beta, vsl, vsr []fl
 		C.lapack_int(boolInt(dosort)), &csdim, (*C.double)(unsafe.Pointer(&ar[0])),
 		(*C.double)(unsafe.Pointer(&ai[0])), (*C.double)(unsafe.Pointer(&beta[0])),
 		(*C.double)(unsafe.Pointer(&vsl[0])), (*C.double)(unsafe.Pointer(&vsr[0])))
+	return int(csdim), int(cinfo)
+}
+
+func netlibDggesLargeAlpha(n int, a, b []float64, ar, ai, beta, vsl, vsr []float64) (sdim, info int) {
+	var csdim C.lapack_int
+	cinfo := C.run_dgges_large_alpha(C.lapack_int(n), (*C.double)(unsafe.Pointer(&a[0])), (*C.double)(unsafe.Pointer(&b[0])),
+		&csdim, (*C.double)(unsafe.Pointer(&ar[0])), (*C.double)(unsafe.Pointer(&ai[0])),
+		(*C.double)(unsafe.Pointer(&beta[0])), (*C.double)(unsafe.Pointer(&vsl[0])),
+		(*C.double)(unsafe.Pointer(&vsr[0])))
 	return int(csdim), int(cinfo)
 }
 

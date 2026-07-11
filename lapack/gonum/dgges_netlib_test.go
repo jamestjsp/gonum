@@ -72,6 +72,36 @@ func TestDggesNetlibNonlocalScaleDeflation(t *testing.T) {
 	compareDggesWithNetlib(t, a, b, 3, false, true)
 }
 
+func TestDggesNetlibSelectorAlphaScale(t *testing.T) {
+	const n = 2
+	a := []float64{1e-300, 0, 0, 1e-200}
+	b := []float64{1e-300, 0, 0, 1e-200}
+	ga, gb := append([]float64(nil), a...), append([]float64(nil), b...)
+	na, nb := append([]float64(nil), a...), append([]float64(nil), b...)
+	gar, gai, gbet := make([]float64, n), make([]float64, n), make([]float64, n)
+	nar, nai, nbet := make([]float64, n), make([]float64, n), make([]float64, n)
+	vsl, vsr := make([]float64, n*n), make([]float64, n*n)
+	nvsl, nvsr := make([]float64, n*n), make([]float64, n*n)
+	workq := make([]float64, 1)
+	impl := Implementation{}
+	selector := func(alphar, _, _ float64) bool { return alphar > 1e-299 }
+	impl.Dgges(lapack.SchurHess, lapack.SchurHess, lapack.SortSelected, selector, n,
+		nil, n, nil, n, nil, nil, nil, nil, n, nil, n, workq, -1, nil)
+	work := make([]float64, int(workq[0]))
+	gsdim, gok := impl.Dgges(lapack.SchurHess, lapack.SchurHess, lapack.SortSelected, selector, n,
+		ga, n, gb, n, gar, gai, gbet, vsl, n, vsr, n, work, len(work), make([]bool, n))
+	nsdim, info := netlibDggesLargeAlpha(n, na, nb, nar, nai, nbet, nvsl, nvsr)
+	if gok != (info == 0) {
+		t.Fatalf("success mismatch: Gonum=%v Netlib info=%d", gok, info)
+	}
+	if gsdim != nsdim {
+		t.Fatalf("sdim mismatch: Gonum=%d Netlib=%d", gsdim, nsdim)
+	}
+	compareGeneralizedEigenvalues(t, gar, gai, gbet, nar, nai, nbet)
+	checkGeneralizedSchurResult(t, "Gonum alpha-scale selector", a, b, ga, gb, vsl, vsr, n)
+	checkGeneralizedSchurResult(t, "Netlib alpha-scale selector", a, b, na, nb, nvsl, nvsr, n)
+}
+
 func compareDggesWithNetlib(t *testing.T, a, b []float64, n int, dosort, compareEigenvalues bool) {
 	t.Helper()
 	ga, gb := append([]float64(nil), a...), append([]float64(nil), b...)

@@ -325,16 +325,12 @@ func (impl Implementation) Dgges(jobvsl, jobvsr lapack.SchurComp, sort lapack.Sc
 	// Sort eigenvalues if desired.
 	sdim = 0
 	if ok && wantst {
-		logAlphaScale := 0.0
-		logBetaScale := 0.0
 		if scalea {
-			logAlphaScale = math.Log(anrm) - math.Log(cscalea)
+			impl.Dlascl(lapack.General, 0, 0, cscalea, anrm, 1, n, alphar, n)
+			impl.Dlascl(lapack.General, 0, 0, cscalea, anrm, 1, n, alphai, n)
 		}
 		if scaleb {
-			logBetaScale = math.Log(bnrm) - math.Log(cscaleb)
-		}
-		if scalea || scaleb {
-			rescaleGeneralizedEigenvalues(alphar, alphai, beta, logAlphaScale, logBetaScale, math.Max(anrm, bnrm))
+			impl.Dlascl(lapack.General, 0, 0, cscaleb, bnrm, 1, n, beta, n)
 		}
 
 		// Populate bwork[] using selctg callback.
@@ -362,19 +358,48 @@ func (impl Implementation) Dgges(jobvsl, jobvsr lapack.SchurComp, sort lapack.Sc
 		impl.Dggbak(lapack.Permute, blas.Right, n, ilo, ihi, lscale, rscale, n, vsr, ldvsr)
 	}
 
-	// Undo scaling.
-	logAlphaScale := 0.0
-	logBetaScale := 0.0
+	// Protect complex eigenvalue representations from overflow and underflow.
+	safmin := dlamchS
+	safmax := 1 / safmin
 	if scalea {
-		impl.Dlascl(lapack.General, 0, 0, cscalea, anrm, n, n, a, lda)
-		logAlphaScale = math.Log(anrm) - math.Log(cscalea)
+		for i := range n {
+			if alphai[i] == 0 {
+				continue
+			}
+			var scale float64
+			if alphar[i]/safmax > cscalea/anrm || safmin/alphar[i] > anrm/cscalea {
+				scale = math.Abs(a[i*lda+i] / alphar[i])
+			} else if alphai[i]/safmax > cscalea/anrm || safmin/alphai[i] > anrm/cscalea {
+				scale = math.Abs(a[i*lda+i+1] / alphai[i])
+			} else {
+				continue
+			}
+			beta[i] *= scale
+			alphar[i] *= scale
+			alphai[i] *= scale
+		}
 	}
 	if scaleb {
-		impl.Dlascl(lapack.General, 0, 0, cscaleb, bnrm, n, n, b, ldb)
-		logBetaScale = math.Log(bnrm) - math.Log(cscaleb)
+		for i := range n {
+			if alphai[i] == 0 || !(beta[i]/safmax > cscaleb/bnrm || safmin/beta[i] > bnrm/cscaleb) {
+				continue
+			}
+			scale := math.Abs(b[i*ldb+i] / beta[i])
+			beta[i] *= scale
+			alphar[i] *= scale
+			alphai[i] *= scale
+		}
 	}
-	if scalea || scaleb {
-		rescaleGeneralizedEigenvalues(alphar, alphai, beta, logAlphaScale, logBetaScale, math.Max(anrm, bnrm))
+
+	// Undo scaling.
+	if scalea {
+		impl.Dlascl(lapack.UpperHessenberg, 0, 0, cscalea, anrm, n, n, a, lda)
+		impl.Dlascl(lapack.General, 0, 0, cscalea, anrm, 1, n, alphar, n)
+		impl.Dlascl(lapack.General, 0, 0, cscalea, anrm, 1, n, alphai, n)
+	}
+	if scaleb {
+		impl.Dlascl(lapack.UpperTri, 0, 0, cscaleb, bnrm, n, n, b, ldb)
+		impl.Dlascl(lapack.General, 0, 0, cscaleb, bnrm, 1, n, beta, n)
 	}
 
 	if ok && wantst {

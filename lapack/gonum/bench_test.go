@@ -24,3 +24,7 @@ func BenchmarkDlaqr5(b *testing.B)        { testlapack.Dlaqr5Benchmark(b, impl) 
 func BenchmarkDlaic1(b *testing.B)        { testlapack.Dlaic1Benchmark(b, impl) }
 func BenchmarkDtzrzf(b *testing.B)        { testlapack.DtzrzfBenchmark(b, impl) }
 func BenchmarkDormrz(b *testing.B)        { testlapack.DormrzBenchmark(b, impl) }
+
+func BenchmarkDggesScaledSort(b *testing.B) {
+	testlapack.DggesScaledSortBenchmark(b, impl)
+}

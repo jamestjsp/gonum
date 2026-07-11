@@ -118,4 +118,43 @@ func DlasclTest(t *testing.T, impl Dlascler) {
 			}
 		}
 	}
+	testDlasclUpperHessenberg(t, impl)
+}
+
+func testDlasclUpperHessenberg(t *testing.T, impl Dlascler) {
+	rnd := rand.New(rand.NewPCG(2, 2))
+	for _, test := range []struct {
+		m, n int
+	}{
+		{0, 0},
+		{1, 1},
+		{1, 10},
+		{10, 1},
+		{3, 11},
+		{11, 3},
+		{11, 11},
+	} {
+		for _, extra := range []int{0, 11} {
+			a := randomGeneral(test.m, test.n, test.n+extra, rnd)
+			aCopy := cloneGeneral(a)
+			impl.Dlascl(lapack.UpperHessenberg, -1, -1, 3, -2, test.m, test.n, a.Data, a.Stride)
+			prefix := fmt.Sprintf("m=%d,n=%d,extra=%d", test.m, test.n, extra)
+			if !generalOutsideAllNaN(a) {
+				t.Errorf("%s: out-of-range write to A", prefix)
+			}
+			for i := 0; i < test.m; i++ {
+				for j := 0; j < test.n; j++ {
+					want := aCopy.Data[i*aCopy.Stride+j]
+					if j >= max(0, i-1) {
+						want *= -2.0 / 3
+					}
+					got := a.Data[i*a.Stride+j]
+					tol := 1e-15 * float64(max(test.m, test.n)) * math.Max(1, math.Abs(want))
+					if math.Abs(got-want) > tol {
+						t.Errorf("%s: A[%d,%d]=%g, want %g", prefix, i, j, got, want)
+					}
+				}
+			}
+		}
+	}
 }

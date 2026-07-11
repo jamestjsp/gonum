@@ -248,9 +248,32 @@ func DggesTest(t *testing.T, impl Dggeser) {
 	testDggesSorting(t, impl)
 	testDggesConjugatePairSorting(t, impl)
 	testDggesSortingUsesUnscaledEigenvalues(t, impl)
+	testDggesSortingPreservesAlphaScale(t, impl)
 	testDggesZeroAndInfiniteEigenvalues(t, impl)
 	testDggesExtremeScaleEigenvalueRepresentation(t, impl)
 	testDggesSelectionRecheck(t, impl)
+}
+
+func testDggesSortingPreservesAlphaScale(t *testing.T, impl Dggeser) {
+	const n = 2
+	a := []float64{1e-300, 0, 0, 1e-200}
+	b := []float64{1e-300, 0, 0, 1e-200}
+	alphar := make([]float64, n)
+	alphai := make([]float64, n)
+	beta := make([]float64, n)
+	bwork := make([]bool, n)
+	work := make([]float64, max(8*n, 6*n+16))
+	selector := func(alphar, _, _ float64) bool {
+		return alphar > 1e-299
+	}
+	sdim, ok := impl.Dgges(lapack.SchurNone, lapack.SchurNone, lapack.SortSelected, selector,
+		n, a, n, b, n, alphar, alphai, beta, nil, 1, nil, 1, work, len(work), bwork)
+	if !ok {
+		t.Fatal("scale-sensitive sorting case failed")
+	}
+	if sdim != 1 {
+		t.Fatalf("sdim=%d, want 1 when selector distinguishes homogeneous alpha scales", sdim)
+	}
 }
 
 func testDggesTwoByTwoShiftFallback(t *testing.T, impl Dggeser) {
