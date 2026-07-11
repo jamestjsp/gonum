@@ -11,6 +11,10 @@ import (
 	"gonum.org/v1/gonum/lapack"
 )
 
+// This implementation follows DGGES in Reference LAPACK 3.12.1 at commit
+// 6ec7f2bc4ecf4c4a93496aa2fa519575bc0e39ca, adapted to Gonum's row-major
+// storage and panic/bool error contracts. See THIRD_PARTY_LICENSES/LAPACK-LICENSE.
+//
 // Dgges computes for a pair of n×n real nonsymmetric matrices (A,B), the
 // generalized eigenvalues, the generalized real Schur form (S,T), and,
 // optionally, the left and/or right matrices of Schur vectors (VSL and VSR).

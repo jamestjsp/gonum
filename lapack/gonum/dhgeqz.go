@@ -12,6 +12,10 @@ import (
 	"gonum.org/v1/gonum/lapack"
 )
 
+// This implementation follows DHGEQZ in Reference LAPACK 3.12.1 at commit
+// 6ec7f2bc4ecf4c4a93496aa2fa519575bc0e39ca, adapted to Gonum's row-major
+// storage and panic/bool error contracts. See THIRD_PARTY_LICENSES/LAPACK-LICENSE.
+//
 // Dhgeqz computes the eigenvalues of a real matrix pair (H,T) where H is upper
 // Hessenberg and T is upper triangular, using the double-shift QZ method.
 //
