@@ -75,26 +75,42 @@ func (impl Implementation) Dtgexc(wantq, wantz bool, n int, a []float64, lda int
 		panic(badIlst)
 	}
 
-	ifstOut = ifst
-	ilstOut = ilst
-	ok = true
-
 	if n == 1 {
-		return ifstOut, ilstOut, ok
+		return ifst, ilst, true
+	}
+	if ifst > 0 && a[ifst*lda+ifst-1] != 0 {
+		ifst--
+	}
+	if ilst > 0 && a[ilst*lda+ilst-1] != 0 {
+		ilst--
+	}
+	nbf := 1
+	if ifst < n-1 && a[(ifst+1)*lda+ifst] != 0 {
+		nbf = 2
+	}
+	nbl := 1
+	if ilst < n-1 && a[(ilst+1)*lda+ilst] != 0 {
+		nbl = 2
+	}
+	if ifst == ilst {
+		return ifst, ilst, true
+	}
+	if ifst < ilst {
+		if nbf == 2 && nbl == 1 {
+			ilst--
+		}
+		if nbf == 1 && nbl == 2 {
+			ilst++
+		}
 	}
 
-	here := ifstOut
+	here := ifst
 
-	if ilstOut > ifstOut {
+	if ilst > ifst {
 		// Move block down.
-		for here < ilstOut {
-			// Determine the size of the current block.
-			nbf := 1
-			if here < n-1 && a[(here+1)*lda+here] != 0 {
-				nbf = 2
-			}
+		for here < ilst {
 			// Determine the size of the next block.
-			nbl := 1
+			nbl = 1
 			if here+nbf < n-1 && a[(here+nbf+1)*lda+here+nbf] != 0 {
 				nbl = 2
 			}
@@ -102,50 +118,29 @@ func (impl Implementation) Dtgexc(wantq, wantz bool, n int, a []float64, lda int
 			// Swap the blocks.
 			swapOk := impl.Dtgex2(wantq, wantz, n, a, lda, b, ldb, q, ldq, z, ldz, here, nbf, nbl, work, lwork)
 			if !swapOk {
-				ilstOut = here
-				ok = false
-				return ifstOut, ilstOut, ok
+				return ifst, here, false
 			}
 
 			here += nbl
-
-			if nbl == 2 && here+1 < n && a[(here+1)*lda+here] == 0 {
-				// 2x2 block became two 1x1 blocks; adjust position.
-			}
 		}
-	} else if ilstOut < ifstOut {
+	} else {
 		// Move block up.
-		for here > ilstOut {
-			// Determine the size of the current block.
-			nbf := 1
-			if here > 0 && a[here*lda+here-1] != 0 {
-				nbf = 2
-				here--
-			}
+		for here > ilst {
 			// Determine the size of the previous block.
 			nbl := 1
 			if here >= 2 && a[(here-1)*lda+here-2] != 0 {
 				nbl = 2
 			}
 
-			// Ensure we don't go below 0.
-			if here < nbl {
-				break
-			}
-
 			// Swap the blocks.
 			swapOk := impl.Dtgex2(wantq, wantz, n, a, lda, b, ldb, q, ldq, z, ldz, here-nbl, nbl, nbf, work, lwork)
 			if !swapOk {
-				ilstOut = here
-				ok = false
-				return ifstOut, ilstOut, ok
+				return ifst, here, false
 			}
 
 			here -= nbl
 		}
 	}
 
-	ifstOut = here
-	ilstOut = here
-	return ifstOut, ilstOut, ok
+	return here, here, true
 }
