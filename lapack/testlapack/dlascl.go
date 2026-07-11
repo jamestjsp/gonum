@@ -119,6 +119,26 @@ func DlasclTest(t *testing.T, impl Dlascler) {
 		}
 	}
 	testDlasclUpperHessenberg(t, impl)
+	testDlasclExtremeRatios(t, impl)
+}
+
+func testDlasclExtremeRatios(t *testing.T, impl Dlascler) {
+	for _, tc := range []struct {
+		name         string
+		value, cfrom float64
+		cto          float64
+	}{
+		{name: "Down", value: math.MaxFloat64, cfrom: math.MaxFloat64, cto: math.SmallestNonzeroFloat64},
+		{name: "Up", value: math.SmallestNonzeroFloat64, cfrom: math.SmallestNonzeroFloat64, cto: math.MaxFloat64},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a := []float64{tc.value}
+			impl.Dlascl(lapack.General, 0, 0, tc.cfrom, tc.cto, 1, 1, a, 1)
+			if a[0] != tc.cto {
+				t.Fatalf("scaled value=%g, want %g", a[0], tc.cto)
+			}
+		})
+	}
 }
 
 func testDlasclUpperHessenberg(t *testing.T, impl Dlascler) {

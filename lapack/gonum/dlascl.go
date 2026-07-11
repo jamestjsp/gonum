@@ -55,8 +55,8 @@ func (impl Implementation) Dlascl(kind lapack.MatrixType, kl, ku int, cfrom, cto
 	bignum := 1 / smlnum
 	cfromc := cfrom
 	ctoc := cto
-	cfrom1 := cfromc * smlnum
 	for {
+		cfrom1 := cfromc * smlnum
 		var done bool
 		var mul, ctol float64
 		if cfrom1 == cfromc {
@@ -82,6 +82,9 @@ func (impl Implementation) Dlascl(kind lapack.MatrixType, kl, ku int, cfrom, cto
 			} else {
 				mul = ctoc / cfromc
 				done = true
+				if mul == 1 {
+					return
+				}
 			}
 		}
 		switch kind {
