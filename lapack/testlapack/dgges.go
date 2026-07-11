@@ -481,8 +481,8 @@ func testDgges(t *testing.T, impl Dggeser, n int, jobvsl, jobvsr lapack.SchurCom
 		return
 	}
 
-	if !isQuasiUpperTriangular(a) {
-		t.Errorf("%v: S is not quasi-upper-triangular", prefix)
+	if !isGeneralizedSchurForm(a, b) {
+		t.Errorf("%v: (S,T) is not in generalized real Schur form: S=%v T=%v", prefix, a.Data, b.Data)
 	}
 
 	if !isUpperTriangular(b) {
@@ -573,8 +573,8 @@ func testDggesMatrix(t *testing.T, impl Dggeser, name string, aOrig, bOrig blas6
 		return
 	}
 
-	if !isQuasiUpperTriangular(a) {
-		t.Errorf("%v: S is not quasi-upper-triangular", prefix)
+	if !isGeneralizedSchurForm(a, b) {
+		t.Errorf("%v: (S,T) is not in generalized real Schur form: S=%v T=%v", prefix, a.Data, b.Data)
 	}
 	if !isUpperTriangular(b) {
 		t.Errorf("%v: T is not upper triangular", prefix)
@@ -637,10 +637,7 @@ func residualGeneralizedSchur(M, S, VSL, VSR blas64.General) float64 {
 	return dlange(lapack.MaxColumnSum, n, n, R2.Data, R2.Stride)
 }
 
-// isQuasiUpperTriangular checks if the matrix is quasi-upper-triangular,
-// meaning it has at most 2x2 blocks on the diagonal (elements only on
-// diagonal and first subdiagonal).
-func isQuasiUpperTriangular(a blas64.General) bool {
+func isGeneralizedSchurForm(a, b blas64.General) bool {
 	n := a.Rows
 	for i := 2; i < n; i++ {
 		for j := 0; j < i-1; j++ {
@@ -648,6 +645,38 @@ func isQuasiUpperTriangular(a blas64.General) bool {
 				return false
 			}
 		}
+	}
+	for i := 0; i < n-1; i++ {
+		if a.Data[(i+1)*a.Stride+i] == 0 {
+			continue
+		}
+		if i+2 < n && a.Data[(i+2)*a.Stride+i+1] != 0 {
+			return false
+		}
+		b11 := b.Data[i*b.Stride+i]
+		b12 := b.Data[i*b.Stride+i+1]
+		b21 := b.Data[(i+1)*b.Stride+i]
+		b22 := b.Data[(i+1)*b.Stride+i+1]
+		if b12 != 0 || b21 != 0 || b11 <= 0 || b22 <= 0 {
+			return false
+		}
+		a11 := a.Data[i*a.Stride+i]
+		a12 := a.Data[i*a.Stride+i+1]
+		a21 := a.Data[(i+1)*a.Stride+i]
+		a22 := a.Data[(i+1)*a.Stride+i+1]
+		as := math.Max(math.Abs(a11), math.Max(math.Abs(a12), math.Max(math.Abs(a21), math.Abs(a22))))
+		bs := math.Max(b11, b22)
+		if as == 0 || bs == 0 {
+			return false
+		}
+		a11, a12, a21, a22 = a11/as, a12/as, a21/as, a22/as
+		b11, b22 = b11/bs, b22/bs
+		d := a11*b22 - a22*b11
+		discriminant := d*d + 4*b11*b22*a12*a21
+		if discriminant >= 0 {
+			return false
+		}
+		i++
 	}
 	return true
 }
@@ -781,7 +810,7 @@ func testDggesBlockStandardization(t *testing.T, impl Dggeser) {
 			1, 0,
 		},
 	}
-	b := eye(n, n)
+	b := blas64.General{Rows: n, Cols: n, Stride: n, Data: []float64{2, 1, 0, 3}}
 
 	alphar := make([]float64, n)
 	alphai := make([]float64, n)

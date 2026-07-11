@@ -78,9 +78,11 @@ import (
 // selctg is true. If sort is lapack.SortNone, sdim will be 0. For a complex
 // conjugate pair, both eigenvalues are counted when either or both are selected.
 //
-// On return, ok reports whether the QZ iteration converged. If ok is false, some
-// eigenvalues may not have been computed, but a and b contain the partially
-// converged Schur form.
+// On return, ok reports whether the QZ iteration converged, all requested block
+// swaps were accepted, and the selected eigenvalues occupy the leading Schur
+// blocks. If ok is false, a and b contain the best partially converged or
+// partially reordered Schur form. Requested Schur vectors are back-permuted and
+// all outputs are returned on the original input scale even when ok is false.
 //
 // Dgges is an internal routine. It is exported for testing purposes.
 func (impl Implementation) Dgges(jobvsl, jobvsr lapack.SchurComp, sort lapack.SchurSort, selctg lapack.SchurSelect, n int, a []float64, lda int, b []float64, ldb int, alphar, alphai, beta []float64, vsl []float64, ldvsl int, vsr []float64, ldvsr int, work []float64, lwork int, bwork []bool) (sdim int, ok bool) {
@@ -134,9 +136,9 @@ func (impl Implementation) Dgges(jobvsl, jobvsr lapack.SchurComp, sort lapack.Sc
 		impl.Dormqr(blas.Left, blas.Trans, n, n, n, nil, max(1, n), nil, nil, max(1, n), work, -1)
 		mqrwork := int(work[0])
 
-		// Query Dorgqr (only if wantvsr).
+		// Query Dorgqr when left Schur vectors are requested.
 		gqrwork := 0
-		if wantvsr {
+		if wantvsl {
 			impl.Dorgqr(n, n, n, nil, max(1, n), nil, work, -1)
 			gqrwork = int(work[0])
 		}
@@ -316,14 +318,9 @@ func (impl Implementation) Dgges(jobvsl, jobvsr lapack.SchurComp, sort lapack.Sc
 		a, lda, b, ldb, alphar, alphai, beta,
 		vsl, ldvsl, vsr, ldvsr, work[iwrk:], lwork-iwrk)
 
-	if !ok {
-		work[0] = float64(maxwrk)
-		return 0, false
-	}
-
 	// Sort eigenvalues if desired.
 	sdim = 0
-	if wantst {
+	if ok && wantst {
 		logAlphaScale := 0.0
 		logBetaScale := 0.0
 		if scalea {
@@ -348,8 +345,8 @@ func (impl Implementation) Dgges(jobvsl, jobvsr lapack.SchurComp, sort lapack.Sc
 			vsl, ldvsl, vsr, ldvsr, work[iwrk:], lwork-iwrk, iwork[:], len(iwork))
 
 		if !ok {
-			work[0] = float64(maxwrk)
-			return 0, false
+			// Continue through back-permutation and unscaling. LAPACK
+			// returns the partially reordered Schur form on this path.
 		}
 	}
 
@@ -376,7 +373,7 @@ func (impl Implementation) Dgges(jobvsl, jobvsr lapack.SchurComp, sort lapack.Sc
 		rescaleGeneralizedEigenvalues(alphar, alphai, beta, logAlphaScale, logBetaScale, math.Max(anrm, bnrm))
 	}
 
-	if wantst {
+	if ok && wantst {
 		lastSelected := true
 		lastPairSelected := true
 		pair := 0
