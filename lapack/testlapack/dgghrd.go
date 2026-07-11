@@ -6,6 +6,7 @@ package testlapack
 
 import (
 	"fmt"
+	"math"
 	"math/rand/v2"
 	"testing"
 
@@ -29,6 +30,23 @@ func DgghrdTest(t *testing.T, impl Dgghrder) {
 				}
 			}
 		}
+	}
+	testDgghrdUnusedInputs(t, impl)
+}
+
+func testDgghrdUnusedInputs(t *testing.T, impl Dgghrder) {
+	for _, compq := range []lapack.OrthoComp{lapack.OrthoNone, lapack.OrthoPostmul} {
+		for _, compz := range []lapack.OrthoComp{lapack.OrthoNone, lapack.OrthoPostmul} {
+			impl.Dgghrd(compq, compz, 1, 0, 0, nil, 1, nil, 1, nil, 1, nil, 1)
+		}
+	}
+
+	q := []float64{math.NaN()}
+	z := []float64{math.NaN()}
+	impl.Dgghrd(lapack.OrthoExplicit, lapack.OrthoExplicit, 1, 0, 0,
+		nil, 1, nil, 1, q, 1, z, 1)
+	if q[0] != 1 || z[0] != 1 {
+		t.Fatalf("explicit quick return produced Q=%v Z=%v, want identities", q, z)
 	}
 }
 
