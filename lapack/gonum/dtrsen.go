@@ -61,7 +61,7 @@ func (impl Implementation) Dtrsen(ijob int, wantq bool, selected []bool, n int, 
 		lwmin = 1
 		liwmin = 1
 	} else {
-		if ijob > 0 {
+		if ijob > 0 || (lwork != -1 && liwork != -1) {
 			switch {
 			case len(selected) < n:
 				panic(badLenSelected)
@@ -106,6 +106,8 @@ func (impl Implementation) Dtrsen(ijob int, wantq bool, selected []bool, n int, 
 	}
 
 	if n == 0 {
+		work[0] = float64(lwmin)
+		iwork[0] = liwmin
 		return 0, 1, 0, true
 	}
 
@@ -129,9 +131,13 @@ func (impl Implementation) Dtrsen(ijob int, wantq bool, selected []bool, n int, 
 	case len(iwork) < liwork:
 		panic(shortIWork)
 	}
+	defer func() {
+		work[0] = float64(lwmin)
+		iwork[0] = liwmin
+	}()
 
 	ok = true
-	m = 0
+	m = msel
 	ks := 0
 	pair := false
 	for k := 0; k < n; k++ {
@@ -157,13 +163,12 @@ func (impl Implementation) Dtrsen(ijob int, wantq bool, selected []bool, n int, 
 				_, _, swapOk := impl.Dtrexc(compq, n, t, ldt, q, ldq, k, ks, work)
 				if !swapOk {
 					ok = false
+					break
 				}
 			}
 			if n2 == 1 {
-				m += 2
 				ks += 2
 			} else {
-				m++
 				ks++
 			}
 		}
