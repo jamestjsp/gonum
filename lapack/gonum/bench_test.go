@@ -28,3 +28,7 @@ func BenchmarkDormrz(b *testing.B)        { testlapack.DormrzBenchmark(b, impl) 
 func BenchmarkDggesScaledSort(b *testing.B) {
 	testlapack.DggesScaledSortBenchmark(b, impl)
 }
+
+func BenchmarkDggesIsolated(b *testing.B) {
+	testlapack.DggesIsolatedBenchmark(b, impl)
+}

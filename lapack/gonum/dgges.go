@@ -246,12 +246,10 @@ func (impl Implementation) Dgges(jobvsl, jobvsr lapack.SchurComp, sort lapack.Sc
 	// Workspace layout:
 	//   work[0:n]     - lscale for Dggbal
 	//   work[n:2n]    - rscale for Dggbal
-	//   work[2n:3n]   - tau for Dgeqrf
-	//   work[3n:]     - workspace for subroutines
+	//   work[2n:2n+irows] - tau for Dgeqrf
+	//   remaining work    - workspace for QR subroutines
 	lscale := work[:n]
 	rscale := work[n : 2*n]
-	tau := work[2*n : 3*n]
-	iwrk := 3 * n
 
 	// Balance the matrix pair (A,B).
 	ilo, ihi := impl.Dggbal(lapack.Permute, n, a, lda, b, ldb, lscale, rscale, work[2*n:])
@@ -259,6 +257,8 @@ func (impl Implementation) Dgges(jobvsl, jobvsr lapack.SchurComp, sort lapack.Sc
 	// Compute dimensions of the active submatrix.
 	irows := ihi - ilo + 1
 	icols := n - ilo
+	tau := work[2*n : 2*n+irows]
+	iwrk := 2*n + irows
 
 	// Compute QR factorization of B[ilo:ihi+1, ilo:n].
 	impl.Dgeqrf(irows, icols, b[ilo*ldb+ilo:], ldb, tau[:irows], work[iwrk:], lwork-iwrk)
@@ -278,13 +278,6 @@ func (impl Implementation) Dgges(jobvsl, jobvsr lapack.SchurComp, sort lapack.Sc
 	// Initialize VSR to identity.
 	if wantvsr {
 		impl.Dlaset(blas.All, n, n, 0, 1, vsr, ldvsr)
-	}
-
-	// Zero lower triangle of B.
-	for i := 1; i < n; i++ {
-		for j := 0; j < i; j++ {
-			b[i*ldb+j] = 0
-		}
 	}
 
 	// Reduce to generalized Hessenberg form.

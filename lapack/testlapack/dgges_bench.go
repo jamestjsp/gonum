@@ -112,3 +112,35 @@ func DggesScaledSortBenchmark(b *testing.B, impl Dggeser) {
 		})
 	}
 }
+
+func DggesIsolatedBenchmark(b *testing.B, impl Dggeser) {
+	for _, n := range []int{10, 50, 100, 200, 500} {
+		aOrig := make([]float64, n*n)
+		bOrig := make([]float64, n*n)
+		for i := range n {
+			aOrig[i*n+i] = float64(i + 1)
+			bOrig[i*n+i] = 1
+		}
+		a := make([]float64, len(aOrig))
+		bm := make([]float64, len(bOrig))
+		alphar := make([]float64, n)
+		alphai := make([]float64, n)
+		beta := make([]float64, n)
+		work := make([]float64, 1)
+		impl.Dgges(lapack.SchurNone, lapack.SchurNone, lapack.SortNone, nil,
+			n, nil, n, nil, n, nil, nil, nil, nil, 1, nil, 1, work, -1, nil)
+		work = make([]float64, int(work[0]))
+
+		b.Run(fmt.Sprintf("n=%d", n), func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				b.StopTimer()
+				copy(a, aOrig)
+				copy(bm, bOrig)
+				b.StartTimer()
+				impl.Dgges(lapack.SchurNone, lapack.SchurNone, lapack.SortNone, nil,
+					n, a, n, bm, n, alphar, alphai, beta,
+					nil, 1, nil, 1, work, len(work), nil)
+			}
+		})
+	}
+}
