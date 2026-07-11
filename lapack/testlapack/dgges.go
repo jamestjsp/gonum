@@ -172,15 +172,13 @@ func DggesTest(t *testing.T, impl Dggeser) {
 		{
 			name: "Nearly defective pencil",
 			a: blas64.General{
-				Rows: 4, Cols: 4, Stride: 4,
+				Rows: 2, Cols: 2, Stride: 2,
 				Data: []float64{
-					1, 1, 0, 0,
-					0, 1, 1, 0,
-					0, 0, 1, 1,
-					1e-14, 0, 0, 1,
+					1, 1,
+					1e-14, 1,
 				},
 			},
-			b: eye(4, 4),
+			b: eye(2, 2),
 		},
 		{
 			name: "Clustered conjugate pairs",

@@ -58,6 +58,29 @@ static lapack_int query_dtgsen(lapack_int ijob, lapack_int n, lapack_int lwork,
 	return info;
 }
 
+static lapack_int run_dhgeqz(char job, char compq, char compz, lapack_int n,
+		lapack_int ilo, lapack_int ihi, double *h, double *t, double *ar,
+		double *ai, double *beta, double *q, double *z) {
+	lapack_int lwork = n > 0 ? n : 1;
+	double *work = malloc((size_t)lwork*sizeof(double));
+	lapack_int info = LAPACKE_dhgeqz_work(LAPACK_ROW_MAJOR, job, compq, compz,
+		n, ilo, ihi, h, n, t, n, ar, ai, beta, q, n, z, n, work, lwork);
+	free(work);
+	return info;
+}
+
+static lapack_int run_dtgsen_singular(void) {
+	lapack_logical select[2] = {1, 0};
+	double a[4] = {1, 0, 0, 1};
+	double b[4] = {1, 0, 0, 1};
+	double ar[2] = {0, 0}, ai[2] = {0, 0}, beta[2] = {0, 0};
+	double q[4] = {1, 0, 0, 1}, z[4] = {1, 0, 0, 1};
+	double dif[2] = {0, 0}, pl = 0, pr = 0;
+	lapack_int m = 0;
+	return LAPACKE_dtgsen(LAPACK_ROW_MAJOR, 1, 0, 0, select, 2, a, 2, b, 2,
+		ar, ai, beta, q, 2, z, 2, &m, &pl, &pr, dif);
+}
+
 extern void dtgex2_(int*, int*, int*, double*, int*, double*, int*, double*, int*,
 	double*, int*, int*, int*, int*, double*, int*, int*);
 
@@ -139,6 +162,18 @@ func netlibDtgsenWorkspace(ijob, n, lwork, liwork int) (work float64, iwork, inf
 	cinfo := C.query_dtgsen(C.lapack_int(ijob), C.lapack_int(n), C.lapack_int(lwork), C.lapack_int(liwork),
 		&cwork, &ciwork)
 	return float64(cwork), int(ciwork), int(cinfo)
+}
+
+func netlibDhgeqz(job, compq, compz byte, n, ilo, ihi int, h, t, ar, ai, beta, q, z []float64) int {
+	return int(C.run_dhgeqz(C.char(job), C.char(compq), C.char(compz), C.lapack_int(n),
+		C.lapack_int(ilo+1), C.lapack_int(ihi+1), (*C.double)(unsafe.Pointer(&h[0])),
+		(*C.double)(unsafe.Pointer(&t[0])), (*C.double)(unsafe.Pointer(&ar[0])),
+		(*C.double)(unsafe.Pointer(&ai[0])), (*C.double)(unsafe.Pointer(&beta[0])),
+		(*C.double)(unsafe.Pointer(&q[0])), (*C.double)(unsafe.Pointer(&z[0]))))
+}
+
+func netlibDtgsenSingular() int {
+	return int(C.run_dtgsen_singular())
 }
 
 func netlibDtgex2(n int, a, b []float64, j1, n1, n2 int) int {

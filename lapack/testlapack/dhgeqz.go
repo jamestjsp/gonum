@@ -35,11 +35,41 @@ func DhgeqzTest(t *testing.T, impl Dhgeqzer) {
 	testDhgeqzComplex2x2NonDiagonalT(t, impl)
 	testDhgeqzIsolatedEigenvalueSigns(t, impl)
 	testDhgeqzNonlocalScaleDeflation(t, impl)
+	testDhgeqzFailureLeavesLeadingEigenvalues(t, impl)
 	testDhgeqz3x3(t, impl)
 	testDhgeqzComplex4x4(t, impl)
 	testDhgeqzComplex6x6(t, impl)
 	testDhgeqzLargeN(t, impl, 50)
 	testDhgeqzLargeN(t, impl, 100)
+}
+
+func testDhgeqzFailureLeavesLeadingEigenvalues(t *testing.T, impl Dhgeqzer) {
+	const n = 4
+	h := []float64{
+		2, 0, 0, 0,
+		0, 1, 1, 0,
+		0, 1, 2, 1,
+		0, 0, math.NaN(), 3,
+	}
+	tt := []float64{
+		-1, 0, 0, 0,
+		0, 1, 0, 0,
+		0, 0, 1, 0,
+		0, 0, 0, 1,
+	}
+	alphar := []float64{11, 12, 13, 14}
+	alphai := []float64{21, 22, 23, 24}
+	beta := []float64{31, 32, 33, 34}
+	work := make([]float64, n)
+	ok := impl.Dhgeqz(lapack.EigenvaluesOnly, lapack.SchurNone, lapack.SchurNone,
+		n, 1, n-1, h, n, tt, n, alphar, alphai, beta, nil, 1, nil, 1, work, len(work))
+	if ok {
+		t.Fatal("non-finite active block unexpectedly converged")
+	}
+	if h[0] != 2 || tt[0] != -1 || alphar[0] != 11 || alphai[0] != 21 || beta[0] != 31 {
+		t.Fatalf("failure modified leading isolated eigenvalue: H=%g T=%g alpha=(%g,%g) beta=%g",
+			h[0], tt[0], alphar[0], alphai[0], beta[0])
+	}
 }
 
 func testDhgeqzNonlocalScaleDeflation(t *testing.T, impl Dhgeqzer) {

@@ -26,6 +26,23 @@ func DggbakTest(t *testing.T, impl Dggbaker) {
 		}
 	}
 	testDggbakRectangularStride(t, impl)
+	testDggbakUnusedInputs(t, impl)
+}
+
+func testDggbakUnusedInputs(t *testing.T, impl Dggbaker) {
+	impl.Dggbak(lapack.BalanceNone, blas.Right, 3, 0, 2, nil, nil, 2, nil, 2)
+	impl.Dggbak(lapack.Scale, blas.Left, 3, 1, 1, nil, nil, 2, nil, 2)
+
+	v := []float64{1, 2, 3, 4}
+	impl.Dggbak(lapack.Scale, blas.Right, 2, 0, 1, nil, []float64{2, 3}, 2, v, 2)
+	if v[0] != 2 || v[1] != 4 || v[2] != 9 || v[3] != 12 {
+		t.Fatalf("right scaling produced %v", v)
+	}
+	v = []float64{1, 2, 3, 4}
+	impl.Dggbak(lapack.Scale, blas.Left, 2, 0, 1, []float64{2, 3}, nil, 2, v, 2)
+	if v[0] != 2 || v[1] != 4 || v[2] != 9 || v[3] != 12 {
+		t.Fatalf("left scaling produced %v", v)
+	}
 }
 
 func testDggbakRectangularStride(t *testing.T, impl Dggbaker) {

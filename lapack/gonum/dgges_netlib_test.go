@@ -45,6 +45,36 @@ func TestDggesNetlibDifferential(t *testing.T) {
 	}
 }
 
+func TestDggesNetlibSeparatedGlobalScales(t *testing.T) {
+	rnd := rand.New(rand.NewPCG(11, 11))
+	for _, exponents := range [][2]int{
+		{-300, -300},
+		{-300, 0},
+		{0, -300},
+		{300, 0},
+		{0, 300},
+		{300, 300},
+		{-200, 200},
+		{200, -200},
+	} {
+		scaleA := math.Pow10(exponents[0])
+		scaleB := math.Pow10(exponents[1])
+		t.Run(fmt.Sprintf("A=1e%d/B=1e%d", exponents[0], exponents[1]), func(t *testing.T) {
+			for n := 2; n <= 8; n++ {
+				for k := 0; k < 20; k++ {
+					a := make([]float64, n*n)
+					b := make([]float64, n*n)
+					for i := range a {
+						a[i] = rnd.NormFloat64() * scaleA
+						b[i] = rnd.NormFloat64() * scaleB
+					}
+					compareDggesWithNetlib(t, a, b, n, false, true)
+				}
+			}
+		})
+	}
+}
+
 func TestDggesNetlibTwoByTwoShiftFallback(t *testing.T) {
 	const n = 14
 	rnd := rand.New(rand.NewPCG(93, 93))
@@ -60,6 +90,15 @@ func TestDggesNetlibTwoByTwoShiftFallback(t *testing.T) {
 		}
 	}
 	compareDggesWithNetlib(t, a, b, n, false, false)
+}
+
+func TestDggesNetlibNearlyDefective(t *testing.T) {
+	a := []float64{
+		1, 1,
+		1e-14, 1,
+	}
+	b := identityData(2)
+	compareDggesWithNetlib(t, a, b, 2, false, true)
 }
 
 func TestDggesNetlibNonlocalScaleDeflation(t *testing.T) {
@@ -132,6 +171,20 @@ func TestDtgsenNetlibWorkspaceQueries(t *testing.T) {
 				t.Fatalf("Gonum workspace=(%v,%d), Netlib=(%v,%d)", work[0], iwork[0], nwork, niwork)
 			}
 		})
+	}
+}
+
+func TestDtgsenNetlibSingularConditionEstimate(t *testing.T) {
+	const n = 2
+	work := make([]float64, 4*n+16)
+	iwork := make([]int, n+6)
+	_, _, _, _, ok := Implementation{}.Dtgsen(1, false, false, []bool{true, false}, n,
+		[]float64{1, 0, 0, 1}, n, []float64{1, 0, 0, 1}, n,
+		make([]float64, n), make([]float64, n), make([]float64, n),
+		nil, 1, nil, 1, work, len(work), iwork, len(iwork))
+	info := netlibDtgsenSingular()
+	if ok != (info == 0) {
+		t.Fatalf("success mismatch: Gonum=%v Netlib info=%d", ok, info)
 	}
 }
 
@@ -233,11 +286,13 @@ func TestDtgex2NetlibRejectedSwap(t *testing.T) {
 	na, nb := append([]float64(nil), a...), append([]float64(nil), b...)
 	q, z := identityData(n), identityData(n)
 	work := make([]float64, 2*n*n)
-	if (Implementation{}).Dtgex2(true, true, n, ga, n, gb, n, q, n, z, n, 0, 2, 2, work, len(work)) {
-		t.Fatal("Gonum accepted Netlib-rejected swap")
+	gok := (Implementation{}).Dtgex2(true, true, n, ga, n, gb, n, q, n, z, n, 0, 2, 2, work, len(work))
+	info := netlibDtgex2(n, na, nb, 0, 2, 2)
+	if gok != (info == 0) {
+		t.Fatalf("acceptance mismatch: Gonum=%v Netlib info=%d", gok, info)
 	}
-	if info := netlibDtgex2(n, na, nb, 0, 2, 2); info == 0 {
-		t.Fatal("Netlib accepted rejection fixture")
+	if gok {
+		t.Fatal("rejection fixture was accepted")
 	}
 	identity := identityData(n)
 	for i := range a {

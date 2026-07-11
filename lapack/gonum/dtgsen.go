@@ -289,13 +289,10 @@ extractEigenvalues:
 
 		var workTgsyl [1]float64
 
-		scale, _, tgsylOk := impl.Dtgsyl(blas.NoTrans, 0, n1, n2,
+		scale, _, _ := impl.Dtgsyl(blas.NoTrans, 0, n1, n2,
 			a, lda, a[n1*lda+n1:], lda, c, n2,
 			b, ldb, b[n1*ldb+n1:], ldb, f, n2,
 			workTgsyl[:], 1, iwork)
-		if !tgsylOk {
-			ok = false
-		}
 
 		rnorm := impl.Dlange(lapack.Frobenius, n1, n2, c, n2, nil)
 		lnorm := impl.Dlange(lapack.Frobenius, n1, n2, f, n2, nil)

@@ -395,41 +395,46 @@ func (impl Implementation) Dgges(jobvsl, jobvsr lapack.SchurComp, sort lapack.Sc
 		impl.Dlascl(lapack.General, 0, 0, cscaleb, bnrm, 1, n, beta, n)
 	}
 
-	if ok && wantst {
-		lastSelected := true
-		lastPairSelected := true
-		pair := 0
-		sdim = 0
-		for i := 0; i < n; i++ {
-			selected := selctg(alphar[i], alphai[i], beta[i])
-			if alphai[i] == 0 {
-				if selected {
-					sdim++
-				}
-				pair = 0
-				if selected && !lastSelected {
-					ok = false
-				}
-			} else if pair == 1 {
-				selected = selected || lastSelected
-				lastSelected = selected
-				if selected {
-					sdim += 2
-				}
-				pair = -1
-				if selected && !lastPairSelected {
-					ok = false
-				}
-			} else {
-				pair = 1
-			}
-			lastPairSelected = lastSelected
-			lastSelected = selected
-		}
+	if wantst {
+		sdim, ok = recheckDggesSelection(ok, selctg, alphar, alphai, beta)
 	}
 
 	work[0] = float64(maxwrk)
 	return sdim, ok
+}
+
+func recheckDggesSelection(ok bool, selctg lapack.SchurSelect, alphar, alphai, beta []float64) (sdim int, reordered bool) {
+	reordered = ok
+	lastSelected := true
+	lastPairSelected := true
+	pair := 0
+	for i := range alphar {
+		selected := selctg(alphar[i], alphai[i], beta[i])
+		if alphai[i] == 0 {
+			if selected {
+				sdim++
+			}
+			pair = 0
+			if selected && !lastSelected {
+				reordered = false
+			}
+		} else if pair == 1 {
+			selected = selected || lastSelected
+			lastSelected = selected
+			if selected {
+				sdim += 2
+			}
+			pair = -1
+			if selected && !lastPairSelected {
+				reordered = false
+			}
+		} else {
+			pair = 1
+		}
+		lastPairSelected = lastSelected
+		lastSelected = selected
+	}
+	return sdim, reordered
 }
 
 // rescaleGeneralizedEigenvalues undoes the independent pencil scaling while

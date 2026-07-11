@@ -136,13 +136,8 @@ func (impl Implementation) Dhgeqz(job lapack.SchurJob, compq, compz lapack.Schur
 	ascale := 1 / math.Max(safmin, anorm)
 	bscale := 1 / math.Max(safmin, bnorm)
 
-	// Set eigenvalues for rows outside [ilo, ihi].
-	for j := 0; j < ilo; j++ {
-		standardizeDhgeqzRealEigenvalue(ilschr, ilz, n, j, 0, h, ldh, t, ldt, z, ldz)
-		alphar[j] = h[j*ldh+j]
-		alphai[j] = 0
-		beta[j] = t[j*ldt+j]
-	}
+	// Set eigenvalues after ihi. Leading isolated eigenvalues are set only
+	// after successful QZ iteration, matching the failure-path contract.
 	for j := ihi + 1; j < n; j++ {
 		standardizeDhgeqzRealEigenvalue(ilschr, ilz, n, j, 0, h, ldh, t, ldt, z, ldz)
 		alphar[j] = h[j*ldh+j]
@@ -274,38 +269,6 @@ func (impl Implementation) Dhgeqz(job lapack.SchurJob, compq, compz lapack.Schur
 		}
 
 	handleBlock:
-		if ifirst == ilast-1 {
-			s1, s2, wr1, wr2, wi := impl.Dlag2(h[ifirst*ldh+ifirst:], ldh, t[ifirst*ldt+ifirst:], ldt)
-			if wi == 0 {
-				goto doQZStep
-			}
-			if ilschr {
-				impl.standardize2x2Block(n, ifirst, ifrstm, ilastm,
-					h, ldh, t, ldt, q, ldq, z, ldz, ilq, ilz)
-				s1, s2, wr1, wr2, wi = impl.Dlag2(h[ifirst*ldh+ifirst:], ldh, t[ifirst*ldt+ifirst:], ldt)
-				if wi == 0 {
-					goto doQZStep
-				}
-			}
-			_ = s2
-			_ = wr2
-			alphar[ifirst] = wr1
-			alphai[ifirst] = wi
-			beta[ifirst] = s1
-			alphar[ilast] = wr1
-			alphai[ilast] = -wi
-			beta[ilast] = s1
-			ilast -= 2
-			iiter = 0
-			eshift = 0
-			if !ilschr {
-				ilastm = ilast
-				if ifrstm > ilast {
-					ifrstm = ilo
-				}
-			}
-			continue
-		}
 		goto doQZStep
 
 	deflateReal:
@@ -383,9 +346,9 @@ func (impl Implementation) Dhgeqz(job lapack.SchurJob, compq, compz lapack.Schur
 
 		// Exceptional shift every 10 iterations.
 		if iiter%10 == 0 {
-			if float64(totalMaxit)*safmin*math.Abs(h[(ilast-1)*ldh+ilast]) <
+			if float64(totalMaxit)*safmin*math.Abs(h[ilast*ldh+ilast-1]) <
 				math.Abs(t[(ilast-1)*ldt+ilast-1]) {
-				eshift += h[(ilast-1)*ldh+ilast] / t[(ilast-1)*ldt+ilast-1]
+				eshift = h[ilast*ldh+ilast-1] / t[(ilast-1)*ldt+ilast-1]
 			} else {
 				eshift += 1 / (safmin * float64(totalMaxit))
 			}
@@ -394,11 +357,33 @@ func (impl Implementation) Dhgeqz(job lapack.SchurJob, compq, compz lapack.Schur
 			wi = 0
 		} else {
 			// Normal shift: eigenvalues of trailing 2x2.
-			s1, s2, wr, wr2, wi = impl.Dlag2(h[(ilast-1)*ldh+ilast-1:], ldh, t[(ilast-1)*ldt+ilast-1:], ldt)
+			s1, s2, wr, wr2, wi = impl.dlag2(h[(ilast-1)*ldh+ilast-1:], ldh, t[(ilast-1)*ldt+ilast-1:], ldt, 100*safmin)
 			if wi == 0 && math.Abs((wr/s1)*t[ilast*ldt+ilast]-h[ilast*ldh+ilast]) >
 				math.Abs((wr2/s2)*t[ilast*ldt+ilast]-h[ilast*ldh+ilast]) {
 				s1, s2 = s2, s1
 				wr, wr2 = wr2, wr
+			}
+			if wi != 0 && ifirst+1 == ilast {
+				b11, b22 := impl.standardize2x2Block(n, ifirst, ifrstm, ilastm,
+					h, ldh, t, ldt, q, ldq, z, ldz, ilq, ilz)
+				s1, _, wr, _, wi = impl.dlag2(h[ifirst*ldh+ifirst:], ldh, t[ifirst*ldt+ifirst:], ldt, 100*safmin)
+				if wi == 0 {
+					continue
+				}
+				alphar[ifirst], alphai[ifirst], beta[ifirst],
+					alphar[ilast], alphai[ilast], beta[ilast] =
+					dhgeqzComplexEigenvalues(h[ifirst*ldh+ifirst], h[ifirst*ldh+ilast],
+						h[ilast*ldh+ifirst], h[ilast*ldh+ilast], b11, b22, s1, wr, wi, safmin)
+				ilast = ifirst - 1
+				iiter = 0
+				eshift = 0
+				if !ilschr {
+					ilastm = ilast
+					if ifrstm > ilast {
+						ifrstm = ilo
+					}
+				}
+				continue
 			}
 		}
 
@@ -434,28 +419,20 @@ func (impl Implementation) Dhgeqz(job lapack.SchurJob, compq, compz lapack.Schur
 			impl.doQZSweepSingle(ilschr, ilq, ilz, n, ilast, ifrstm, ilastm,
 				h, ldh, t, ldt, q, ldq, z, ldz, istart, s1, wr)
 		} else {
-			// Double-shift requires nonzero T diagonals for scaled pencil formula.
-			// Fall back to single-shift for singular pencils.
-			hasSmallTDiag := false
-			for k := ifirst; k <= ilast; k++ {
-				if math.Abs(t[k*ldt+k]) <= btol {
-					hasSmallTDiag = true
-					break
-				}
-			}
-			if hasSmallTDiag {
-				impl.doQZSweepSingle(ilschr, ilq, ilz, n, ilast, ifrstm, ilastm,
-					h, ldh, t, ldt, q, ldq, z, ldz, ifirst, s1, wr)
-			} else {
-				impl.doQZSweepDouble(ilschr, ilq, ilz, n, ifirst, ilast, ifrstm, ilastm,
-					h, ldh, t, ldt, q, ldq, z, ldz, ascale, bscale, safmin)
-			}
+			impl.doQZSweepDouble(ilschr, ilq, ilz, n, ifirst, ilast, ifrstm, ilastm,
+				h, ldh, t, ldt, q, ldq, z, ldz, ascale, bscale, safmin)
 		}
 	}
 
 	// Check convergence.
 	if ilast >= ilo {
 		return false
+	}
+	for j := 0; j < ilo; j++ {
+		standardizeDhgeqzRealEigenvalue(ilschr, ilz, n, j, 0, h, ldh, t, ldt, z, ldz)
+		alphar[j] = h[j*ldh+j]
+		alphai[j] = 0
+		beta[j] = t[j*ldt+j]
 	}
 
 	return true
@@ -492,13 +469,14 @@ func (impl Implementation) doQZSweepSingle(ilschr, ilq, ilz bool, n, ilast, ifrs
 	temp2 := s1 * h[(istart+1)*ldh+istart]
 
 	cs, sn, _ := impl.Dlartg(temp, temp2)
+	var r float64
 
 	for j := istart; j < ilast; j++ {
 		if j > istart {
 			temp = h[j*ldh+j-1]
 			temp2 = h[(j+1)*ldh+j-1]
-			cs, sn, _ = impl.Dlartg(temp, temp2)
-			h[j*ldh+j-1] = cs*temp + sn*temp2
+			cs, sn, r = impl.Dlartg(temp, temp2)
+			h[j*ldh+j-1] = r
 			h[(j+1)*ldh+j-1] = 0
 		}
 
@@ -510,8 +488,8 @@ func (impl Implementation) doQZSweepSingle(ilschr, ilq, ilz bool, n, ilast, ifrs
 		}
 
 		if t[(j+1)*ldt+j] != 0 {
-			cs, sn, _ = impl.Dlartg(t[(j+1)*ldt+j+1], t[(j+1)*ldt+j])
-			t[(j+1)*ldt+j+1] = cs*t[(j+1)*ldt+j+1] + sn*t[(j+1)*ldt+j]
+			cs, sn, r = impl.Dlartg(t[(j+1)*ldt+j+1], t[(j+1)*ldt+j])
+			t[(j+1)*ldt+j+1] = r
 			t[(j+1)*ldt+j] = 0
 
 			nh := min(j+2, ilast) - ifrstm + 1
@@ -525,6 +503,40 @@ func (impl Implementation) doQZSweepSingle(ilschr, ilq, ilz bool, n, ilast, ifrs
 			}
 		}
 	}
+}
+
+// dlarfg3 generates an elementary reflector for a three-element vector.
+func (impl Implementation) dlarfg3(alpha, x1, x2 float64) (beta, tau, v1, v2 float64) {
+	xnorm := impl.Dlapy2(x1, x2)
+	if xnorm == 0 {
+		return alpha, 0, x1, x2
+	}
+	beta = -math.Copysign(impl.Dlapy2(alpha, xnorm), alpha)
+	safmin := dlamchS / dlamchE
+	knt := 0
+	if math.Abs(beta) < safmin {
+		rsafmn := 1 / safmin
+		for {
+			knt++
+			x1 *= rsafmn
+			x2 *= rsafmn
+			beta *= rsafmn
+			alpha *= rsafmn
+			if math.Abs(beta) >= safmin {
+				break
+			}
+		}
+		xnorm = impl.Dlapy2(x1, x2)
+		beta = -math.Copysign(impl.Dlapy2(alpha, xnorm), alpha)
+	}
+	tau = (beta - alpha) / beta
+	scale := 1 / (alpha - beta)
+	x1 *= scale
+	x2 *= scale
+	for range knt {
+		beta *= safmin
+	}
+	return beta, tau, x1, x2
 }
 
 // doQZSweepDouble performs an implicit double-shift QZ sweep for complex
@@ -560,15 +572,7 @@ func (impl Implementation) doQZSweepDouble(ilschr, ilq, ilz bool, n, ifirst, ila
 	v3 := ad32l * ad21l
 
 	// Create Householder transformation to introduce bulge.
-	var vv [2]float64
-	vv[0] = v2
-	vv[1] = v3
-	v1, tau := impl.Dlarfg(3, v1, vv[:], 1)
-	_ = v1
-	var v [3]float64
-	v[0] = 1
-	v[1] = vv[0]
-	v[2] = vv[1]
+	_, tau, v2, v3 := impl.dlarfg3(v1, v2, v3)
 
 	// Chase the bulge through the matrix.
 	for j := istart; j < ilast-1; j++ {
@@ -576,12 +580,7 @@ func (impl Implementation) doQZSweepDouble(ilschr, ilq, ilz bool, n, ifirst, ila
 			v1 = h[j*ldh+j-1]
 			v2 = h[(j+1)*ldh+j-1]
 			v3 = h[(j+2)*ldh+j-1]
-			vv[0] = v2
-			vv[1] = v3
-			v1, tau = impl.Dlarfg(3, v1, vv[:], 1)
-			v[0] = 1
-			v[1] = vv[0]
-			v[2] = vv[1]
+			v1, tau, v2, v3 = impl.dlarfg3(v1, v2, v3)
 
 			h[j*ldh+j-1] = v1
 			h[(j+1)*ldh+j-1] = 0
@@ -589,22 +588,22 @@ func (impl Implementation) doQZSweepDouble(ilschr, ilq, ilz bool, n, ifirst, ila
 		}
 
 		// Apply Householder from left to H and T.
-		t2 := tau * v[1]
-		t3 := tau * v[2]
+		t2 := tau * v2
+		t3 := tau * v3
 		for jc := j; jc <= ilastm; jc++ {
-			sumh := h[j*ldh+jc] + v[1]*h[(j+1)*ldh+jc] + v[2]*h[(j+2)*ldh+jc]
+			sumh := h[j*ldh+jc] + v2*h[(j+1)*ldh+jc] + v3*h[(j+2)*ldh+jc]
 			h[j*ldh+jc] -= tau * sumh
 			h[(j+1)*ldh+jc] -= t2 * sumh
 			h[(j+2)*ldh+jc] -= t3 * sumh
 
-			sumt := t[j*ldt+jc] + v[1]*t[(j+1)*ldt+jc] + v[2]*t[(j+2)*ldt+jc]
+			sumt := t[j*ldt+jc] + v2*t[(j+1)*ldt+jc] + v3*t[(j+2)*ldt+jc]
 			t[j*ldt+jc] -= tau * sumt
 			t[(j+1)*ldt+jc] -= t2 * sumt
 			t[(j+2)*ldt+jc] -= t3 * sumt
 		}
 		if ilq {
 			for jr := 0; jr < n; jr++ {
-				sum := q[jr*ldq+j] + v[1]*q[jr*ldq+j+1] + v[2]*q[jr*ldq+j+2]
+				sum := q[jr*ldq+j] + v2*q[jr*ldq+j+1] + v3*q[jr*ldq+j+2]
 				q[jr*ldq+j] -= tau * sum
 				q[jr*ldq+j+1] -= t2 * sum
 				q[jr*ldq+j+2] -= t3 * sum
@@ -675,34 +674,33 @@ func (impl Implementation) doQZSweepDouble(ilschr, ilq, ilz bool, n, ifirst, ila
 		t1 := math.Sqrt(scl*scl + u1*u1 + u2*u2)
 		tauR := 1 + scl/t1
 		vs := -1 / (scl + t1)
-		v[0] = 1
-		v[1] = vs * u1
-		v[2] = vs * u2
+		v2 = vs * u1
+		v3 = vs * u2
 
 		// Apply right Householder to H, T, Z.
-		t2 = tauR * v[1]
-		t3 = tauR * v[2]
+		t2 = tauR * v2
+		t3 = tauR * v3
 		for jr := ifrstm; jr <= j+2; jr++ {
-			sumh := h[jr*ldh+j] + v[1]*h[jr*ldh+j+1] + v[2]*h[jr*ldh+j+2]
+			sumh := h[jr*ldh+j] + v2*h[jr*ldh+j+1] + v3*h[jr*ldh+j+2]
 			h[jr*ldh+j] -= tauR * sumh
 			h[jr*ldh+j+1] -= t2 * sumh
 			h[jr*ldh+j+2] -= t3 * sumh
 
-			sumt := t[jr*ldt+j] + v[1]*t[jr*ldt+j+1] + v[2]*t[jr*ldt+j+2]
+			sumt := t[jr*ldt+j] + v2*t[jr*ldt+j+1] + v3*t[jr*ldt+j+2]
 			t[jr*ldt+j] -= tauR * sumt
 			t[jr*ldt+j+1] -= t2 * sumt
 			t[jr*ldt+j+2] -= t3 * sumt
 		}
 		if j+3 <= ilast {
 			jr := j + 3
-			sumh := h[jr*ldh+j] + v[1]*h[jr*ldh+j+1] + v[2]*h[jr*ldh+j+2]
+			sumh := h[jr*ldh+j] + v2*h[jr*ldh+j+1] + v3*h[jr*ldh+j+2]
 			h[jr*ldh+j] -= tauR * sumh
 			h[jr*ldh+j+1] -= t2 * sumh
 			h[jr*ldh+j+2] -= t3 * sumh
 		}
 		if ilz {
 			for jr := 0; jr < n; jr++ {
-				sum := z[jr*ldz+j] + v[1]*z[jr*ldz+j+1] + v[2]*z[jr*ldz+j+2]
+				sum := z[jr*ldz+j] + v2*z[jr*ldz+j+1] + v3*z[jr*ldz+j+2]
 				z[jr*ldz+j] -= tauR * sum
 				z[jr*ldz+j+1] -= t2 * sum
 				z[jr*ldz+j+2] -= t3 * sum
@@ -749,7 +747,7 @@ func (impl Implementation) doQZSweepDouble(ilschr, ilq, ilz bool, n, ifirst, ila
 // and makes its diagonal positive.
 func (impl Implementation) standardize2x2Block(n, j, ifrstm, ilastm int,
 	h []float64, ldh int, t []float64, ldt int,
-	q []float64, ldq int, z []float64, ldz int, ilq, ilz bool) {
+	q []float64, ldq int, z []float64, ldz int, ilq, ilz bool) (b11, b22 float64) {
 
 	bi := blas64.Implementation()
 	b22, b11, sr, cr, sl, cl := impl.Dlasv2(t[j*ldt+j], t[j*ldt+j+1], t[(j+1)*ldt+j+1])
@@ -786,5 +784,83 @@ func (impl Implementation) standardize2x2Block(n, j, ifrstm, ilastm int,
 		if ilz {
 			bi.Dscal(n, -1, z[j+1:], ldz)
 		}
+		b22 = -b22
 	}
+	return b11, b22
+}
+
+func dhgeqzComplexEigenvalues(a11, a12, a21, a22, b11, b22, s1, wr, wi, safmin float64) (ar1, ai1, beta1, ar2, ai2, beta2 float64) {
+	c11r := s1*a11 - wr*b11
+	c11i := -wi * b11
+	c12 := s1 * a12
+	c21 := s1 * a21
+	c22r := s1*a22 - wr*b22
+	c22i := -wi * b22
+
+	var cz, szr, szi float64
+	if math.Abs(c11r)+math.Abs(c11i)+math.Abs(c12) > math.Abs(c21)+math.Abs(c22r)+math.Abs(c22i) {
+		t1 := dlapy3(c12, c11r, c11i)
+		cz = c12 / t1
+		szr = -c11r / t1
+		szi = -c11i / t1
+	} else {
+		cz = math.Hypot(c22r, c22i)
+		if cz <= safmin {
+			cz = 0
+			szr = 1
+			szi = 0
+		} else {
+			tempr := c22r / cz
+			tempi := c22i / cz
+			t1 := math.Hypot(cz, c21)
+			cz /= t1
+			szr = -c21 * tempr / t1
+			szi = c21 * tempi / t1
+		}
+	}
+
+	an := math.Abs(a11) + math.Abs(a12) + math.Abs(a21) + math.Abs(a22)
+	bn := math.Abs(b11) + math.Abs(b22)
+	wabs := math.Abs(wr) + math.Abs(wi)
+	var cq, sqr, sqi float64
+	if s1*an > wabs*bn {
+		cq = cz * b11
+		sqr = szr * b22
+		sqi = -szi * b22
+	} else {
+		a1r := cz*a11 + szr*a12
+		a1i := szi * a12
+		a2r := cz*a21 + szr*a22
+		a2i := szi * a22
+		cq = math.Hypot(a1r, a1i)
+		if cq <= safmin {
+			cq = 0
+			sqr = 1
+			sqi = 0
+		} else {
+			tempr := a1r / cq
+			tempi := a1i / cq
+			sqr = tempr*a2r + tempi*a2i
+			sqi = tempi*a2r - tempr*a2i
+		}
+	}
+	t1 := dlapy3(cq, sqr, sqi)
+	cq /= t1
+	sqr /= t1
+	sqi /= t1
+
+	tempr := sqr*szr - sqi*szi
+	tempi := sqr*szi + sqi*szr
+	b1r := cq*cz*b11 + tempr*b22
+	b1i := tempi * b22
+	beta1 = math.Hypot(b1r, b1i)
+	b2r := cq*cz*b22 + tempr*b11
+	b2i := -tempi * b11
+	beta2 = math.Hypot(b2r, b2i)
+	s1inv := 1 / s1
+	ar1 = (wr * beta1) * s1inv
+	ai1 = (wi * beta1) * s1inv
+	ar2 = (wr * beta2) * s1inv
+	ai2 = -(wi * beta2) * s1inv
+	return ar1, ai1, beta1, ar2, ai2, beta2
 }

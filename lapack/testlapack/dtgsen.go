@@ -45,9 +45,24 @@ func DtgsenTest(t *testing.T, impl Dtgsener) {
 	testDtgsenPartialWorkspaceQueries(t, impl)
 	testDtgsenTrivialSeparation(t, impl)
 	testDtgsenProjectionBounds(t, impl)
+	testDtgsenSingularConditionEstimate(t, impl)
 	testDtgsenNormalizesRealEigenvalueSigns(t, impl)
 	testDtgsenSeparationDirections(t, impl)
 	testDtgsenOneNormSeparation(t, impl)
+}
+
+func testDtgsenSingularConditionEstimate(t *testing.T, impl Dtgsener) {
+	const n = 2
+	a := []float64{1, 0, 0, 1}
+	b := []float64{1, 0, 0, 1}
+	work := make([]float64, 4*n+16)
+	iwork := make([]int, n+6)
+	_, _, _, _, ok := impl.Dtgsen(1, false, false, []bool{true, false}, n,
+		a, n, b, n, make([]float64, n), make([]float64, n), make([]float64, n),
+		nil, 1, nil, 1, work, len(work), iwork, len(iwork))
+	if !ok {
+		t.Fatal("singular condition estimate reported a reordering failure")
+	}
 }
 
 func testDtgsenNormalizesRealEigenvalueSigns(t *testing.T, impl Dtgsener) {

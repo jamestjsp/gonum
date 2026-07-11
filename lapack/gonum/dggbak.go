@@ -63,30 +63,27 @@ func (impl Implementation) Dggbak(job lapack.BalanceJob, side blas.Side, n, ilo,
 	if n == 0 || m == 0 {
 		return
 	}
-
-	switch {
-	case len(lscale) < n:
-		panic(shortLscale)
-	case len(rscale) < n:
-		panic(shortRscale)
-	case len(v) < (n-1)*ldv+m:
-		panic(shortV)
-	}
-
-	// Quick return if possible.
-	if job == lapack.BalanceNone {
+	if job == lapack.BalanceNone || (job == lapack.Scale && ilo == ihi) {
 		return
 	}
 
-	bi := blas64.Implementation()
-
-	// Select the scale array based on side.
 	var scale []float64
 	if side == blas.Right {
+		if len(rscale) < n {
+			panic(shortRscale)
+		}
 		scale = rscale
 	} else {
+		if len(lscale) < n {
+			panic(shortLscale)
+		}
 		scale = lscale
 	}
+	if len(v) < (n-1)*ldv+m {
+		panic(shortV)
+	}
+
+	bi := blas64.Implementation()
 
 	// Backward scaling.
 	if ilo != ihi && job != lapack.Permute {
