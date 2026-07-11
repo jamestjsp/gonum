@@ -120,6 +120,17 @@ func (impl Implementation) Dtgsen(ijob int, wantq, wantz bool, selected []bool, 
 		liwmin = 1
 	}
 
+	switch {
+	case !lquery && lwork < lwmin:
+		panic(badLWork)
+	case !lquery && liwork < liwmin:
+		panic(badLIWork)
+	case len(work) < 1:
+		panic(shortWork)
+	case len(iwork) < 1:
+		panic(shortIWork)
+	}
+
 	work[0] = float64(lwmin)
 	iwork[0] = liwmin
 	if lquery {
@@ -127,10 +138,6 @@ func (impl Implementation) Dtgsen(ijob int, wantq, wantz bool, selected []bool, 
 	}
 
 	switch {
-	case lwork < lwmin:
-		panic(badLWork)
-	case liwork < liwmin:
-		panic(badLIWork)
 	case len(work) < lwork:
 		panic(shortWork)
 	case len(iwork) < liwork:
