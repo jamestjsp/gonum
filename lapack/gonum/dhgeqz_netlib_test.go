@@ -144,6 +144,70 @@ func TestDhgeqzNetlibActiveSubrange(t *testing.T) {
 		n, 1, 4, h, tt, true)
 }
 
+func TestDhgeqzNetlibAccumulationOptions(t *testing.T) {
+	const n = 5
+	rnd := rand.New(rand.NewPCG(19, 19))
+	hOrig := make([]float64, n*n)
+	tOrig := make([]float64, n*n)
+	for i := 0; i < n; i++ {
+		for j := max(0, i-1); j < n; j++ {
+			hOrig[i*n+j] = rnd.NormFloat64()
+		}
+		for j := i; j < n; j++ {
+			tOrig[i*n+j] = rnd.NormFloat64()
+		}
+		tOrig[i*n+i] += n
+	}
+	qOrig := identityData(n)
+	qOrig[0], qOrig[1], qOrig[n], qOrig[n+1] = 0.6, -0.8, 0.8, 0.6
+	zOrig := identityData(n)
+	zOrig[2*n+2], zOrig[2*n+3], zOrig[3*n+2], zOrig[3*n+3] = 0.8, -0.6, 0.6, 0.8
+	for _, compq := range []lapack.SchurComp{lapack.SchurNone, lapack.SchurHess, lapack.SchurOrig} {
+		for _, compz := range []lapack.SchurComp{lapack.SchurNone, lapack.SchurHess, lapack.SchurOrig} {
+			t.Run(fmt.Sprintf("Q=%c/Z=%c", compq, compz), func(t *testing.T) {
+				gh, gt := append([]float64(nil), hOrig...), append([]float64(nil), tOrig...)
+				nh, nt := append([]float64(nil), hOrig...), append([]float64(nil), tOrig...)
+				gar, gai, gbeta := make([]float64, n), make([]float64, n), make([]float64, n)
+				nar, nai, nbeta := make([]float64, n), make([]float64, n), make([]float64, n)
+				gq, nq := append([]float64(nil), qOrig...), append([]float64(nil), qOrig...)
+				gz, nz := append([]float64(nil), zOrig...), append([]float64(nil), zOrig...)
+				if compq == lapack.SchurHess {
+					for i := range gq {
+						gq[i], nq[i] = math.NaN(), math.NaN()
+					}
+				}
+				if compz == lapack.SchurHess {
+					for i := range gz {
+						gz[i], nz[i] = math.NaN(), math.NaN()
+					}
+				}
+				gok := Implementation{}.Dhgeqz(lapack.EigenvaluesAndSchur, compq, compz,
+					n, 0, n-1, gh, n, gt, n, gar, gai, gbeta, gq, n, gz, n,
+					make([]float64, n), n)
+				info := netlibDhgeqz(byte(lapack.EigenvaluesAndSchur), byte(compq), byte(compz),
+					n, 0, n-1, nh, nt, nar, nai, nbeta, nq, nz)
+				if gok != (info == 0) {
+					t.Fatalf("Gonum success=%v, Netlib info=%d", gok, info)
+				}
+				if !gok {
+					return
+				}
+				compareGeneralizedEigenvalues(t, gar, gai, gbeta, nar, nai, nbeta)
+				for i := range gh {
+					checkCloseNetlib(t, fmt.Sprintf("H[%d]", i), gh[i], nh[i])
+					checkCloseNetlib(t, fmt.Sprintf("T[%d]", i), gt[i], nt[i])
+					if compq != lapack.SchurNone {
+						checkCloseNetlib(t, fmt.Sprintf("Q[%d]", i), gq[i], nq[i])
+					}
+					if compz != lapack.SchurNone {
+						checkCloseNetlib(t, fmt.Sprintf("Z[%d]", i), gz[i], nz[i])
+					}
+				}
+			})
+		}
+	}
+}
+
 func compareDhgeqzWithNetlib(t *testing.T, job lapack.SchurJob, compq, compz lapack.SchurComp,
 	n, ilo, ihi int, h, tt []float64, checkSchur bool) {
 	t.Helper()

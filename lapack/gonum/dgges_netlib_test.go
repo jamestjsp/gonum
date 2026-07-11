@@ -46,6 +46,264 @@ func TestDggesNetlibDifferential(t *testing.T) {
 	}
 }
 
+func TestDggesNetlibOptions(t *testing.T) {
+	const n = 6
+	rnd := rand.New(rand.NewPCG(7, 7))
+	aOrig := make([]float64, n*n)
+	bOrig := make([]float64, n*n)
+	for i := range aOrig {
+		aOrig[i] = rnd.NormFloat64()
+		bOrig[i] = rnd.NormFloat64()
+	}
+	selector := func(ar, _ float64, beta float64) bool { return beta != 0 && ar < 0 }
+	for _, jobs := range []struct {
+		name           string
+		jobvsl, jobvsr lapack.SchurComp
+		njobvsl        byte
+		njobvsr        byte
+	}{
+		{name: "NoneNone", jobvsl: lapack.SchurNone, jobvsr: lapack.SchurNone, njobvsl: 'N', njobvsr: 'N'},
+		{name: "VectorsNone", jobvsl: lapack.SchurHess, jobvsr: lapack.SchurNone, njobvsl: 'V', njobvsr: 'N'},
+		{name: "NoneVectors", jobvsl: lapack.SchurNone, jobvsr: lapack.SchurHess, njobvsl: 'N', njobvsr: 'V'},
+		{name: "VectorsVectors", jobvsl: lapack.SchurHess, jobvsr: lapack.SchurHess, njobvsl: 'V', njobvsr: 'V'},
+	} {
+		for _, dosort := range []bool{false, true} {
+			for _, minimum := range []bool{false, true} {
+				name := fmt.Sprintf("%s/Sort=%v/MinimumWork=%v", jobs.name, dosort, minimum)
+				t.Run(name, func(t *testing.T) {
+					ga, gb := append([]float64(nil), aOrig...), append([]float64(nil), bOrig...)
+					na, nb := append([]float64(nil), aOrig...), append([]float64(nil), bOrig...)
+					gar, gai, gbet := make([]float64, n), make([]float64, n), make([]float64, n)
+					nar, nai, nbet := make([]float64, n), make([]float64, n), make([]float64, n)
+					var gvsl, gvsr []float64
+					ldvsl, ldvsr := 1, 1
+					if jobs.jobvsl == lapack.SchurHess {
+						gvsl = make([]float64, n*n)
+						ldvsl = n
+					}
+					if jobs.jobvsr == lapack.SchurHess {
+						gvsr = make([]float64, n*n)
+						ldvsr = n
+					}
+					nvsl, nvsr := make([]float64, n*n), make([]float64, n*n)
+					sortMode := lapack.SortNone
+					var selectFn lapack.SchurSelect
+					var bwork []bool
+					if dosort {
+						sortMode = lapack.SortSelected
+						selectFn = selector
+						bwork = make([]bool, n)
+					}
+					workQuery := make([]float64, 1)
+					Implementation{}.Dgges(jobs.jobvsl, jobs.jobvsr, sortMode, selectFn, n,
+						nil, n, nil, n, nil, nil, nil, nil, ldvsl, nil, ldvsr,
+						workQuery, -1, nil)
+					lwork := int(workQuery[0])
+					if minimum {
+						lwork = max(8*n, 6*n+16)
+					}
+					work := make([]float64, lwork)
+					gsdim, gok := Implementation{}.Dgges(jobs.jobvsl, jobs.jobvsr, sortMode, selectFn, n,
+						ga, n, gb, n, gar, gai, gbet, gvsl, ldvsl, gvsr, ldvsr,
+						work, lwork, bwork)
+					nsdim, info := netlibDggesOptions(jobs.njobvsl, jobs.njobvsr, n,
+						na, nb, dosort, nar, nai, nbet, nvsl, nvsr)
+					if gok != (info == 0) || gsdim != nsdim {
+						t.Fatalf("Gonum=(sdim=%d,ok=%v), Netlib=(sdim=%d,info=%d)", gsdim, gok, nsdim, info)
+					}
+					if !gok {
+						return
+					}
+					compareGeneralizedEigenvalues(t, gar, gai, gbet, nar, nai, nbet)
+					checkGeneralizedSchurStructure(t, "Gonum DGGES", ga, gb, n)
+					checkGeneralizedSchurStructure(t, "Netlib DGGES", na, nb, n)
+					if gvsl != nil {
+						checkOrthogonal(t, "Gonum VSL", gvsl, n)
+					}
+					if gvsr != nil {
+						checkOrthogonal(t, "Gonum VSR", gvsr, n)
+					}
+					if gvsl != nil && gvsr != nil {
+						checkGeneralizedSchurResult(t, "Gonum DGGES", aOrig, bOrig, ga, gb, gvsl, gvsr, n)
+						checkGeneralizedSchurResult(t, "Netlib DGGES", aOrig, bOrig, na, nb, nvsl, nvsr, n)
+					}
+				})
+			}
+		}
+	}
+}
+
+func TestDggbalNetlibDifferential(t *testing.T) {
+	const n = 5
+	rnd := rand.New(rand.NewPCG(13, 13))
+	scaledA := make([]float64, n*n)
+	scaledB := make([]float64, n*n)
+	for i := 0; i < n; i++ {
+		for j := 0; j < n; j++ {
+			scale := math.Pow10(4 * (i - j))
+			scaledA[i*n+j] = rnd.NormFloat64() * scale
+			scaledB[i*n+j] = rnd.NormFloat64() * scale
+		}
+	}
+	fixtures := []struct {
+		name string
+		a, b []float64
+	}{
+		{name: "ScaledDense", a: scaledA, b: scaledB},
+		{
+			name: "IsolatedEnds",
+			a: []float64{
+				1, 2, 3, 4, 5,
+				0, 6, 7, 8, 9,
+				0, 10, 11, 12, 13,
+				0, 14, 15, 16, 17,
+				0, 0, 0, 0, 18,
+			},
+			b: []float64{
+				2, -1, 3, -2, 4,
+				0, 5, -3, 6, 1,
+				0, 2, 7, -4, 3,
+				0, -5, 1, 8, -2,
+				0, 0, 0, 0, 9,
+			},
+		},
+	}
+	for _, fixture := range fixtures {
+		for _, job := range []struct {
+			g lapack.BalanceJob
+			n byte
+		}{
+			{g: lapack.BalanceNone, n: 'N'},
+			{g: lapack.Permute, n: 'P'},
+			{g: lapack.Scale, n: 'S'},
+			{g: lapack.PermuteScale, n: 'B'},
+		} {
+			t.Run(fmt.Sprintf("%s/Job=%c", fixture.name, job.n), func(t *testing.T) {
+				ga, gb := append([]float64(nil), fixture.a...), append([]float64(nil), fixture.b...)
+				na, nb := append([]float64(nil), fixture.a...), append([]float64(nil), fixture.b...)
+				gl, gr := make([]float64, n), make([]float64, n)
+				nl, nr := make([]float64, n), make([]float64, n)
+				gilo, gihi := Implementation{}.Dggbal(job.g, n, ga, n, gb, n, gl, gr, make([]float64, 6*n))
+				nilo, nihi, info := netlibDggbal(job.n, n, na, nb, nl, nr)
+				if info != 0 || gilo != nilo || gihi != nihi {
+					t.Fatalf("Gonum range=(%d,%d), Netlib=(%d,%d,info=%d)", gilo, gihi, nilo, nihi, info)
+				}
+				for i := range ga {
+					checkCloseNetlib(t, fmt.Sprintf("A[%d]", i), ga[i], na[i])
+					checkCloseNetlib(t, fmt.Sprintf("B[%d]", i), gb[i], nb[i])
+				}
+				for i := range gl {
+					checkCloseNetlib(t, fmt.Sprintf("lscale[%d]", i), gl[i], nl[i])
+					checkCloseNetlib(t, fmt.Sprintf("rscale[%d]", i), gr[i], nr[i])
+				}
+			})
+		}
+	}
+}
+
+func TestDggbakNetlibDifferential(t *testing.T) {
+	const (
+		n   = 5
+		m   = 3
+		ilo = 1
+		ihi = 3
+	)
+	lscale := []float64{1, 10, 0.1, 100, 3}
+	rscale := []float64{2, 0.5, 2, 4, 0}
+	vOrig := []float64{
+		1, 2, 3,
+		4, 5, 6,
+		7, 8, 9,
+		10, 11, 12,
+		13, 14, 15,
+	}
+	for _, job := range []struct {
+		g lapack.BalanceJob
+		n byte
+	}{
+		{g: lapack.BalanceNone, n: 'N'},
+		{g: lapack.Permute, n: 'P'},
+		{g: lapack.Scale, n: 'S'},
+		{g: lapack.PermuteScale, n: 'B'},
+	} {
+		for _, side := range []struct {
+			g blas.Side
+			n byte
+		}{
+			{g: blas.Left, n: 'L'},
+			{g: blas.Right, n: 'R'},
+		} {
+			t.Run(fmt.Sprintf("Job=%c/Side=%c", job.n, side.n), func(t *testing.T) {
+				gv := append([]float64(nil), vOrig...)
+				nv := append([]float64(nil), vOrig...)
+				Implementation{}.Dggbak(job.g, side.g, n, ilo, ihi, lscale, rscale, m, gv, m)
+				info := netlibDggbak(job.n, side.n, n, ilo, ihi, lscale, rscale, m, nv)
+				if info != 0 {
+					t.Fatalf("Netlib info=%d", info)
+				}
+				for i := range gv {
+					checkCloseNetlib(t, fmt.Sprintf("V[%d]", i), gv[i], nv[i])
+				}
+			})
+		}
+	}
+}
+
+func TestDgghrdNetlibDifferential(t *testing.T) {
+	const n = 6
+	rnd := rand.New(rand.NewPCG(17, 17))
+	aOrig := make([]float64, n*n)
+	bOrig := make([]float64, n*n)
+	for i := range aOrig {
+		aOrig[i] = rnd.NormFloat64()
+		bOrig[i] = rnd.NormFloat64()
+	}
+	comps := []struct {
+		g lapack.OrthoComp
+		n byte
+	}{
+		{g: lapack.OrthoNone, n: 'N'},
+		{g: lapack.OrthoExplicit, n: 'I'},
+		{g: lapack.OrthoPostmul, n: 'V'},
+	}
+	for _, active := range []struct {
+		name     string
+		ilo, ihi int
+	}{
+		{name: "Full", ilo: 0, ihi: n - 1},
+		{name: "Interior", ilo: 1, ihi: n - 2},
+	} {
+		for _, compq := range comps {
+			for _, compz := range comps {
+				name := fmt.Sprintf("%s/Q=%c/Z=%c", active.name, compq.n, compz.n)
+				t.Run(name, func(t *testing.T) {
+					ga, gb := append([]float64(nil), aOrig...), append([]float64(nil), bOrig...)
+					na, nb := append([]float64(nil), aOrig...), append([]float64(nil), bOrig...)
+					gq, gz := identityData(n), identityData(n)
+					nq, nz := identityData(n), identityData(n)
+					Implementation{}.Dgghrd(compq.g, compz.g, n, active.ilo, active.ihi,
+						ga, n, gb, n, gq, n, gz, n)
+					info := netlibDgghrd(compq.n, compz.n, n, active.ilo, active.ihi,
+						na, nb, nq, nz)
+					if info != 0 {
+						t.Fatalf("Netlib info=%d", info)
+					}
+					for i := range ga {
+						checkCloseNetlib(t, fmt.Sprintf("A[%d]", i), ga[i], na[i])
+						checkCloseNetlib(t, fmt.Sprintf("B[%d]", i), gb[i], nb[i])
+						if compq.g != lapack.OrthoNone {
+							checkCloseNetlib(t, fmt.Sprintf("Q[%d]", i), gq[i], nq[i])
+						}
+						if compz.g != lapack.OrthoNone {
+							checkCloseNetlib(t, fmt.Sprintf("Z[%d]", i), gz[i], nz[i])
+						}
+					}
+				})
+			}
+		}
+	}
+}
+
 func TestDggesNetlibSeparatedGlobalScales(t *testing.T) {
 	rnd := rand.New(rand.NewPCG(11, 11))
 	for _, exponents := range [][2]int{

@@ -27,9 +27,10 @@ static lapack_logical select_large_alpha(const double *ar, const double *ai, con
 static void row_to_col(int n, const double *src, double *dst);
 static void col_to_row(int n, const double *src, double *dst);
 
-static lapack_int run_dgges(lapack_int n, double *a, double *b, lapack_int dosort,
+static lapack_int run_dgges(char jobvsl, char jobvsr, lapack_int n,
+	double *a, double *b, lapack_int dosort,
 	lapack_int *sdim, double *ar, double *ai, double *beta, double *vsl, double *vsr) {
-	lapack_int info = LAPACKE_dgges(LAPACK_ROW_MAJOR, 'V', 'V', dosort ? 'S' : 'N',
+	lapack_int info = LAPACKE_dgges(LAPACK_ROW_MAJOR, jobvsl, jobvsr, dosort ? 'S' : 'N',
 		dosort ? select_negative : NULL, n, a, n, b, n, sdim, ar, ai, beta,
 		vsl, n, vsr, n);
 	return info;
@@ -207,8 +208,14 @@ import (
 )
 
 func netlibDgges(n int, a, b []float64, dosort bool, ar, ai, beta, vsl, vsr []float64) (sdim, info int) {
+	return netlibDggesOptions('V', 'V', n, a, b, dosort, ar, ai, beta, vsl, vsr)
+}
+
+func netlibDggesOptions(jobvsl, jobvsr byte, n int, a, b []float64, dosort bool,
+	ar, ai, beta, vsl, vsr []float64) (sdim, info int) {
 	var csdim C.lapack_int
-	cinfo := C.run_dgges(C.lapack_int(n), (*C.double)(unsafe.Pointer(&a[0])), (*C.double)(unsafe.Pointer(&b[0])),
+	cinfo := C.run_dgges(C.char(jobvsl), C.char(jobvsr), C.lapack_int(n),
+		(*C.double)(unsafe.Pointer(&a[0])), (*C.double)(unsafe.Pointer(&b[0])),
 		C.lapack_int(boolInt(dosort)), &csdim, (*C.double)(unsafe.Pointer(&ar[0])),
 		(*C.double)(unsafe.Pointer(&ai[0])), (*C.double)(unsafe.Pointer(&beta[0])),
 		(*C.double)(unsafe.Pointer(&vsl[0])), (*C.double)(unsafe.Pointer(&vsr[0])))
@@ -222,6 +229,47 @@ func netlibDggesLargeAlpha(n int, a, b []float64, ar, ai, beta, vsl, vsr []float
 		(*C.double)(unsafe.Pointer(&beta[0])), (*C.double)(unsafe.Pointer(&vsl[0])),
 		(*C.double)(unsafe.Pointer(&vsr[0])))
 	return int(csdim), int(cinfo)
+}
+
+func netlibDggbal(job byte, n int, a, b, lscale, rscale []float64) (ilo, ihi, info int) {
+	var cilo, cihi C.lapack_int
+	cinfo := C.LAPACKE_dggbal(C.int(C.LAPACK_ROW_MAJOR), C.char(job), C.lapack_int(n),
+		(*C.double)(unsafe.Pointer(&a[0])), C.lapack_int(n),
+		(*C.double)(unsafe.Pointer(&b[0])), C.lapack_int(n), &cilo, &cihi,
+		(*C.double)(unsafe.Pointer(&lscale[0])), (*C.double)(unsafe.Pointer(&rscale[0])))
+	ilo = int(cilo) - 1
+	ihi = int(cihi) - 1
+	for i := 0; i < n; i++ {
+		if i < ilo || i > ihi {
+			lscale[i]--
+			rscale[i]--
+		}
+	}
+	return ilo, ihi, int(cinfo)
+}
+
+func netlibDggbak(job, side byte, n, ilo, ihi int, lscale, rscale []float64, m int, v []float64) int {
+	lcopy := append([]float64(nil), lscale...)
+	rcopy := append([]float64(nil), rscale...)
+	for i := 0; i < n; i++ {
+		if i < ilo || i > ihi {
+			lcopy[i]++
+			rcopy[i]++
+		}
+	}
+	return int(C.LAPACKE_dggbak(C.int(C.LAPACK_ROW_MAJOR), C.char(job), C.char(side),
+		C.lapack_int(n), C.lapack_int(ilo+1), C.lapack_int(ihi+1),
+		(*C.double)(unsafe.Pointer(&lcopy[0])), (*C.double)(unsafe.Pointer(&rcopy[0])),
+		C.lapack_int(m), (*C.double)(unsafe.Pointer(&v[0])), C.lapack_int(m)))
+}
+
+func netlibDgghrd(compq, compz byte, n, ilo, ihi int, a, b, q, z []float64) int {
+	return int(C.LAPACKE_dgghrd(C.int(C.LAPACK_ROW_MAJOR), C.char(compq), C.char(compz),
+		C.lapack_int(n), C.lapack_int(ilo+1), C.lapack_int(ihi+1),
+		(*C.double)(unsafe.Pointer(&a[0])), C.lapack_int(n),
+		(*C.double)(unsafe.Pointer(&b[0])), C.lapack_int(n),
+		(*C.double)(unsafe.Pointer(&q[0])), C.lapack_int(n),
+		(*C.double)(unsafe.Pointer(&z[0])), C.lapack_int(n)))
 }
 
 func netlibDtgsenWorkspace(ijob, n, lwork, liwork int) (work float64, iwork, info int) {
