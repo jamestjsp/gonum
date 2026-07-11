@@ -31,6 +31,23 @@ func DggbalTest(t *testing.T, impl Dggbaler) {
 	testDggbalSpecial(t, impl)
 	testDggbalReferenceScaling(t, impl)
 	testDggbalOffDiagonalIsolation(t, impl)
+	testDggbalUnusedInputs(t, impl)
+}
+
+func testDggbalUnusedInputs(t *testing.T, impl Dggbaler) {
+	for _, job := range []lapack.BalanceJob{lapack.Permute, lapack.Scale, lapack.PermuteScale} {
+		lscale := []float64{0}
+		rscale := []float64{0}
+		ilo, ihi := impl.Dggbal(job, 1, nil, 1, nil, 1, lscale, rscale, nil)
+		if ilo != 0 || ihi != 0 || lscale[0] != 1 || rscale[0] != 1 {
+			t.Errorf("job=%c: range=(%d,%d), scales=(%v,%v), want (0,0) and unit scales",
+				job, ilo, ihi, lscale[0], rscale[0])
+		}
+	}
+
+	a := []float64{1, 0, 0, 2}
+	b := []float64{1, 0, 0, 1}
+	impl.Dggbal(lapack.Permute, 2, a, 2, b, 2, make([]float64, 2), make([]float64, 2), nil)
 }
 
 func testDggbalOffDiagonalIsolation(t *testing.T, impl Dggbaler) {

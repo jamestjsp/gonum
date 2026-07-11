@@ -70,13 +70,18 @@ func (impl Implementation) Dggbal(job lapack.BalanceJob, n int, a []float64, lda
 		}
 		return ilo, ihi
 	}
+	if n == 1 {
+		lscale[0] = 1
+		rscale[0] = 1
+		return ilo, ihi
+	}
 
 	switch {
 	case len(a) < (n-1)*lda+n:
 		panic(shortA)
 	case len(b) < (n-1)*ldb+n:
 		panic(shortB)
-	case len(work) < max(1, 6*n):
+	case job != lapack.Permute && len(work) < 6*n:
 		panic(shortWork)
 	}
 
