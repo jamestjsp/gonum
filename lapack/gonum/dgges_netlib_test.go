@@ -62,6 +62,16 @@ func TestDggesNetlibTwoByTwoShiftFallback(t *testing.T) {
 	compareDggesWithNetlib(t, a, b, n, false, false)
 }
 
+func TestDggesNetlibNonlocalScaleDeflation(t *testing.T) {
+	a := []float64{
+		1, 1, 1e300,
+		1e-10, 2, 1,
+		0, 1, 3,
+	}
+	b := identityData(3)
+	compareDggesWithNetlib(t, a, b, 3, false, true)
+}
+
 func compareDggesWithNetlib(t *testing.T, a, b []float64, n int, dosort, compareEigenvalues bool) {
 	t.Helper()
 	ga, gb := append([]float64(nil), a...), append([]float64(nil), b...)

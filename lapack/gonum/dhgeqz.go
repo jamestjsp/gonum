@@ -170,79 +170,115 @@ func (impl Implementation) Dhgeqz(job lapack.SchurJob, compq, compz lapack.Schur
 			break
 		}
 
-		// Check for deflation: negligible subdiagonal in H.
 		var ifirst int
-		for j := ilast; j > ilo; j-- {
-			if math.Abs(h[j*ldh+j-1]) <= atol {
-				h[j*ldh+j-1] = 0
-				ifirst = j
-				goto checkT
-			}
-			tst1 := math.Abs(h[(j-1)*ldh+j-1]) + math.Abs(h[j*ldh+j])
-			if tst1 == 0 {
-				if j >= ilo+2 {
-					tst1 += math.Abs(h[(j-1)*ldh+j-2])
-				}
-				if j < ilast {
-					tst1 += math.Abs(h[(j+1)*ldh+j])
-				}
-			}
-			if math.Abs(h[j*ldh+j-1]) <= ulp*tst1 {
-				hlj := math.Abs(h[j*ldh+j-1])
-				hjlm1 := math.Abs(h[(j-1)*ldh+j])
-				temp := math.Max(hlj, hjlm1)
-				temp2 := math.Min(hlj, hjlm1)
-				hjj := math.Abs(h[j*ldh+j])
-				hjm1 := math.Abs(h[(j-1)*ldh+j-1])
-				temp3 := math.Max(hjj, math.Abs(hjm1-hjj))
-				temp4 := math.Min(hjj, math.Abs(hjm1-hjj))
-				if temp2*temp <= math.Max(safmin, ulp*temp3*temp4) {
+		if ilast == ilo {
+			goto deflateReal
+		}
+		if math.Abs(h[ilast*ldh+ilast-1]) <= math.Max(safmin,
+			ulp*(math.Abs(h[ilast*ldh+ilast])+math.Abs(h[(ilast-1)*ldh+ilast-1]))) {
+			h[ilast*ldh+ilast-1] = 0
+			goto deflateReal
+		}
+		if math.Abs(t[ilast*ldt+ilast]) <= btol {
+			t[ilast*ldt+ilast] = 0
+			goto deflateInfinite
+		}
+
+		{
+			bi := blas64.Implementation()
+			for j := ilast - 1; j >= ilo; j-- {
+				ilazro := j == ilo
+				if !ilazro && math.Abs(h[j*ldh+j-1]) <= math.Max(safmin,
+					ulp*(math.Abs(h[j*ldh+j])+math.Abs(h[(j-1)*ldh+j-1]))) {
 					h[j*ldh+j-1] = 0
+					ilazro = true
+				}
+
+				if math.Abs(t[j*ldt+j]) < btol {
+					t[j*ldt+j] = 0
+					ilazr2 := false
+					if !ilazro {
+						temp := math.Abs(h[j*ldh+j-1])
+						temp2 := math.Abs(h[j*ldh+j])
+						tempr := math.Max(temp, temp2)
+						if tempr < 1 && tempr != 0 {
+							temp /= tempr
+							temp2 /= tempr
+						}
+						ilazr2 = temp*(ascale*math.Abs(h[(j+1)*ldh+j])) <= temp2*(ascale*atol)
+					}
+
+					if ilazro || ilazr2 {
+						for jch := j; jch < ilast; jch++ {
+							cs, sn, r := impl.Dlartg(h[jch*ldh+jch], h[(jch+1)*ldh+jch])
+							h[jch*ldh+jch] = r
+							h[(jch+1)*ldh+jch] = 0
+							nrot := ilastm - jch
+							if nrot > 0 {
+								bi.Drot(nrot, h[jch*ldh+jch+1:], 1, h[(jch+1)*ldh+jch+1:], 1, cs, sn)
+								bi.Drot(nrot, t[jch*ldt+jch+1:], 1, t[(jch+1)*ldt+jch+1:], 1, cs, sn)
+							}
+							if ilq {
+								bi.Drot(n, q[jch:], ldq, q[jch+1:], ldq, cs, sn)
+							}
+							if ilazr2 {
+								h[jch*ldh+jch-1] *= cs
+								ilazr2 = false
+							}
+							if math.Abs(t[(jch+1)*ldt+jch+1]) >= btol {
+								if jch+1 >= ilast {
+									goto deflateReal
+								}
+								ifirst = jch + 1
+								goto handleBlock
+							}
+							t[(jch+1)*ldt+jch+1] = 0
+						}
+						goto deflateInfinite
+					}
+
+					// Chase a zero diagonal in T down to T(ilast,ilast).
+					for jch := j; jch < ilast; jch++ {
+						// Left rotation on rows jch, jch+1 to zero T(jch+1,jch+1).
+						cs, sn, r := impl.Dlartg(t[jch*ldt+jch+1], t[(jch+1)*ldt+jch+1])
+						t[jch*ldt+jch+1] = r
+						t[(jch+1)*ldt+jch+1] = 0
+						if jch < ilastm-1 {
+							bi.Drot(ilastm-jch-1, t[jch*ldt+jch+2:], 1, t[(jch+1)*ldt+jch+2:], 1, cs, sn)
+						}
+						bi.Drot(ilastm-jch+2, h[jch*ldh+jch-1:], 1, h[(jch+1)*ldh+jch-1:], 1, cs, sn)
+						if ilq {
+							bi.Drot(n, q[jch:], ldq, q[jch+1:], ldq, cs, sn)
+						}
+						// Right rotation to restore H upper Hessenberg.
+						cs, sn, r = impl.Dlartg(h[(jch+1)*ldh+jch], h[(jch+1)*ldh+jch-1])
+						h[(jch+1)*ldh+jch] = r
+						h[(jch+1)*ldh+jch-1] = 0
+						bi.Drot(jch+1-ifrstm, h[ifrstm*ldh+jch:], ldh, h[ifrstm*ldh+jch-1:], ldh, cs, sn)
+						if jch > ifrstm {
+							bi.Drot(jch-ifrstm, t[ifrstm*ldt+jch:], ldt, t[ifrstm*ldt+jch-1:], ldt, cs, sn)
+						}
+						if ilz {
+							bi.Drot(n, z[jch:], ldz, z[jch-1:], ldz, cs, sn)
+						}
+					}
+					goto deflateInfinite
+				}
+
+				if ilazro {
 					ifirst = j
-					goto checkT
+					goto handleBlock
 				}
 			}
-		}
-		ifirst = ilo
-
-	checkT:
-		// Check for negligible elements in T.
-		for j := ilast; j >= ifirst+1; j-- {
-			if math.Abs(t[j*ldt+j-1]) <= btol {
-				t[j*ldt+j-1] = 0
-			}
+			return false
 		}
 
-		// Handle different block types.
-		if ifirst == ilast {
-			// 1x1 block - single real eigenvalue.
-			standardizeDhgeqzRealEigenvalue(ilschr, ilz, n, ilast, ifrstm, h, ldh, t, ldt, z, ldz)
-			alphar[ilast] = h[ilast*ldh+ilast]
-			alphai[ilast] = 0
-			beta[ilast] = t[ilast*ldt+ilast]
-			ilast--
-			iiter = 0
-			eshift = 0
-			if !ilschr {
-				ilastm = ilast
-				if ifrstm > ilast {
-					ifrstm = ilo
-				}
-			}
-			continue
-		}
-
+	handleBlock:
 		if ifirst == ilast-1 {
-			// 2x2 block - compute eigenvalues.
 			s1, s2, wr1, wr2, wi := impl.Dlag2(h[ifirst*ldh+ifirst:], ldh, t[ifirst*ldt+ifirst:], ldt)
 			if wi == 0 {
-				// A real pair must be split into two 1x1 blocks by a
-				// single-shift QZ step before it can be deflated.
 				goto doQZStep
 			}
-
-			// Complex conjugate pair - diagonalize T with distinct left
-			// and right rotations, as required by generalized Schur form.
 			if ilschr {
 				impl.standardize2x2Block(n, ifirst, ifrstm, ilastm,
 					h, ldh, t, ldt, q, ldq, z, ldz, ilq, ilz)
@@ -270,94 +306,23 @@ func (impl Implementation) Dhgeqz(job lapack.SchurJob, compq, compz lapack.Schur
 			}
 			continue
 		}
-
-		// Handle negligible T diagonals (infinite eigenvalues).
-		// Check T(ilast,ilast) first, then scan interior of block.
-		if math.Abs(t[ilast*ldt+ilast]) <= btol {
-			t[ilast*ldt+ilast] = 0
-			goto deflateInfinite
-		}
-
-		// Scan for zero T diagonals in the active block [ifirst, ilast-1].
-		// Chase any found zero down to T(ilast,ilast) and deflate.
-		{
-			bi := blas64.Implementation()
-			chased := false
-			for jj := ilast - 1; jj >= ifirst; jj-- {
-				if math.Abs(t[jj*ldt+jj]) > btol {
-					continue
-				}
-				t[jj*ldt+jj] = 0
-
-				if jj == ilo || h[jj*ldh+jj-1] == 0 {
-					// H also splits at jj. Chase zero down using
-					// left rotations on H (LAPACK DO 40 loop).
-					for jch := jj; jch < ilast; jch++ {
-						cs, sn, r := impl.Dlartg(h[jch*ldh+jch], h[(jch+1)*ldh+jch])
-						h[jch*ldh+jch] = r
-						h[(jch+1)*ldh+jch] = 0
-						nrot := ilastm - jch
-						if nrot > 0 {
-							bi.Drot(nrot, h[jch*ldh+jch+1:], 1, h[(jch+1)*ldh+jch+1:], 1, cs, sn)
-							bi.Drot(nrot, t[jch*ldt+jch+1:], 1, t[(jch+1)*ldt+jch+1:], 1, cs, sn)
-						}
-						if ilq {
-							bi.Drot(n, q[jch:], ldq, q[jch+1:], ldq, cs, sn)
-						}
-						if math.Abs(t[(jch+1)*ldt+jch+1]) >= btol {
-							// Block split found.
-							if jch+1 >= ilast {
-								goto deflateInfinite
-							}
-							ifirst = jch + 1
-							chased = true
-							break
-						}
-						t[(jch+1)*ldt+jch+1] = 0
-					}
-					if chased {
-						break
-					}
-					goto deflateInfinite
-				}
-
-				// H does not split at jj. Chase zero from T(jj,jj)
-				// down to T(ilast,ilast) using alternating left and
-				// right Givens rotations (LAPACK DO 50 loop).
-				for jch := jj; jch < ilast; jch++ {
-					// Left rotation on rows jch, jch+1 to zero T(jch+1,jch+1).
-					cs, sn, r := impl.Dlartg(t[jch*ldt+jch+1], t[(jch+1)*ldt+jch+1])
-					t[jch*ldt+jch+1] = r
-					t[(jch+1)*ldt+jch+1] = 0
-					if jch < ilastm-1 {
-						bi.Drot(ilastm-jch-1, t[jch*ldt+jch+2:], 1, t[(jch+1)*ldt+jch+2:], 1, cs, sn)
-					}
-					bi.Drot(ilastm-jch+2, h[jch*ldh+jch-1:], 1, h[(jch+1)*ldh+jch-1:], 1, cs, sn)
-					if ilq {
-						bi.Drot(n, q[jch:], ldq, q[jch+1:], ldq, cs, sn)
-					}
-					// Right rotation to restore H upper Hessenberg.
-					cs, sn, r = impl.Dlartg(h[(jch+1)*ldh+jch], h[(jch+1)*ldh+jch-1])
-					h[(jch+1)*ldh+jch] = r
-					h[(jch+1)*ldh+jch-1] = 0
-					bi.Drot(jch+1-ifrstm, h[ifrstm*ldh+jch:], ldh, h[ifrstm*ldh+jch-1:], ldh, cs, sn)
-					if jch > ifrstm {
-						bi.Drot(jch-ifrstm, t[ifrstm*ldt+jch:], ldt, t[ifrstm*ldt+jch-1:], ldt, cs, sn)
-					}
-					if ilz {
-						bi.Drot(n, z[jch:], ldz, z[jch-1:], ldz, cs, sn)
-					}
-				}
-				goto deflateInfinite
-			}
-			if chased {
-				// DO 40 found a block split; ifirst was updated.
-				// Continue to shift computation with the new block.
-				goto doQZStep
-			}
-		}
-
 		goto doQZStep
+
+	deflateReal:
+		standardizeDhgeqzRealEigenvalue(ilschr, ilz, n, ilast, ifrstm, h, ldh, t, ldt, z, ldz)
+		alphar[ilast] = h[ilast*ldh+ilast]
+		alphai[ilast] = 0
+		beta[ilast] = t[ilast*ldt+ilast]
+		ilast--
+		iiter = 0
+		eshift = 0
+		if !ilschr {
+			ilastm = ilast
+			if ifrstm > ilast {
+				ifrstm = ilo
+			}
+		}
+		continue
 
 	deflateInfinite:
 		// T(ilast,ilast) = 0: zero H(ilast,ilast-1) via right rotation

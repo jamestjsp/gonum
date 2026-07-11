@@ -34,11 +34,40 @@ func DhgeqzTest(t *testing.T, impl Dhgeqzer) {
 	testDhgeqz2x2(t, impl)
 	testDhgeqzComplex2x2NonDiagonalT(t, impl)
 	testDhgeqzIsolatedEigenvalueSigns(t, impl)
+	testDhgeqzNonlocalScaleDeflation(t, impl)
 	testDhgeqz3x3(t, impl)
 	testDhgeqzComplex4x4(t, impl)
 	testDhgeqzComplex6x6(t, impl)
 	testDhgeqzLargeN(t, impl, 50)
 	testDhgeqzLargeN(t, impl, 100)
+}
+
+func testDhgeqzNonlocalScaleDeflation(t *testing.T, impl Dhgeqzer) {
+	const n = 3
+	h := []float64{
+		1, 1, 1e300,
+		1e-10, 2, 1,
+		0, 1, 3,
+	}
+	tt := []float64{
+		1, 0, 0,
+		0, 1, 0,
+		0, 0, 1,
+	}
+	alphar := make([]float64, n)
+	alphai := make([]float64, n)
+	beta := make([]float64, n)
+	q := make([]float64, n*n)
+	z := make([]float64, n*n)
+	work := make([]float64, n)
+
+	if !impl.Dhgeqz(lapack.EigenvaluesAndSchur, lapack.SchurHess, lapack.SchurHess,
+		n, 0, n-1, h, n, tt, n, alphar, alphai, beta, q, n, z, n, work, len(work)) {
+		t.Fatal("nonlocal-scale pencil did not converge")
+	}
+	if alphai[0] == 0 && alphai[1] == 0 && alphai[2] == 0 {
+		t.Fatalf("nonlocal scale caused premature deflation: alphar=%v alphai=%v beta=%v", alphar, alphai, beta)
+	}
 }
 
 func testDhgeqzIsolatedEigenvalueSigns(t *testing.T, impl Dhgeqzer) {
