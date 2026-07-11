@@ -328,15 +328,8 @@ func testDtgsen(t *testing.T, impl Dtgsener, n, ijob int, wantq, wantz bool, sel
 		q.Data, q.Stride, z.Data, z.Stride,
 		work, lwork, iwork, liwork)
 
-	// Check m matches expected.
-	if m != expectedM && (selectPattern != "none" && selectPattern != "all") {
-		// For none and all, no reordering happens, so m should still match.
-		if selectPattern == "none" && m != 0 {
-			t.Errorf("%s: m=%d, want 0 for no selection", prefix, m)
-		}
-		if selectPattern == "all" && m != n {
-			t.Errorf("%s: m=%d, want %d for all selection", prefix, m, n)
-		}
+	if m != expectedM {
+		t.Errorf("%s: m=%d, want %d", prefix, m, expectedM)
 	}
 
 	if !ok {
