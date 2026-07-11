@@ -155,8 +155,8 @@ func (impl Implementation) Dhgeqz(job lapack.SchurJob, compq, compz lapack.Schur
 
 	const maxit = 30
 	totalMaxit := maxit * (ihi - ilo + 1)
-	iiter := 0      // Iterations since last eigenvalue.
-	eshift := 0.0   // Exceptional shift accumulator.
+	iiter := 0    // Iterations since last eigenvalue.
+	eshift := 0.0 // Exceptional shift accumulator.
 
 	for jiter := 0; jiter < maxit*(ihi-ilo+1); jiter++ {
 		// Check for convergence.
@@ -387,9 +387,9 @@ func (impl Implementation) Dhgeqz(job lapack.SchurJob, compq, compz lapack.Schur
 
 		// Exceptional shift every 10 iterations.
 		if iiter%10 == 0 {
-			if float64(totalMaxit)*safmin*math.Abs(h[ilast*ldh+ilast-1]) <
+			if float64(totalMaxit)*safmin*math.Abs(h[(ilast-1)*ldh+ilast]) <
 				math.Abs(t[(ilast-1)*ldt+ilast-1]) {
-				eshift = h[ilast*ldh+ilast-1] / t[(ilast-1)*ldt+ilast-1]
+				eshift += h[(ilast-1)*ldh+ilast] / t[(ilast-1)*ldt+ilast-1]
 			} else {
 				eshift += 1 / (safmin * float64(totalMaxit))
 			}

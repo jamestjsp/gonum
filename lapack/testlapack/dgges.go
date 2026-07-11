@@ -6,6 +6,7 @@ package testlapack
 
 import (
 	"fmt"
+	"math"
 	"math/rand/v2"
 	"testing"
 
@@ -38,6 +39,7 @@ func DggesTest(t *testing.T, impl Dggeser) {
 	}
 
 	// Test with special matrices.
+	tiny := math.SmallestNonzeroFloat64
 	for _, tc := range []struct {
 		name string
 		a, b blas64.General
@@ -129,6 +131,111 @@ func DggesTest(t *testing.T, impl Dggeser) {
 				Data: []float64{1, 1, 1, 1},
 			},
 		},
+		{
+			name: "Singular B with zero and infinite eigenvalues",
+			a: blas64.General{
+				Rows: 3, Cols: 3, Stride: 3,
+				Data: []float64{
+					0, 2, -1,
+					0, 3, 4,
+					0, 0, 5,
+				},
+			},
+			b: blas64.General{
+				Rows: 3, Cols: 3, Stride: 3,
+				Data: []float64{
+					0, 1, 0,
+					0, 0, 2,
+					0, 0, 1,
+				},
+			},
+		},
+		{
+			name: "Nearly singular B",
+			a: blas64.General{
+				Rows: 3, Cols: 3, Stride: 3,
+				Data: []float64{
+					1, 2, 0,
+					0, 2, 1,
+					0, 0, 3,
+				},
+			},
+			b: blas64.General{
+				Rows: 3, Cols: 3, Stride: 3,
+				Data: []float64{
+					1e-300, 1, 0,
+					0, 1, 1,
+					0, 0, 2,
+				},
+			},
+		},
+		{
+			name: "Nearly defective pencil",
+			a: blas64.General{
+				Rows: 4, Cols: 4, Stride: 4,
+				Data: []float64{
+					1, 1, 0, 0,
+					0, 1, 1, 0,
+					0, 0, 1, 1,
+					1e-14, 0, 0, 1,
+				},
+			},
+			b: eye(4, 4),
+		},
+		{
+			name: "Clustered conjugate pairs",
+			a: blas64.General{
+				Rows: 4, Cols: 4, Stride: 4,
+				Data: []float64{
+					1, -1, 1e-12, 0,
+					1, 1, 0, -1e-12,
+					0, 0, 1 + 1e-13, -(1 + 1e-13),
+					0, 0, 1 + 1e-13, 1 + 1e-13,
+				},
+			},
+			b: eye(4, 4),
+		},
+		{
+			name: "Complex block near splitting",
+			a: blas64.General{
+				Rows: 2, Cols: 2, Stride: 2,
+				Data: []float64{1, -1e-12, 1e-12, 1},
+			},
+			b: eye(2, 2),
+		},
+		{
+			name: "Very small pencil",
+			a: blas64.General{
+				Rows: 2, Cols: 2, Stride: 2,
+				Data: []float64{2e-300, -1e-300, 1e-300, 2e-300},
+			},
+			b: blas64.General{
+				Rows: 2, Cols: 2, Stride: 2,
+				Data: []float64{1e-300, 0, 0, 1e-300},
+			},
+		},
+		{
+			name: "Very large pencil",
+			a: blas64.General{
+				Rows: 2, Cols: 2, Stride: 2,
+				Data: []float64{2e300, -1e300, 1e300, 2e300},
+			},
+			b: blas64.General{
+				Rows: 2, Cols: 2, Stride: 2,
+				Data: []float64{1e300, 0, 0, 1e300},
+			},
+		},
+		{
+			name: "Subnormal pencil",
+			a: blas64.General{
+				Rows: 2, Cols: 2, Stride: 2,
+				Data: []float64{2 * tiny, -tiny, tiny, 2 * tiny},
+			},
+			b: blas64.General{
+				Rows: 2, Cols: 2, Stride: 2,
+				Data: []float64{tiny, 0, 0, tiny},
+			},
+		},
 	} {
 		testDggesMatrix(t, impl, tc.name, tc.a, tc.b, optimumWork)
 	}
@@ -138,7 +245,122 @@ func DggesTest(t *testing.T, impl Dggeser) {
 
 	// Test sorting.
 	testDggesSorting(t, impl)
+	testDggesConjugatePairSorting(t, impl)
+	testDggesZeroAndInfiniteEigenvalues(t, impl)
+	testDggesExtremeScaleEigenvalueRepresentation(t, impl)
 	testDggesSelectionRecheck(t, impl)
+}
+
+func testDggesExtremeScaleEigenvalueRepresentation(t *testing.T, impl Dggeser) {
+	n := 2
+	a := []float64{2e-105, -1e-105, 1e-105, 2e-105}
+	b := []float64{1e239, 0, 0, 1e239}
+	alphar := make([]float64, n)
+	alphai := make([]float64, n)
+	beta := make([]float64, n)
+	work := make([]float64, 1)
+	impl.Dgges(lapack.SchurNone, lapack.SchurNone, lapack.SortNone, nil,
+		n, nil, n, nil, n, nil, nil, nil, nil, 1, nil, 1, work, -1, nil)
+	work = make([]float64, int(work[0]))
+	_, ok := impl.Dgges(lapack.SchurNone, lapack.SchurNone, lapack.SortNone, nil,
+		n, a, n, b, n, alphar, alphai, beta, nil, 1, nil, 1, work, len(work), nil)
+	if !ok {
+		t.Fatal("extreme-scale test failed to converge")
+	}
+	for i := range n {
+		if math.IsInf(alphar[i], 0) || math.IsInf(alphai[i], 0) || math.IsInf(beta[i], 0) ||
+			math.IsNaN(alphar[i]) || math.IsNaN(alphai[i]) || math.IsNaN(beta[i]) {
+			t.Fatalf("non-finite eigenvalue representation at %d: alpha=(%g,%g), beta=%g", i, alphar[i], alphai[i], beta[i])
+		}
+		if beta[i] == 0 || alphai[i] == 0 {
+			t.Fatalf("lost finite complex eigenvalue at %d: alpha=(%g,%g), beta=%g", i, alphar[i], alphai[i], beta[i])
+		}
+	}
+}
+
+func testDggesZeroAndInfiniteEigenvalues(t *testing.T, impl Dggeser) {
+	n := 3
+	a := []float64{
+		0, 0, 0,
+		0, 2, 0,
+		0, 0, 3,
+	}
+	b := []float64{
+		0, 0, 0,
+		0, 0, 0,
+		0, 0, 1,
+	}
+	alphar := make([]float64, n)
+	alphai := make([]float64, n)
+	beta := make([]float64, n)
+	work := make([]float64, 1)
+	impl.Dgges(lapack.SchurNone, lapack.SchurNone, lapack.SortNone, nil,
+		n, nil, n, nil, n, nil, nil, nil, nil, 1, nil, 1, work, -1, nil)
+	work = make([]float64, int(work[0]))
+	_, ok := impl.Dgges(lapack.SchurNone, lapack.SchurNone, lapack.SortNone, nil,
+		n, a, n, b, n, alphar, alphai, beta, nil, 1, nil, 1, work, len(work), nil)
+	if !ok {
+		t.Fatal("zero and infinite eigenvalue test failed to converge")
+	}
+
+	var zero, infinite, finite int
+	for i := range n {
+		switch {
+		case beta[i] == 0 && alphar[i] == 0 && alphai[i] == 0:
+			zero++
+		case beta[i] == 0:
+			infinite++
+		case alphai[i] == 0 && math.Abs(alphar[i]/beta[i]-3) < 1e-14:
+			finite++
+		}
+	}
+	if zero != 1 || infinite != 1 || finite != 1 {
+		t.Fatalf("got (zero, infinite, finite-3)=(%d, %d, %d), want (1, 1, 1); alpha=(%v,%v), beta=%v",
+			zero, infinite, finite, alphar, alphai, beta)
+	}
+}
+
+func testDggesConjugatePairSorting(t *testing.T, impl Dggeser) {
+	n := 4
+	a := []float64{
+		-1, 0, 0, 0,
+		0, 3, -2, 0,
+		0, 2, 3, 0,
+		0, 0, 0, 1,
+	}
+	b := []float64{
+		1, 0, 0, 0,
+		0, 1, 0, 0,
+		0, 0, 1, 0,
+		0, 0, 0, 1,
+	}
+	alphar := make([]float64, n)
+	alphai := make([]float64, n)
+	beta := make([]float64, n)
+	vsl := make([]float64, n*n)
+	vsr := make([]float64, n*n)
+	bwork := make([]bool, n)
+	work := make([]float64, 1)
+	impl.Dgges(lapack.SchurHess, lapack.SchurHess, lapack.SortSelected, nil,
+		n, nil, n, nil, n, nil, nil, nil, nil, n, nil, n, work, -1, nil)
+	work = make([]float64, int(work[0]))
+	selector := func(_, alphai, _ float64) bool { return alphai > 0 }
+	sdim, ok := impl.Dgges(lapack.SchurHess, lapack.SchurHess, lapack.SortSelected, selector,
+		n, a, n, b, n, alphar, alphai, beta, vsl, n, vsr, n, work, len(work), bwork)
+	if !ok {
+		t.Fatal("conjugate-pair sorting failed")
+	}
+	if sdim != 2 {
+		t.Fatalf("got sdim=%d, want 2", sdim)
+	}
+	if alphai[0] == 0 || alphai[1] == 0 || alphai[0] != -alphai[1] {
+		t.Fatalf("leading block is not a conjugate pair: alphai=%v", alphai)
+	}
+	for i := sdim; i < n; i++ {
+		if alphai[i] != 0 {
+			t.Fatalf("unselected eigenvalue %d is complex: alphai=%v", i, alphai)
+		}
+	}
 }
 
 func testDggesSelectionRecheck(t *testing.T, impl Dggeser) {

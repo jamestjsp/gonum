@@ -375,14 +375,18 @@ func (impl Implementation) Dgges(jobvsl, jobvsr lapack.SchurComp, sort lapack.Sc
 	}
 
 	// Undo scaling.
+	logAlphaScale := 0.0
+	logBetaScale := 0.0
 	if scalea {
 		impl.Dlascl(lapack.General, 0, 0, cscalea, anrm, n, n, a, lda)
-		impl.Dlascl(lapack.General, 0, 0, cscalea, anrm, n, 1, alphar, n)
-		impl.Dlascl(lapack.General, 0, 0, cscalea, anrm, n, 1, alphai, n)
+		logAlphaScale = math.Log(anrm) - math.Log(cscalea)
 	}
 	if scaleb {
 		impl.Dlascl(lapack.General, 0, 0, cscaleb, bnrm, n, n, b, ldb)
-		impl.Dlascl(lapack.General, 0, 0, cscaleb, bnrm, n, 1, beta, n)
+		logBetaScale = math.Log(bnrm) - math.Log(cscaleb)
+	}
+	if scalea || scaleb {
+		rescaleGeneralizedEigenvalues(alphar, alphai, beta, logAlphaScale, logBetaScale, math.Max(anrm, bnrm))
 	}
 
 	if wantst {
@@ -420,4 +424,32 @@ func (impl Implementation) Dgges(jobvsl, jobvsr lapack.SchurComp, sort lapack.Sc
 
 	work[0] = float64(maxwrk)
 	return sdim, ok
+}
+
+// rescaleGeneralizedEigenvalues undoes the independent pencil scaling while
+// keeping each homogeneous eigenvalue triplet within the floating-point range.
+func rescaleGeneralizedEigenvalues(alphar, alphai, beta []float64, logAlphaScale, logBetaScale, target float64) {
+	if target == 0 {
+		target = 1
+	}
+	logTarget := math.Log(target)
+	for i := range alphar {
+		logR := scaledLogAbs(alphar[i], logAlphaScale)
+		logI := scaledLogAbs(alphai[i], logAlphaScale)
+		logB := scaledLogAbs(beta[i], logBetaScale)
+		logMax := math.Max(logR, math.Max(logI, logB))
+		if math.IsInf(logMax, -1) {
+			continue
+		}
+		alphar[i] = math.Copysign(math.Exp(logTarget+logR-logMax), alphar[i])
+		alphai[i] = math.Copysign(math.Exp(logTarget+logI-logMax), alphai[i])
+		beta[i] = math.Copysign(math.Exp(logTarget+logB-logMax), beta[i])
+	}
+}
+
+func scaledLogAbs(value, logScale float64) float64 {
+	if value == 0 {
+		return math.Inf(-1)
+	}
+	return math.Log(math.Abs(value)) + logScale
 }
