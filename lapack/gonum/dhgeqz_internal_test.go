@@ -40,6 +40,16 @@ func TestDlarfg3(t *testing.T) {
 	}
 }
 
+func TestDhgeqzWorkspaceQueryRequiresOutput(t *testing.T) {
+	defer func() {
+		if got := recover(); got != shortWork {
+			t.Fatalf("panic=%v, want %q", got, shortWork)
+		}
+	}()
+	Implementation{}.Dhgeqz('E', 'N', 'N', 0, 0, -1,
+		nil, 1, nil, 1, nil, nil, nil, nil, 1, nil, 1, nil, -1)
+}
+
 func closeDlarfg3(got, want float64) bool {
 	if got == want {
 		return true

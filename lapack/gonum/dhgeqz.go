@@ -84,6 +84,8 @@ func (impl Implementation) Dhgeqz(job lapack.SchurJob, compq, compz lapack.Schur
 		panic(badLdZ)
 	case lwork < max(1, n) && lwork != -1:
 		panic(badLWork)
+	case len(work) < max(1, lwork):
+		panic(shortWork)
 	}
 
 	// Workspace query.
