@@ -4,7 +4,7 @@
 
 //go:build netlib && darwin && cgo
 
-package gonum
+package netlib
 
 /*
 #cgo CFLAGS: -I/opt/homebrew/opt/lapack/include
@@ -207,11 +207,11 @@ import (
 	"gonum.org/v1/gonum/lapack"
 )
 
-func netlibDgges(n int, a, b []float64, dosort bool, ar, ai, beta, vsl, vsr []float64) (sdim, info int) {
-	return netlibDggesOptions('V', 'V', n, a, b, dosort, ar, ai, beta, vsl, vsr)
+func Dgges(n int, a, b []float64, dosort bool, ar, ai, beta, vsl, vsr []float64) (sdim, info int) {
+	return DggesOptions('V', 'V', n, a, b, dosort, ar, ai, beta, vsl, vsr)
 }
 
-func netlibDggesOptions(jobvsl, jobvsr byte, n int, a, b []float64, dosort bool,
+func DggesOptions(jobvsl, jobvsr byte, n int, a, b []float64, dosort bool,
 	ar, ai, beta, vsl, vsr []float64) (sdim, info int) {
 	var csdim C.lapack_int
 	cinfo := C.run_dgges(C.char(jobvsl), C.char(jobvsr), C.lapack_int(n),
@@ -222,7 +222,7 @@ func netlibDggesOptions(jobvsl, jobvsr byte, n int, a, b []float64, dosort bool,
 	return int(csdim), int(cinfo)
 }
 
-func netlibDggesLargeAlpha(n int, a, b []float64, ar, ai, beta, vsl, vsr []float64) (sdim, info int) {
+func DggesLargeAlpha(n int, a, b []float64, ar, ai, beta, vsl, vsr []float64) (sdim, info int) {
 	var csdim C.lapack_int
 	cinfo := C.run_dgges_large_alpha(C.lapack_int(n), (*C.double)(unsafe.Pointer(&a[0])), (*C.double)(unsafe.Pointer(&b[0])),
 		&csdim, (*C.double)(unsafe.Pointer(&ar[0])), (*C.double)(unsafe.Pointer(&ai[0])),
@@ -231,7 +231,7 @@ func netlibDggesLargeAlpha(n int, a, b []float64, ar, ai, beta, vsl, vsr []float
 	return int(csdim), int(cinfo)
 }
 
-func netlibDggbal(job byte, n int, a, b, lscale, rscale []float64) (ilo, ihi, info int) {
+func Dggbal(job byte, n int, a, b, lscale, rscale []float64) (ilo, ihi, info int) {
 	var cilo, cihi C.lapack_int
 	cinfo := C.LAPACKE_dggbal(C.int(C.LAPACK_ROW_MAJOR), C.char(job), C.lapack_int(n),
 		(*C.double)(unsafe.Pointer(&a[0])), C.lapack_int(n),
@@ -248,7 +248,7 @@ func netlibDggbal(job byte, n int, a, b, lscale, rscale []float64) (ilo, ihi, in
 	return ilo, ihi, int(cinfo)
 }
 
-func netlibDggbak(job, side byte, n, ilo, ihi int, lscale, rscale []float64, m int, v []float64) int {
+func Dggbak(job, side byte, n, ilo, ihi int, lscale, rscale []float64, m int, v []float64) int {
 	lcopy := append([]float64(nil), lscale...)
 	rcopy := append([]float64(nil), rscale...)
 	for i := 0; i < n; i++ {
@@ -263,7 +263,7 @@ func netlibDggbak(job, side byte, n, ilo, ihi int, lscale, rscale []float64, m i
 		C.lapack_int(m), (*C.double)(unsafe.Pointer(&v[0])), C.lapack_int(m)))
 }
 
-func netlibDgghrd(compq, compz byte, n, ilo, ihi int, a, b, q, z []float64) int {
+func Dgghrd(compq, compz byte, n, ilo, ihi int, a, b, q, z []float64) int {
 	return int(C.LAPACKE_dgghrd(C.int(C.LAPACK_ROW_MAJOR), C.char(compq), C.char(compz),
 		C.lapack_int(n), C.lapack_int(ilo+1), C.lapack_int(ihi+1),
 		(*C.double)(unsafe.Pointer(&a[0])), C.lapack_int(n),
@@ -272,7 +272,7 @@ func netlibDgghrd(compq, compz byte, n, ilo, ihi int, a, b, q, z []float64) int 
 		(*C.double)(unsafe.Pointer(&z[0])), C.lapack_int(n)))
 }
 
-func netlibDtgsenWorkspace(ijob, n, lwork, liwork int) (work float64, iwork, info int) {
+func DtgsenWorkspace(ijob, n, lwork, liwork int) (work float64, iwork, info int) {
 	var cwork C.double
 	var ciwork C.lapack_int
 	cinfo := C.query_dtgsen(C.lapack_int(ijob), C.lapack_int(n), C.lapack_int(lwork), C.lapack_int(liwork),
@@ -280,7 +280,7 @@ func netlibDtgsenWorkspace(ijob, n, lwork, liwork int) (work float64, iwork, inf
 	return float64(cwork), int(ciwork), int(cinfo)
 }
 
-func netlibDhgeqz(job, compq, compz byte, n, ilo, ihi int, h, t, ar, ai, beta, q, z []float64) int {
+func Dhgeqz(job, compq, compz byte, n, ilo, ihi int, h, t, ar, ai, beta, q, z []float64) int {
 	return int(C.run_dhgeqz(C.char(job), C.char(compq), C.char(compz), C.lapack_int(n),
 		C.lapack_int(ilo+1), C.lapack_int(ihi+1), (*C.double)(unsafe.Pointer(&h[0])),
 		(*C.double)(unsafe.Pointer(&t[0])), (*C.double)(unsafe.Pointer(&ar[0])),
@@ -288,11 +288,11 @@ func netlibDhgeqz(job, compq, compz byte, n, ilo, ihi int, h, t, ar, ai, beta, q
 		(*C.double)(unsafe.Pointer(&q[0])), (*C.double)(unsafe.Pointer(&z[0]))))
 }
 
-func netlibDtgsenSingular() int {
+func DtgsenSingular() int {
 	return int(C.run_dtgsen_singular())
 }
 
-func netlibDtgsen(ijob int, wantq, wantz bool, selected []bool, n int,
+func Dtgsen(ijob int, wantq, wantz bool, selected []bool, n int,
 	a, b, ar, ai, beta, q, z []float64) (m int, pl, pr float64, dif [2]float64, info int) {
 	var mask uint64
 	for i, selected := range selected {
@@ -313,7 +313,7 @@ func netlibDtgsen(ijob int, wantq, wantz bool, selected []bool, n int,
 		[2]float64{float64(cdif[0]), float64(cdif[1])}, int(cinfo)
 }
 
-func netlibDtgsyl(trans byte, ijob, m, n int,
+func Dtgsyl(trans byte, ijob, m, n int,
 	a, b, c, d, e, f []float64) (scale, dif float64, info int) {
 	var cscale, cdif C.double
 	cinfo := C.LAPACKE_dtgsyl(C.int(C.LAPACK_ROW_MAJOR), C.char(trans), C.lapack_int(ijob),
@@ -324,7 +324,7 @@ func netlibDtgsyl(trans byte, ijob, m, n int,
 	return float64(cscale), float64(cdif), int(cinfo)
 }
 
-func netlibDtgsy2(trans byte, ijob, m, n int,
+func Dtgsy2(trans byte, ijob, m, n int,
 	a, b, c, d, e, f []float64, rdsum, rdscal float64) (scale, sum, scal float64, pq, info int) {
 	var cscale C.double
 	csum, cscal := C.double(rdsum), C.double(rdscal)
@@ -337,7 +337,7 @@ func netlibDtgsy2(trans byte, ijob, m, n int,
 	return float64(cscale), float64(csum), float64(cscal), int(cpq), int(cinfo)
 }
 
-func netlibDlatdf(job lapack.MaximizeNormXJob, n int, z, rhs []float64,
+func Dlatdf(job lapack.MaximizeNormXJob, n int, z, rhs []float64,
 	rdsum, rdscal float64) (sum, scale float64, info int) {
 	csum, cscale := C.double(rdsum), C.double(rdscal)
 	cinfo := C.run_dlatdf(C.int(job), C.int(n), (*C.double)(unsafe.Pointer(&z[0])),
@@ -345,14 +345,21 @@ func netlibDlatdf(job lapack.MaximizeNormXJob, n int, z, rhs []float64,
 	return float64(csum), float64(cscale), int(cinfo)
 }
 
-func netlibDtgex2(n int, a, b []float64, j1, n1, n2 int) int {
+func Dtgex2(n int, a, b []float64, j1, n1, n2 int) int {
 	return int(C.run_dtgex2(C.int(n), (*C.double)(unsafe.Pointer(&a[0])), (*C.double)(unsafe.Pointer(&b[0])),
 		C.int(j1), C.int(n1), C.int(n2)))
 }
 
-func netlibDtgexc(n int, a, b []float64, ifst, ilst int) (ifstOut, ilstOut, info int) {
+func Dtgexc(n int, a, b []float64, ifst, ilst int) (ifstOut, ilstOut, info int) {
 	cifst, cilst := C.lapack_int(ifst+1), C.lapack_int(ilst+1)
 	cinfo := C.run_dtgexc(C.lapack_int(n), (*C.double)(unsafe.Pointer(&a[0])), (*C.double)(unsafe.Pointer(&b[0])),
 		&cifst, &cilst)
 	return int(cifst) - 1, int(cilst) - 1, int(cinfo)
+}
+
+func boolInt(v bool) int {
+	if v {
+		return 1
+	}
+	return 0
 }

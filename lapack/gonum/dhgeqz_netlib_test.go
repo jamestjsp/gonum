@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"gonum.org/v1/gonum/lapack"
+	"gonum.org/v1/gonum/lapack/gonum/internal/netlib"
 )
 
 func TestDhgeqzNetlibDifferential(t *testing.T) {
@@ -66,7 +67,7 @@ func TestDhgeqzNetlibFailureLeavesLeadingEigenvalues(t *testing.T) {
 	gok := Implementation{}.Dhgeqz(lapack.EigenvaluesOnly, lapack.SchurNone, lapack.SchurNone,
 		n, 1, n-1, gh, n, gt, n, gar, gai, gbeta, nil, 1, nil, 1, work, len(work))
 	nq, nz := make([]float64, n*n), make([]float64, n*n)
-	info := netlibDhgeqz(byte(lapack.EigenvaluesOnly), byte(lapack.SchurNone), byte(lapack.SchurNone),
+	info := netlib.Dhgeqz(byte(lapack.EigenvaluesOnly), byte(lapack.SchurNone), byte(lapack.SchurNone),
 		n, 1, n-1, nh, nt, nar, nai, nbeta, nq, nz)
 	if gok || info <= 0 {
 		t.Fatalf("failure mismatch: Gonum=%v Netlib info=%d", gok, info)
@@ -104,7 +105,7 @@ func TestDhgeqzNetlibComplexRepresentation(t *testing.T) {
 			work := make([]float64, n)
 			gok := Implementation{}.Dhgeqz(lapack.EigenvaluesAndSchur, lapack.SchurHess, lapack.SchurHess,
 				n, 0, n-1, gh, n, gt, n, gar, gai, gbeta, gq, n, gz, n, work, len(work))
-			info := netlibDhgeqz(byte(lapack.EigenvaluesAndSchur), byte(lapack.SchurHess), byte(lapack.SchurHess),
+			info := netlib.Dhgeqz(byte(lapack.EigenvaluesAndSchur), byte(lapack.SchurHess), byte(lapack.SchurHess),
 				n, 0, n-1, nh, nt, nar, nai, nbeta, nq, nz)
 			if !gok || info != 0 {
 				t.Fatalf("Gonum success=%v Netlib info=%d", gok, info)
@@ -184,7 +185,7 @@ func TestDhgeqzNetlibAccumulationOptions(t *testing.T) {
 				gok := Implementation{}.Dhgeqz(lapack.EigenvaluesAndSchur, compq, compz,
 					n, 0, n-1, gh, n, gt, n, gar, gai, gbeta, gq, n, gz, n,
 					make([]float64, n), n)
-				info := netlibDhgeqz(byte(lapack.EigenvaluesAndSchur), byte(compq), byte(compz),
+				info := netlib.Dhgeqz(byte(lapack.EigenvaluesAndSchur), byte(compq), byte(compz),
 					n, 0, n-1, nh, nt, nar, nai, nbeta, nq, nz)
 				if gok != (info == 0) {
 					t.Fatalf("Gonum success=%v, Netlib info=%d", gok, info)
@@ -220,7 +221,7 @@ func compareDhgeqzWithNetlib(t *testing.T, job lapack.SchurJob, compq, compz lap
 	work := make([]float64, n)
 	gok := Implementation{}.Dhgeqz(job, compq, compz, n, ilo, ihi,
 		gh, n, gt, n, gar, gai, gbeta, gq, n, gz, n, work, len(work))
-	info := netlibDhgeqz(byte(job), byte(compq), byte(compz), n, ilo, ihi,
+	info := netlib.Dhgeqz(byte(job), byte(compq), byte(compz), n, ilo, ihi,
 		nh, nt, nar, nai, nbeta, nq, nz)
 	if gok != (info == 0) {
 		t.Fatalf("success mismatch: Gonum=%v Netlib info=%d", gok, info)

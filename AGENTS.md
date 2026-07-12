@@ -57,6 +57,14 @@ Gonum is a numerical computing library. Core packages:
 
 **Build tags**: `safe` (no asm/unsafe), `noasm` (no asm), `bounds` (bounds checks)
 
+**File organization**:
+
+- Keep implementation files in `lapack/gonum/dXXXXX.go`, with shared routine tests in `lapack/testlapack/dXXXXX.go`.
+- Keep reusable benchmark helpers in `lapack/testlapack/dXXXXX_bench.go`, one routine per file. Put implementation-specific benchmark wrappers in `lapack/gonum/bench_test.go`.
+- Keep implementation-only tests in `lapack/gonum/*_test.go`; use `*_internal_test.go` for unexported implementation behavior.
+- Keep external-oracle bridges out of the implementation package: place the C/Netlib bridge in `lapack/gonum/internal/netlib/` because Go does not support `import "C"` in `_test.go` files. Import that internal bridge only from routine-specific `dXXXXX_netlib_test.go` files, with shared assertions in `netlib_helpers_test.go`.
+- Keep test fixtures beside the package that consumes them, under that package's `testdata/` directory.
+
 ## Code Style
 
 - Pure Go preferred; assembly opt-out via build tags
