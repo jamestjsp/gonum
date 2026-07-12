@@ -57,11 +57,13 @@ Gonum is a numerical computing library. Core packages:
 
 **Build tags**: `safe` (no asm/unsafe), `noasm` (no asm), `bounds` (bounds checks)
 
-**File organization**:
+**File organization (fork policy)**:
 
-- Keep implementation files in `lapack/gonum/dXXXXX.go`, with shared routine tests in `lapack/testlapack/dXXXXX.go`.
+Upstream Gonum keeps shared LAPACK test entry points in `lapack/gonum/lapack_test.go`, benchmark entry points in `lapack/gonum/bench_test.go`, and reusable test routines in `lapack/testlapack/`. The rules below extend that layout for fork-specific implementation and external-oracle tests; they are not documented upstream requirements.
+
+- Keep implementation files in `lapack/gonum/dXXXXX.go`. Add shared conformance entry points to `lapack/gonum/lapack_test.go`, with reusable routine tests in `lapack/testlapack/dXXXXX.go`.
 - Keep reusable benchmark helpers in `lapack/testlapack/dXXXXX_bench.go`, one routine per file. Put implementation-specific benchmark wrappers in `lapack/gonum/bench_test.go`.
-- Keep implementation-only tests in `lapack/gonum/*_test.go`; use `*_internal_test.go` for unexported implementation behavior.
+- Keep fork-specific implementation tests in `lapack/gonum/*_test.go`; use `*_internal_test.go` for unexported implementation behavior and targeted regressions.
 - Keep external-oracle bridges out of the implementation package: place the C/Netlib bridge in `lapack/gonum/internal/netlib/` because Go does not support `import "C"` in `_test.go` files. Import that internal bridge only from routine-specific `dXXXXX_netlib_test.go` files, with shared assertions in `netlib_helpers_test.go`.
 - Keep test fixtures beside the package that consumes them, under that package's `testdata/` directory.
 
