@@ -36,18 +36,22 @@ import "math"
 func (Implementation) Iparmq(ispec int, name, opts string, n, ilo, ihi, lwork int) int {
 	nh := ihi - ilo + 1
 	ns := 2
-	switch {
-	case nh >= 30:
+	if nh >= 30 {
 		ns = 4
-	case nh >= 60:
+	}
+	if nh >= 60 {
 		ns = 10
-	case nh >= 150:
+	}
+	if nh >= 150 {
 		ns = max(10, nh/int(math.Log(float64(nh))/math.Ln2))
-	case nh >= 590:
+	}
+	if nh >= 590 {
 		ns = 64
-	case nh >= 3000:
+	}
+	if nh >= 3000 {
 		ns = 128
-	case nh >= 6000:
+	}
+	if nh >= 6000 {
 		ns = 256
 	}
 	ns = max(2, ns-(ns%2))
