@@ -8,8 +8,9 @@ package gonum
 
 import (
 	"fmt"
-	"gonum.org/v1/gonum/blas"
 	"testing"
+
+	"gonum.org/v1/gonum/blas"
 
 	"gonum.org/v1/gonum/lapack/gonum/internal/netlib"
 )
