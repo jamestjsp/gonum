@@ -155,18 +155,66 @@ func sgemmParallel(aTrans, bTrans bool, m, n, k int, a []float32, lda int, b []f
 	// multiplies, though this code does not copy matrices to attempt to eliminate
 	// cache misses.
 
-	maxKLen := k
-	parBlocks := blocks(m, blockSize) * blocks(n, blockSize)
-	if parBlocks < minParBlock {
+	workers := sgemmParallelWorkerCount(m, n, k)
+	if workers == 0 {
 		// The matrix multiplication is small in the dimensions where it can be
-		// computed concurrently. Just do it in serial.
+		// computed concurrently, or too small overall to benefit from parallelism.
+		// Just do it in serial.
 		sgemmSerial(aTrans, bTrans, m, n, k, a, lda, b, ldb, c, ldc, alpha)
 		return
 	}
+	sgemmParallelBlockedWorkers(aTrans, bTrans, m, n, k, a, lda, b, ldb, c, ldc, alpha, workers)
+}
+
+// sgemmParallelWorkerCount returns the number of workers to use for an m×k ·
+// k×n multiplication, or zero when the serial path is expected to be faster
+// (J10 dispatch gate). Two conditions must hold to go parallel: there must be
+// enough (m,n) tiles to fan out across (the legacy block-count check), and
+// each worker that can actually be occupied must receive enough multiply-add
+// work to amortize goroutine fan-out overhead. The legacy gate only counted
+// blocks, which over-fired for shapes like m=n=128, k=1 (4 blocks but only
+// 16K ops); a flat FLOP cutoff in turn under-fired for shapes like 100³ on
+// four workers. The per-worker floor covers both regimes and is calibrated
+// for the active kernel family; see sgemmMinParFLOPsPerWorker and
+// BenchmarkSgemmCrossover.
+func sgemmParallelWorkerCount(m, n, k int) int {
+	parBlocks := blocks(m, blockSize) * blocks(n, blockSize)
+	if parBlocks < minParBlock {
+		return 0
+	}
+	workers := min(parBlocks, runtime.GOMAXPROCS(0))
+	if workers < 2 {
+		// Fan-out cannot help when only one worker can run.
+		return 0
+	}
+	if int64(m)*int64(n)*int64(k) < sgemmMinParFLOPsPerWorker()*int64(workers) {
+		return 0
+	}
+	return workers
+}
+
+func sgemmMinParFLOPsPerWorker() int64 {
+	if runtime.GOOS == "darwin" && runtime.GOARCH == "arm64" {
+		return sgemmMinParFLOPsPerWorkerDarwinARM64
+	}
+	return sgemmMinParFLOPsPerWorkerDefault
+}
+
+// sgemmParallelBlocked forces the blocked parallel Sgemm kernel for tests and
+// benchmarks that compare it with the serial path.
+func sgemmParallelBlocked(aTrans, bTrans bool, m, n, k int, a []float32, lda int, b []float32, ldb int, c []float32, ldc int, alpha float32) {
+	parBlocks := blocks(m, blockSize) * blocks(n, blockSize)
+	workers := min(parBlocks, runtime.GOMAXPROCS(0))
+	sgemmParallelBlockedWorkers(aTrans, bTrans, m, n, k, a, lda, b, ldb, c, ldc, alpha, workers)
+}
+
+func sgemmParallelBlockedWorkers(aTrans, bTrans bool, m, n, k int, a []float32, lda int, b []float32, ldb int, c []float32, ldc int, alpha float32, workers int) {
+	maxKLen := k
+	parBlocks := blocks(m, blockSize) * blocks(n, blockSize)
 
 	// workerLimit acts a number of maximum concurrent workers,
 	// with the limit set to the number of procs available.
-	workerLimit := make(chan struct{}, runtime.GOMAXPROCS(0))
+	workerLimit := make(chan struct{}, workers)
 
 	// wg is used to wait for all
 	var wg sync.WaitGroup

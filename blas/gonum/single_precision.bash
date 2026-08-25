@@ -186,6 +186,12 @@ cat dgemm.go \
 | gofmt -r 'sliceView64 -> sliceView32' \
 \
 | gofmt -r 'dgemmParallel -> sgemmParallel' \
+| gofmt -r 'dgemmParallelWorkerCount -> sgemmParallelWorkerCount' \
+| gofmt -r 'dgemmParallelBlocked -> sgemmParallelBlocked' \
+| gofmt -r 'dgemmParallelBlockedWorkers -> sgemmParallelBlockedWorkers' \
+| gofmt -r 'dgemmMinParFLOPsPerWorker -> sgemmMinParFLOPsPerWorker' \
+| gofmt -r 'minParFLOPsPerWorkerDefault -> sgemmMinParFLOPsPerWorkerDefault' \
+| gofmt -r 'minParFLOPsPerWorkerDarwinARM64 -> sgemmMinParFLOPsPerWorkerDarwinARM64' \
 | gofmt -r 'computeNumBlocks64 -> computeNumBlocks32' \
 | gofmt -r 'dgemmSerial -> sgemmSerial' \
 | gofmt -r 'dgemmSerialNotNot -> sgemmSerialNotNot' \
@@ -200,6 +206,9 @@ cat dgemm.go \
 | sed -e "s_^\(func (Implementation) \)D\(.*\)\$_$WARNINGF32\1S\2_" \
       -e 's_^// D_// S_' \
       -e 's_^// d_// s_' \
+      -e 's_dgemmMinParFLOPsPerWorker_sgemmMinParFLOPsPerWorker_g' \
+      -e 's_BenchmarkDgemmCrossover_BenchmarkSgemmCrossover_g' \
+      -e 's_Dgemm_Sgemm_g' \
       -e 's_"gonum.org/v1/gonum/internal/asm/f64"_"gonum.org/v1/gonum/internal/asm/f32"_' \
 >> sgemm.go
 
