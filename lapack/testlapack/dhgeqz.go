@@ -32,11 +32,99 @@ func DhgeqzTest(t *testing.T, impl Dhgeqzer) {
 	}
 
 	testDhgeqz2x2(t, impl)
+	testDhgeqzComplex2x2NonDiagonalT(t, impl)
+	testDhgeqzIsolatedEigenvalueSigns(t, impl)
+	testDhgeqzNonlocalScaleDeflation(t, impl)
+	testDhgeqzFailureLeavesLeadingEigenvalues(t, impl)
 	testDhgeqz3x3(t, impl)
 	testDhgeqzComplex4x4(t, impl)
 	testDhgeqzComplex6x6(t, impl)
 	testDhgeqzLargeN(t, impl, 50)
 	testDhgeqzLargeN(t, impl, 100)
+}
+
+func testDhgeqzFailureLeavesLeadingEigenvalues(t *testing.T, impl Dhgeqzer) {
+	const n = 4
+	h := []float64{
+		2, 0, 0, 0,
+		0, 1, 1, 0,
+		0, 1, 2, 1,
+		0, 0, math.NaN(), 3,
+	}
+	tt := []float64{
+		-1, 0, 0, 0,
+		0, 1, 0, 0,
+		0, 0, 1, 0,
+		0, 0, 0, 1,
+	}
+	alphar := []float64{11, 12, 13, 14}
+	alphai := []float64{21, 22, 23, 24}
+	beta := []float64{31, 32, 33, 34}
+	work := make([]float64, n)
+	ok := impl.Dhgeqz(lapack.EigenvaluesOnly, lapack.SchurNone, lapack.SchurNone,
+		n, 1, n-1, h, n, tt, n, alphar, alphai, beta, nil, 1, nil, 1, work, len(work))
+	if ok {
+		t.Fatal("non-finite active block unexpectedly converged")
+	}
+	if h[0] != 2 || tt[0] != -1 || alphar[0] != 11 || alphai[0] != 21 || beta[0] != 31 {
+		t.Fatalf("failure modified leading isolated eigenvalue: H=%g T=%g alpha=(%g,%g) beta=%g",
+			h[0], tt[0], alphar[0], alphai[0], beta[0])
+	}
+}
+
+func testDhgeqzNonlocalScaleDeflation(t *testing.T, impl Dhgeqzer) {
+	const n = 3
+	h := []float64{
+		1, 1, 1e300,
+		1e-10, 2, 1,
+		0, 1, 3,
+	}
+	tt := []float64{
+		1, 0, 0,
+		0, 1, 0,
+		0, 0, 1,
+	}
+	alphar := make([]float64, n)
+	alphai := make([]float64, n)
+	beta := make([]float64, n)
+	q := make([]float64, n*n)
+	z := make([]float64, n*n)
+	work := make([]float64, n)
+
+	if !impl.Dhgeqz(lapack.EigenvaluesAndSchur, lapack.SchurHess, lapack.SchurHess,
+		n, 0, n-1, h, n, tt, n, alphar, alphai, beta, q, n, z, n, work, len(work)) {
+		t.Fatal("nonlocal-scale pencil did not converge")
+	}
+	if alphai[0] == 0 && alphai[1] == 0 && alphai[2] == 0 {
+		t.Fatalf("nonlocal scale caused premature deflation: alphar=%v alphai=%v beta=%v", alphar, alphai, beta)
+	}
+}
+
+func testDhgeqzIsolatedEigenvalueSigns(t *testing.T, impl Dhgeqzer) {
+	const n = 3
+	h := []float64{
+		2, 1, 0,
+		0, 3, 1,
+		0, 0, 4,
+	}
+	tt := []float64{
+		-1, 2, 0,
+		0, -2, 3,
+		0, 0, -4,
+	}
+	alphar := make([]float64, n)
+	alphai := make([]float64, n)
+	beta := make([]float64, n)
+	work := make([]float64, n)
+	if !impl.Dhgeqz(lapack.EigenvaluesAndSchur, lapack.SchurNone, lapack.SchurNone,
+		n, 1, 1, h, n, tt, n, alphar, alphai, beta, nil, 1, nil, 1, work, len(work)) {
+		t.Fatal("isolated eigenvalue case did not converge")
+	}
+	for i, v := range beta {
+		if v < 0 {
+			t.Errorf("beta[%d]=%v, want non-negative Netlib representation", i, v)
+		}
+	}
 }
 
 func testDhgeqz2x2(t *testing.T, impl Dhgeqzer) {
@@ -80,7 +168,13 @@ func testDhgeqz2x2(t *testing.T, impl Dhgeqzer) {
 		q.Data, q.Stride, z.Data, z.Stride, work, 10)
 
 	if !ok {
-		t.Log("2x2 test: QZ iteration did not converge")
+		t.Fatal("2x2 test: QZ iteration did not converge")
+	}
+	if alphai[0] != 0 || alphai[1] != 0 {
+		t.Fatalf("2x2 test: expected two real eigenvalues, got alphai=%v", alphai)
+	}
+	if math.Abs(h.Data[h.Stride]) > 1e-14 {
+		t.Fatalf("2x2 test: real block was not split: H[1,0]=%g", h.Data[h.Stride])
 	}
 
 	// Check that beta values are non-zero for non-infinite eigenvalues.
@@ -88,6 +182,33 @@ func testDhgeqz2x2(t *testing.T, impl Dhgeqzer) {
 		if math.Abs(beta[i]) > 1e-10 && math.IsNaN(alphar[i]/beta[i]) {
 			t.Errorf("2x2 test: eigenvalue %d is NaN", i)
 		}
+	}
+}
+
+func testDhgeqzComplex2x2NonDiagonalT(t *testing.T, impl Dhgeqzer) {
+	h := []float64{0, -1, 1, 0}
+	tt := []float64{2, 1, 0, 3}
+	q := make([]float64, 4)
+	z := make([]float64, 4)
+	alphar := make([]float64, 2)
+	alphai := make([]float64, 2)
+	beta := make([]float64, 2)
+	work := make([]float64, 2)
+
+	ok := impl.Dhgeqz(lapack.EigenvaluesAndSchur, lapack.SchurHess, lapack.SchurHess,
+		2, 0, 1, h, 2, tt, 2, alphar, alphai, beta, q, 2, z, 2, work, len(work))
+	if !ok {
+		t.Fatal("complex 2x2 test: QZ iteration did not converge")
+	}
+	if alphai[0] <= 0 || alphai[1] >= 0 {
+		t.Fatalf("complex 2x2 test: expected a conjugate pair, got alphai=%v", alphai)
+	}
+	const tol = 1e-14
+	if math.Abs(tt[1]) > tol || math.Abs(tt[2]) > tol {
+		t.Fatalf("complex 2x2 test: T is not diagonal: %v", tt)
+	}
+	if tt[0] <= 0 || tt[3] <= 0 {
+		t.Fatalf("complex 2x2 test: T diagonal is not positive: %v", tt)
 	}
 }
 
@@ -136,7 +257,7 @@ func testDhgeqz3x3(t *testing.T, impl Dhgeqzer) {
 		q.Data, q.Stride, z.Data, z.Stride, work, 20)
 
 	if !ok {
-		t.Log("3x3 test: QZ iteration did not converge")
+		t.Fatal("3x3 test: QZ iteration did not converge")
 	}
 
 	// Check that beta values are non-zero for non-infinite eigenvalues.
@@ -198,7 +319,7 @@ func testDhgeqzComplex4x4(t *testing.T, impl Dhgeqzer) {
 		}
 	}
 	if !hasComplex {
-		t.Log("4x4 complex test: no complex eigenvalues detected (may be OK if exceptional shifts resolved them)")
+		t.Error("4x4 complex test: no complex eigenvalues detected")
 	}
 
 	// Verify Schur decomposition: Q^T * H_orig * Z ≈ S.

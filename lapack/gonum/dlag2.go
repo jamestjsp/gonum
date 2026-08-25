@@ -42,7 +42,11 @@ import "math"
 // ±sqrt(dlamchS) will be used instead of that diagonal.
 //
 // Dlag2 is an internal routine. It is exported for testing purposes.
-func (Implementation) Dlag2(a []float64, lda int, b []float64, ldb int) (scale1, scale2, wr1, wr2, wi float64) {
+func (impl Implementation) Dlag2(a []float64, lda int, b []float64, ldb int) (scale1, scale2, wr1, wr2, wi float64) {
+	return impl.dlag2(a, lda, b, ldb, dlamchS)
+}
+
+func (Implementation) dlag2(a []float64, lda int, b []float64, ldb int, safmin float64) (scale1, scale2, wr1, wr2, wi float64) {
 	switch {
 	case lda < 2:
 		panic(badLdA)
@@ -54,11 +58,8 @@ func (Implementation) Dlag2(a []float64, lda int, b []float64, ldb int) (scale1,
 		panic(shortB)
 	}
 
-	const (
-		safmin = dlamchS
-		safmax = 1 / safmin
-		fuzzy1 = 1 + 1e-5
-	)
+	const fuzzy1 = 1 + 1e-5
+	safmax := 1 / safmin
 	rtmin := math.Sqrt(safmin)
 	rtmax := 1 / rtmin
 

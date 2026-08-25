@@ -4,38 +4,27 @@
 
 package gonum
 
-import "math"
+import (
+	"math"
+
+	"gonum.org/v1/gonum/blas/blas64"
+)
 
 // Dlagv2 computes the generalized Schur factorization of a real 2×2 matrix
-// pencil (A,B) where B is upper triangular.
+// pencil (A,B), where B is upper triangular. The returned left and right
+// rotations satisfy Qᵀ*A*Z and Qᵀ*B*Z equal the overwritten matrices, with
+// Q=[csq -snq; snq csq] and Z=[csz -snz; snz csz].
 //
-// On entry, A and B are 2×2 matrices. On return, A and B are overwritten by
-// the generalized Schur form:
+// The generalized eigenvalues are
 //
-//	(A11 A12)     (B11 B12)
-//	(A21 A22)     (0   B22)
+//	(alphar0+i*alphai0)/scale1 and (alphar1+i*alphai1)/scale2.
 //
-// where A21 is either zero (real eigenvalues) or has the form:
-//
-//	A21 = c * s * (alphar² + alphai²) / (scale1 * scale2)
-//
-// The outputs satisfy:
-//
-//	Q^T * A * Z = Schur form of A
-//	Q^T * B * Z = upper triangular form of B
-//
-// where Q and Z are orthogonal matrices formed from Givens rotations:
-//
-//	Q = [csq -snq; snq csq]
-//	Z = [csz -snz; snz csz]
-//
-// The eigenvalues are:
-//
-//	λ₁ = (alphar[0] + i*alphai[0]) / scale1
-//	λ₂ = (alphar[1] + i*alphai[1]) / scale2
+// The csr and snr results duplicate csz and snz for compatibility with the
+// existing internal API.
 //
 // Dlagv2 is an internal routine. It is exported for testing purposes.
-func (Implementation) Dlagv2(a []float64, lda int, b []float64, ldb int) (csq, snq, csr, snr, csz, snz, scale1, scale2, alphar0, alphar1, alphai0, alphai1 float64) {
+func (impl Implementation) Dlagv2(a []float64, lda int, b []float64, ldb int) (
+	csq, snq, csr, snr, csz, snz, scale1, scale2, alphar0, alphar1, alphai0, alphai1 float64) {
 	switch {
 	case lda < 2:
 		panic(badLdA)
@@ -48,210 +37,92 @@ func (Implementation) Dlagv2(a []float64, lda int, b []float64, ldb int) (csq, s
 	}
 
 	safmin := dlamchS
-	ulp := dlamchE
-
-	// Compute the eigenvalues by solving the 2×2 generalized eigenvalue problem.
-	a11 := a[0]
-	a12 := a[1]
-	a21 := a[lda]
-	a22 := a[lda+1]
-
-	b11 := b[0]
-	b12 := b[1]
-	b22 := b[ldb+1]
-
-	// Scale A.
-	anorm := math.Max(math.Abs(a11)+math.Abs(a21), math.Max(math.Abs(a12)+math.Abs(a22), safmin))
+	ulp := dlamchP
+	anorm := math.Max(math.Abs(a[0])+math.Abs(a[lda]), math.Max(math.Abs(a[1])+math.Abs(a[lda+1]), safmin))
 	ascale := 1 / anorm
-	a11 *= ascale
-	a12 *= ascale
-	a21 *= ascale
-	a22 *= ascale
-
-	// Scale B.
-	bnorm := math.Max(math.Abs(b11), math.Max(math.Abs(b12)+math.Abs(b22), safmin))
+	a[0] *= ascale
+	a[1] *= ascale
+	a[lda] *= ascale
+	a[lda+1] *= ascale
+	bnorm := math.Max(math.Abs(b[0]), math.Max(math.Abs(b[1])+math.Abs(b[ldb+1]), safmin))
 	bscale := 1 / bnorm
-	b11 *= bscale
-	b12 *= bscale
-	b22 *= bscale
+	b[0] *= bscale
+	b[1] *= bscale
+	b[ldb] *= bscale
+	b[ldb+1] *= bscale
 
-	// Check if A21 is negligible.
-	if math.Abs(a21) <= ulp {
-		// Matrix is already upper triangular. No transformation needed.
-		// Just write back the scaled values and return identity transformation.
-		a[0] = a11 * anorm
-		a[1] = a12 * anorm
-		a[lda] = 0
-		a[lda+1] = a22 * anorm
-		b[0] = b11 * bnorm
-		b[1] = b12 * bnorm
-		b[ldb+1] = b22 * bnorm
-
+	bi := blas64.Implementation()
+	wi := 0.0
+	var wr1 float64
+	if math.Abs(a[lda]) <= ulp {
+		csq, csz = 1, 1
+		a[lda], b[ldb] = 0, 0
+	} else if math.Abs(b[0]) <= ulp {
+		csq, snq, _ = impl.Dlartg(a[0], a[lda])
+		csz = 1
+		bi.Drot(2, a, 1, a[lda:], 1, csq, snq)
+		bi.Drot(2, b, 1, b[ldb:], 1, csq, snq)
+		a[lda], b[0], b[ldb] = 0, 0, 0
+	} else if math.Abs(b[ldb+1]) <= ulp {
+		csz, snz, _ = impl.Dlartg(a[lda+1], a[lda])
+		snz = -snz
+		bi.Drot(2, a, lda, a[1:], lda, csz, snz)
+		bi.Drot(2, b, ldb, b[1:], ldb, csz, snz)
 		csq = 1
-		snq = 0
-		csr = 1
-		snr = 0
-		csz = 1
-		snz = 0
-
-		// Compute eigenvalues.
-		alphar0 = a[0]
-		alphar1 = a[lda+1]
-		alphai0 = 0
-		alphai1 = 0
-		scale1 = b[0]
-		scale2 = b[ldb+1]
-		return
-	} else if math.Abs(b11) <= ulp {
-		// B11 is negligible.
-		csq, snq, _ = Implementation{}.Dlartg(a11, a21)
-		a[0] = csq*a11 + snq*a21
-		a[1] = csq*a12 + snq*a22
-		a[lda] = -snq*a11 + csq*a21
-		a[lda+1] = -snq*a12 + csq*a22
-		b[0] = csq * b11
-		if b[0] < 0 {
-			b[0] = -b[0]
-			csq = -csq
-			snq = -snq
-		}
-		b[ldb+1] = csq*b12 + snq*b22
-
-		csr = 1
-		snr = 0
-		csz = 1
-		snz = 0
-	} else if math.Abs(b22) <= ulp {
-		// B22 is negligible.
-		csz, snz, _ = Implementation{}.Dlartg(a22, -a21)
-		a[0] = csz*a11 + snz*a12
-		a[1] = -snz*a11 + csz*a12
-		a[lda] = csz*a21 + snz*a22
-		a[lda+1] = -snz*a21 + csz*a22
-		b[0] = csz*b11 + snz*b12
-		b[1] = -snz*b11 + csz*b12
-		b[ldb+1] = csz * b22
-
-		csq = 1
-		snq = 0
-		csr = 1
-		snr = 0
-	} else if math.Abs(b11)*math.Abs(a22)-math.Abs(a11)*math.Abs(b22) <= ulp*math.Abs(b22)*math.Abs(a21) {
-		// Eigenvalues are close or one is infinite.
-		csq, snq, _ = Implementation{}.Dlartg(a22*b11-a11*b22, a21*b22)
-		t := csq*a11 + snq*a21
-		a[lda] = -snq*a11 + csq*a21
-		a[0] = t
-		t = csq*a12 + snq*a22
-		a[lda+1] = -snq*a12 + csq*a22
-		a[1] = t
-		b[0] = csq * b11
-		t = csq*b12 + snq*b22
-		b[ldb+1] = -snq*b12 + csq*b22
-		b[1] = t
-
-		csr = 1
-		snr = 0
-		csz = 1
-		snz = 0
+		a[lda], b[ldb], b[ldb+1] = 0, 0, 0
 	} else {
-		// General case: use full Schur decomposition.
-		// Compute shifts from the pencil (A - λB).
-		qq := a11/b11 - (a12/b22)*(b12/b11)
-		pp := 0.5 * (a22/b22 - qq)
-		rr := (a21/b22)*(a12/b11) - (a11/b11-a22/b22)*(a21/b22)*(b12/(b11*b22))
-		dd := pp*pp + rr
-		if dd >= 0 {
-			// Real eigenvalues.
-			// Compute tan(theta) for larger eigenvalue.
-			dd = math.Sqrt(dd)
-			if pp < 0 {
-				dd = -dd
+		scale1, scale2, wr1, _, wi = impl.Dlag2(a, lda, b, ldb)
+		if wi == 0 {
+			h1 := scale1*a[0] - wr1*b[0]
+			h2 := scale1*a[1] - wr1*b[1]
+			h3 := scale1*a[lda+1] - wr1*b[ldb+1]
+			if math.Hypot(h1, h2) > math.Hypot(scale1*a[lda], h3) {
+				csz, snz, _ = impl.Dlartg(h2, h1)
+			} else {
+				csz, snz, _ = impl.Dlartg(h3, scale1*a[lda])
 			}
-			l := pp + dd
-			// Compute shift to annihilate a21.
-			csq, snq, _ = Implementation{}.Dlartg(l*b11-a11, a21)
-			t := csq*a11 + snq*a21
-			a[lda] = -snq*a11 + csq*a21
-			a[0] = t
-			t = csq*a12 + snq*a22
-			a[lda+1] = -snq*a12 + csq*a22
-			a[1] = t
-			b[0] = csq * b11
-			t = csq*b12 + snq*b22
-			b[ldb+1] = -snq*b12 + csq*b22
-			b[1] = t
+			snz = -snz
+			bi.Drot(2, a, lda, a[1:], lda, csz, snz)
+			bi.Drot(2, b, ldb, b[1:], ldb, csz, snz)
 
-			// Zero out a[lda] if it became small.
-			if math.Abs(a[lda]) <= ulp*math.Max(math.Abs(a[0]), math.Abs(a[lda+1])) {
-				a[lda] = 0
+			hanorm := math.Max(math.Abs(a[0])+math.Abs(a[1]), math.Abs(a[lda])+math.Abs(a[lda+1]))
+			hbnorm := math.Max(math.Abs(b[0])+math.Abs(b[1]), math.Abs(b[ldb])+math.Abs(b[ldb+1]))
+			if scale1*hanorm >= math.Abs(wr1)*hbnorm {
+				csq, snq, _ = impl.Dlartg(b[0], b[ldb])
+			} else {
+				csq, snq, _ = impl.Dlartg(a[0], a[lda])
 			}
-
-			csr = 1
-			snr = 0
-			csz = 1
-			snz = 0
+			bi.Drot(2, a, 1, a[lda:], 1, csq, snq)
+			bi.Drot(2, b, 1, b[ldb:], 1, csq, snq)
+			a[lda], b[ldb] = 0, 0
 		} else {
-			// Complex eigenvalues.
-			// First apply Q to make B upper triangular.
-			csq, snq, _ = Implementation{}.Dlartg(b11, 0)
-
-			t := csq*a11 + snq*a21
-			a[lda] = -snq*a11 + csq*a21
-			a[0] = t
-			t = csq*a12 + snq*a22
-			a[lda+1] = -snq*a12 + csq*a22
-			a[1] = t
-			b[0] = csq * b11
-			t = csq*b12 + snq*b22
-			b[ldb+1] = -snq*b12 + csq*b22
-			b[1] = t
-
-			// Now apply Z to annihilate b[1].
-			csz, snz, _ = Implementation{}.Dlartg(b[ldb+1], -b[1])
-			t = csz*a[0] + snz*a[1]
-			a[1] = -snz*a[0] + csz*a[1]
-			a[0] = t
-			t = csz*a[lda] + snz*a[lda+1]
-			a[lda+1] = -snz*a[lda] + csz*a[lda+1]
-			a[lda] = t
-			t = csz*b[0] + snz*b[1]
-			b[1] = 0
-			b[0] = t
-			b[ldb+1] = csz*b[ldb+1] - snz*0
-
-			csr = 1
-			snr = 0
+			_, _, snz, csz, snq, csq = impl.Dlasv2(b[0], b[1], b[ldb+1])
+			bi.Drot(2, a, 1, a[lda:], 1, csq, snq)
+			bi.Drot(2, b, 1, b[ldb:], 1, csq, snq)
+			bi.Drot(2, a, lda, a[1:], lda, csz, snz)
+			bi.Drot(2, b, ldb, b[1:], ldb, csz, snz)
+			b[ldb], b[1] = 0, 0
 		}
 	}
 
-	// Unscale.
 	a[0] *= anorm
 	a[1] *= anorm
 	a[lda] *= anorm
 	a[lda+1] *= anorm
 	b[0] *= bnorm
 	b[1] *= bnorm
+	b[ldb] *= bnorm
 	b[ldb+1] *= bnorm
-
-	// Compute eigenvalue representation.
-	// For real eigenvalues:
-	if a[lda] == 0 {
-		alphar0 = a[0]
-		alphar1 = a[lda+1]
-		alphai0 = 0
-		alphai1 = 0
-		scale1 = b[0]
-		scale2 = b[ldb+1]
+	if wi == 0 {
+		alphar0, alphar1 = a[0], a[lda+1]
+		scale1, scale2 = b[0], b[ldb+1]
 	} else {
-		// Complex eigenvalues.
-		alphar0 = a[0]
-		alphar1 = a[0]
-		alphai0 = math.Sqrt(math.Abs(a[1])) * math.Sqrt(math.Abs(a[lda]))
+		alphar0 = anorm * wr1 / scale1 / bnorm
+		alphar1 = alphar0
+		alphai0 = anorm * wi / scale1 / bnorm
 		alphai1 = -alphai0
-		scale1 = b[0]
-		scale2 = b[0]
+		scale1, scale2 = 1, 1
 	}
-
+	csr, snr = csz, snz
 	return
 }

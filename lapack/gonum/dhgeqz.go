@@ -12,6 +12,10 @@ import (
 	"gonum.org/v1/gonum/lapack"
 )
 
+// This implementation follows DHGEQZ in Reference LAPACK 3.12.1 at commit
+// 6ec7f2bc4ecf4c4a93496aa2fa519575bc0e39ca, adapted to Gonum's row-major
+// storage and panic/bool error contracts. See THIRD_PARTY_LICENSES/LAPACK-LICENSE.
+//
 // Dhgeqz computes the eigenvalues of a real matrix pair (H,T) where H is upper
 // Hessenberg and T is upper triangular, using the double-shift QZ method.
 //
@@ -80,6 +84,8 @@ func (impl Implementation) Dhgeqz(job lapack.SchurJob, compq, compz lapack.Schur
 		panic(badLdZ)
 	case lwork < max(1, n) && lwork != -1:
 		panic(badLWork)
+	case len(work) < max(1, lwork):
+		panic(shortWork)
 	}
 
 	// Workspace query.
@@ -124,21 +130,22 @@ func (impl Implementation) Dhgeqz(job lapack.SchurJob, compq, compz lapack.Schur
 
 	// Machine constants.
 	safmin := dlamchS
-	ulp := dlamchE
-	anorm := impl.Dlanhs(lapack.Frobenius, n, h, ldh, nil)
-	bnorm := impl.Dlantr(lapack.Frobenius, blas.Upper, blas.NonUnit, n, n, t, ldt, nil)
+	ulp := dlamchP
+	in := ihi - ilo + 1
+	var anorm, bnorm float64
+	if in > 0 {
+		anorm = impl.Dlanhs(lapack.Frobenius, in, h[ilo*ldh+ilo:], ldh, nil)
+		bnorm = impl.Dlanhs(lapack.Frobenius, in, t[ilo*ldt+ilo:], ldt, nil)
+	}
 	atol := math.Max(safmin, ulp*anorm)
 	btol := math.Max(safmin, ulp*bnorm)
 	ascale := 1 / math.Max(safmin, anorm)
 	bscale := 1 / math.Max(safmin, bnorm)
 
-	// Set eigenvalues for rows outside [ilo, ihi].
-	for j := 0; j < ilo; j++ {
-		alphar[j] = h[j*ldh+j]
-		alphai[j] = 0
-		beta[j] = t[j*ldt+j]
-	}
+	// Set eigenvalues after ihi. Leading isolated eigenvalues are set only
+	// after successful QZ iteration, matching the failure-path contract.
 	for j := ihi + 1; j < n; j++ {
+		standardizeDhgeqzRealEigenvalue(ilschr, ilz, n, j, 0, h, ldh, t, ldt, z, ldz)
 		alphar[j] = h[j*ldh+j]
 		alphai[j] = 0
 		beta[j] = t[j*ldt+j]
@@ -155,8 +162,8 @@ func (impl Implementation) Dhgeqz(job lapack.SchurJob, compq, compz lapack.Schur
 
 	const maxit = 30
 	totalMaxit := maxit * (ihi - ilo + 1)
-	iiter := 0      // Iterations since last eigenvalue.
-	eshift := 0.0   // Exceptional shift accumulator.
+	iiter := 0    // Iterations since last eigenvalue.
+	eshift := 0.0 // Exceptional shift accumulator.
 
 	for jiter := 0; jiter < maxit*(ihi-ilo+1); jiter++ {
 		// Check for convergence.
@@ -164,178 +171,127 @@ func (impl Implementation) Dhgeqz(job lapack.SchurJob, compq, compz lapack.Schur
 			break
 		}
 
-		// Check for deflation: negligible subdiagonal in H.
 		var ifirst int
-		for j := ilast; j > ilo; j-- {
-			if math.Abs(h[j*ldh+j-1]) <= atol {
-				h[j*ldh+j-1] = 0
-				ifirst = j
-				goto checkT
-			}
-			tst1 := math.Abs(h[(j-1)*ldh+j-1]) + math.Abs(h[j*ldh+j])
-			if tst1 == 0 {
-				if j >= ilo+2 {
-					tst1 += math.Abs(h[(j-1)*ldh+j-2])
-				}
-				if j < ilast {
-					tst1 += math.Abs(h[(j+1)*ldh+j])
-				}
-			}
-			if math.Abs(h[j*ldh+j-1]) <= ulp*tst1 {
-				hlj := math.Abs(h[j*ldh+j-1])
-				hjlm1 := math.Abs(h[(j-1)*ldh+j])
-				temp := math.Max(hlj, hjlm1)
-				temp2 := math.Min(hlj, hjlm1)
-				hjj := math.Abs(h[j*ldh+j])
-				hjm1 := math.Abs(h[(j-1)*ldh+j-1])
-				temp3 := math.Max(hjj, math.Abs(hjm1-hjj))
-				temp4 := math.Min(hjj, math.Abs(hjm1-hjj))
-				if temp2*temp <= math.Max(safmin, ulp*temp3*temp4) {
-					h[j*ldh+j-1] = 0
-					ifirst = j
-					goto checkT
-				}
-			}
+		if ilast == ilo {
+			goto deflateReal
 		}
-		ifirst = ilo
-
-	checkT:
-		// Check for negligible elements in T.
-		for j := ilast; j >= ifirst+1; j-- {
-			if math.Abs(t[j*ldt+j-1]) <= btol {
-				t[j*ldt+j-1] = 0
-			}
+		if math.Abs(h[ilast*ldh+ilast-1]) <= math.Max(safmin,
+			ulp*(math.Abs(h[ilast*ldh+ilast])+math.Abs(h[(ilast-1)*ldh+ilast-1]))) {
+			h[ilast*ldh+ilast-1] = 0
+			goto deflateReal
 		}
-
-		// Handle different block types.
-		if ifirst == ilast {
-			// 1x1 block - single real eigenvalue.
-			alphar[ilast] = h[ilast*ldh+ilast]
-			alphai[ilast] = 0
-			beta[ilast] = t[ilast*ldt+ilast]
-			ilast--
-			iiter = 0
-			continue
-		}
-
-		if ifirst == ilast-1 {
-			// 2x2 block - compute eigenvalues.
-			s1, s2, wr1, wr2, wi := impl.Dlag2(h[ifirst*ldh+ifirst:], ldh, t[ifirst*ldt+ifirst:], ldt)
-			if wi == 0 {
-				// Two real eigenvalues.
-				alphar[ifirst] = wr1
-				alphai[ifirst] = 0
-				beta[ifirst] = s1
-				alphar[ilast] = wr2
-				alphai[ilast] = 0
-				beta[ilast] = s2
-			} else {
-				// Complex conjugate pair - standardize the 2x2 block.
-				// H block should have equal diagonals and H(i+1,i)*H(i,i+1) < 0.
-				// T block should be upper triangular with positive entries.
-				if ilschr {
-					impl.standardize2x2Block(n, ifirst, ifrstm, ilastm,
-						h, ldh, t, ldt, q, ldq, z, ldz, ilq, ilz)
-				}
-				alphar[ifirst] = wr1
-				alphai[ifirst] = wi
-				beta[ifirst] = s1
-				alphar[ilast] = wr1
-				alphai[ilast] = -wi
-				beta[ilast] = s1
-			}
-			ilast -= 2
-			iiter = 0
-			continue
-		}
-
-		// Handle negligible T diagonals (infinite eigenvalues).
-		// Check T(ilast,ilast) first, then scan interior of block.
 		if math.Abs(t[ilast*ldt+ilast]) <= btol {
 			t[ilast*ldt+ilast] = 0
 			goto deflateInfinite
 		}
 
-		// Scan for zero T diagonals in the active block [ifirst, ilast-1].
-		// Chase any found zero down to T(ilast,ilast) and deflate.
 		{
 			bi := blas64.Implementation()
-			chased := false
-			for jj := ilast - 1; jj >= ifirst; jj-- {
-				if math.Abs(t[jj*ldt+jj]) > btol {
-					continue
+			for j := ilast - 1; j >= ilo; j-- {
+				ilazro := j == ilo
+				if !ilazro && math.Abs(h[j*ldh+j-1]) <= math.Max(safmin,
+					ulp*(math.Abs(h[j*ldh+j])+math.Abs(h[(j-1)*ldh+j-1]))) {
+					h[j*ldh+j-1] = 0
+					ilazro = true
 				}
-				t[jj*ldt+jj] = 0
 
-				if jj == ilo || h[jj*ldh+jj-1] == 0 {
-					// H also splits at jj. Chase zero down using
-					// left rotations on H (LAPACK DO 40 loop).
-					for jch := jj; jch < ilast; jch++ {
-						cs, sn, r := impl.Dlartg(h[jch*ldh+jch], h[(jch+1)*ldh+jch])
-						h[jch*ldh+jch] = r
-						h[(jch+1)*ldh+jch] = 0
-						nrot := ilastm - jch
-						if nrot > 0 {
-							bi.Drot(nrot, h[jch*ldh+jch+1:], 1, h[(jch+1)*ldh+jch+1:], 1, cs, sn)
-							bi.Drot(nrot, t[jch*ldt+jch+1:], 1, t[(jch+1)*ldt+jch+1:], 1, cs, sn)
+				if math.Abs(t[j*ldt+j]) < btol {
+					t[j*ldt+j] = 0
+					ilazr2 := false
+					if !ilazro {
+						temp := math.Abs(h[j*ldh+j-1])
+						temp2 := math.Abs(h[j*ldh+j])
+						tempr := math.Max(temp, temp2)
+						if tempr < 1 && tempr != 0 {
+							temp /= tempr
+							temp2 /= tempr
 						}
+						ilazr2 = temp*(ascale*math.Abs(h[(j+1)*ldh+j])) <= temp2*(ascale*atol)
+					}
+
+					if ilazro || ilazr2 {
+						for jch := j; jch < ilast; jch++ {
+							cs, sn, r := impl.Dlartg(h[jch*ldh+jch], h[(jch+1)*ldh+jch])
+							h[jch*ldh+jch] = r
+							h[(jch+1)*ldh+jch] = 0
+							nrot := ilastm - jch
+							if nrot > 0 {
+								bi.Drot(nrot, h[jch*ldh+jch+1:], 1, h[(jch+1)*ldh+jch+1:], 1, cs, sn)
+								bi.Drot(nrot, t[jch*ldt+jch+1:], 1, t[(jch+1)*ldt+jch+1:], 1, cs, sn)
+							}
+							if ilq {
+								bi.Drot(n, q[jch:], ldq, q[jch+1:], ldq, cs, sn)
+							}
+							if ilazr2 {
+								h[jch*ldh+jch-1] *= cs
+								ilazr2 = false
+							}
+							if math.Abs(t[(jch+1)*ldt+jch+1]) >= btol {
+								if jch+1 >= ilast {
+									goto deflateReal
+								}
+								ifirst = jch + 1
+								goto handleBlock
+							}
+							t[(jch+1)*ldt+jch+1] = 0
+						}
+						goto deflateInfinite
+					}
+
+					// Chase a zero diagonal in T down to T(ilast,ilast).
+					for jch := j; jch < ilast; jch++ {
+						// Left rotation on rows jch, jch+1 to zero T(jch+1,jch+1).
+						cs, sn, r := impl.Dlartg(t[jch*ldt+jch+1], t[(jch+1)*ldt+jch+1])
+						t[jch*ldt+jch+1] = r
+						t[(jch+1)*ldt+jch+1] = 0
+						if jch < ilastm-1 {
+							bi.Drot(ilastm-jch-1, t[jch*ldt+jch+2:], 1, t[(jch+1)*ldt+jch+2:], 1, cs, sn)
+						}
+						bi.Drot(ilastm-jch+2, h[jch*ldh+jch-1:], 1, h[(jch+1)*ldh+jch-1:], 1, cs, sn)
 						if ilq {
 							bi.Drot(n, q[jch:], ldq, q[jch+1:], ldq, cs, sn)
 						}
-						if math.Abs(t[(jch+1)*ldt+jch+1]) >= btol {
-							// Block split found.
-							if jch+1 >= ilast {
-								goto deflateInfinite
-							}
-							ifirst = jch + 1
-							chased = true
-							break
+						// Right rotation to restore H upper Hessenberg.
+						cs, sn, r = impl.Dlartg(h[(jch+1)*ldh+jch], h[(jch+1)*ldh+jch-1])
+						h[(jch+1)*ldh+jch] = r
+						h[(jch+1)*ldh+jch-1] = 0
+						bi.Drot(jch+1-ifrstm, h[ifrstm*ldh+jch:], ldh, h[ifrstm*ldh+jch-1:], ldh, cs, sn)
+						if jch > ifrstm {
+							bi.Drot(jch-ifrstm, t[ifrstm*ldt+jch:], ldt, t[ifrstm*ldt+jch-1:], ldt, cs, sn)
 						}
-						t[(jch+1)*ldt+jch+1] = 0
-					}
-					if chased {
-						break
+						if ilz {
+							bi.Drot(n, z[jch:], ldz, z[jch-1:], ldz, cs, sn)
+						}
 					}
 					goto deflateInfinite
 				}
 
-				// H does not split at jj. Chase zero from T(jj,jj)
-				// down to T(ilast,ilast) using alternating left and
-				// right Givens rotations (LAPACK DO 50 loop).
-				for jch := jj; jch < ilast; jch++ {
-					// Left rotation on rows jch, jch+1 to zero T(jch+1,jch+1).
-					cs, sn, r := impl.Dlartg(t[jch*ldt+jch+1], t[(jch+1)*ldt+jch+1])
-					t[jch*ldt+jch+1] = r
-					t[(jch+1)*ldt+jch+1] = 0
-					if jch < ilastm-1 {
-						bi.Drot(ilastm-jch-1, t[jch*ldt+jch+2:], 1, t[(jch+1)*ldt+jch+2:], 1, cs, sn)
-					}
-					bi.Drot(ilastm-jch+2, h[jch*ldh+jch-1:], 1, h[(jch+1)*ldh+jch-1:], 1, cs, sn)
-					if ilq {
-						bi.Drot(n, q[jch:], ldq, q[jch+1:], ldq, cs, sn)
-					}
-					// Right rotation to restore H upper Hessenberg.
-					cs, sn, r = impl.Dlartg(h[(jch+1)*ldh+jch], h[(jch+1)*ldh+jch-1])
-					h[(jch+1)*ldh+jch] = r
-					h[(jch+1)*ldh+jch-1] = 0
-					bi.Drot(jch+1-ifrstm, h[ifrstm*ldh+jch:], ldh, h[ifrstm*ldh+jch-1:], ldh, cs, sn)
-					if jch > ifrstm {
-						bi.Drot(jch-ifrstm, t[ifrstm*ldt+jch:], ldt, t[ifrstm*ldt+jch-1:], ldt, cs, sn)
-					}
-					if ilz {
-						bi.Drot(n, z[jch:], ldz, z[jch-1:], ldz, cs, sn)
-					}
+				if ilazro {
+					ifirst = j
+					goto handleBlock
 				}
-				goto deflateInfinite
 			}
-			if chased {
-				// DO 40 found a block split; ifirst was updated.
-				// Continue to shift computation with the new block.
-				goto doQZStep
-			}
+			return false
 		}
 
+	handleBlock:
 		goto doQZStep
+
+	deflateReal:
+		standardizeDhgeqzRealEigenvalue(ilschr, ilz, n, ilast, ifrstm, h, ldh, t, ldt, z, ldz)
+		alphar[ilast] = h[ilast*ldh+ilast]
+		alphai[ilast] = 0
+		beta[ilast] = t[ilast*ldt+ilast]
+		ilast--
+		iiter = 0
+		eshift = 0
+		if !ilschr {
+			ilastm = ilast
+			if ifrstm > ilast {
+				ifrstm = ilo
+			}
+		}
+		continue
 
 	deflateInfinite:
 		// T(ilast,ilast) = 0: zero H(ilast,ilast-1) via right rotation
@@ -375,12 +331,21 @@ func (impl Implementation) Dhgeqz(job lapack.SchurJob, compq, compz lapack.Schur
 			ilast--
 			iiter = 0
 			eshift = 0
+			if !ilschr {
+				ilastm = ilast
+				if ifrstm > ilast {
+					ifrstm = ilo
+				}
+			}
 			continue
 		}
 
 	doQZStep:
 		// Perform QZ step.
 		iiter++
+		if !ilschr {
+			ifrstm = ifirst
+		}
 
 		// Compute shifts from the trailing 2x2 block.
 		var s1, s2, wr, wr2, wi float64
@@ -398,31 +363,70 @@ func (impl Implementation) Dhgeqz(job lapack.SchurJob, compq, compz lapack.Schur
 			wi = 0
 		} else {
 			// Normal shift: eigenvalues of trailing 2x2.
-			s1, s2, wr, wr2, wi = impl.Dlag2(h[(ilast-1)*ldh+ilast-1:], ldh, t[(ilast-1)*ldt+ilast-1:], ldt)
-			_, _ = wr2, s2
+			s1, s2, wr, wr2, wi = impl.dlag2(h[(ilast-1)*ldh+ilast-1:], ldh, t[(ilast-1)*ldt+ilast-1:], ldt, 100*safmin)
+			if wi == 0 && math.Abs((wr/s1)*t[ilast*ldt+ilast]-h[ilast*ldh+ilast]) >
+				math.Abs((wr2/s2)*t[ilast*ldt+ilast]-h[ilast*ldh+ilast]) {
+				s1, s2 = s2, s1
+				wr, wr2 = wr2, wr
+			}
+			if wi != 0 && ifirst+1 == ilast {
+				b11, b22 := impl.standardize2x2Block(n, ifirst, ifrstm, ilastm,
+					h, ldh, t, ldt, q, ldq, z, ldz, ilq, ilz)
+				s1, _, wr, _, wi = impl.dlag2(h[ifirst*ldh+ifirst:], ldh, t[ifirst*ldt+ifirst:], ldt, 100*safmin)
+				if wi == 0 {
+					continue
+				}
+				alphar[ifirst], alphai[ifirst], beta[ifirst],
+					alphar[ilast], alphai[ilast], beta[ilast] =
+					dhgeqzComplexEigenvalues(h[ifirst*ldh+ifirst], h[ifirst*ldh+ilast],
+						h[ilast*ldh+ifirst], h[ilast*ldh+ilast], b11, b22, s1, wr, wi, safmin)
+				ilast = ifirst - 1
+				iiter = 0
+				eshift = 0
+				if !ilschr {
+					ilastm = ilast
+					if ifrstm > ilast {
+						ifrstm = ilo
+					}
+				}
+				continue
+			}
 		}
 
 		// Do one QZ sweep.
-		if wi == 0 {
-			impl.doQZSweepSingle(ilschr, ilq, ilz, n, ifirst, ilast, ifrstm, ilastm,
-				h, ldh, t, ldt, q, ldq, z, ldz, s1, wr, safmin)
-		} else {
-			// Double-shift requires nonzero T diagonals for scaled pencil formula.
-			// Fall back to single-shift for singular pencils.
-			hasSmallTDiag := false
-			for k := ifirst; k <= ilast; k++ {
-				if math.Abs(t[k*ldt+k]) <= btol {
-					hasSmallTDiag = true
+		if wi == 0 || ilast-ifirst+1 < 3 {
+			safmax := 1 / safmin
+			temp := math.Min(ascale, 1) * (0.5 * safmax)
+			scale := 1.0
+			if s1 > temp {
+				scale = temp / s1
+			}
+			temp = math.Min(bscale, 1) * (0.5 * safmax)
+			if math.Abs(wr) > temp {
+				scale = math.Min(scale, temp/math.Abs(wr))
+			}
+			s1 *= scale
+			wr *= scale
+
+			istart := ifirst
+			for j := ilast - 1; j > ifirst; j-- {
+				temp := math.Abs(s1 * h[j*ldh+j-1])
+				temp2 := math.Abs(s1*h[j*ldh+j] - wr*t[j*ldt+j])
+				tempr := math.Max(temp, temp2)
+				if tempr < 1 && tempr != 0 {
+					temp /= tempr
+					temp2 /= tempr
+				}
+				if math.Abs((ascale*h[(j+1)*ldh+j])*temp) <= ascale*atol*temp2 {
+					istart = j
 					break
 				}
 			}
-			if hasSmallTDiag {
-				impl.doQZSweepSingle(ilschr, ilq, ilz, n, ifirst, ilast, ifrstm, ilastm,
-					h, ldh, t, ldt, q, ldq, z, ldz, s1, wr, safmin)
-			} else {
-				impl.doQZSweepDouble(ilschr, ilq, ilz, n, ifirst, ilast, ifrstm, ilastm,
-					h, ldh, t, ldt, q, ldq, z, ldz, ascale, bscale, safmin)
-			}
+			impl.doQZSweepSingle(ilschr, ilq, ilz, n, ilast, ifrstm, ilastm,
+				h, ldh, t, ldt, q, ldq, z, ldz, istart, s1, wr)
+		} else {
+			impl.doQZSweepDouble(ilschr, ilq, ilz, n, ifirst, ilast, ifrstm, ilastm,
+				h, ldh, t, ldt, q, ldq, z, ldz, ascale, bscale, safmin)
 		}
 	}
 
@@ -430,32 +434,55 @@ func (impl Implementation) Dhgeqz(job lapack.SchurJob, compq, compz lapack.Schur
 	if ilast >= ilo {
 		return false
 	}
+	for j := 0; j < ilo; j++ {
+		standardizeDhgeqzRealEigenvalue(ilschr, ilz, n, j, 0, h, ldh, t, ldt, z, ldz)
+		alphar[j] = h[j*ldh+j]
+		alphai[j] = 0
+		beta[j] = t[j*ldt+j]
+	}
 
 	return true
 }
 
+func standardizeDhgeqzRealEigenvalue(ilschr, ilz bool, n, j, ifrstm int,
+	h []float64, ldh int, t []float64, ldt int, z []float64, ldz int) {
+	if t[j*ldt+j] >= 0 {
+		return
+	}
+	if ilschr {
+		for i := ifrstm; i <= j; i++ {
+			h[i*ldh+j] = -h[i*ldh+j]
+			t[i*ldt+j] = -t[i*ldt+j]
+		}
+	} else {
+		h[j*ldh+j] = -h[j*ldh+j]
+		t[j*ldt+j] = -t[j*ldt+j]
+	}
+	if ilz {
+		for i := range n {
+			z[i*ldz+j] = -z[i*ldz+j]
+		}
+	}
+}
+
 // doQZSweepSingle performs a single-shift QZ sweep.
-func (impl Implementation) doQZSweepSingle(ilschr, ilq, ilz bool, n, ifirst, ilast, ifrstm, ilastm int,
+func (impl Implementation) doQZSweepSingle(ilschr, ilq, ilz bool, n, ilast, ifrstm, ilastm int,
 	h []float64, ldh int, t []float64, ldt int, q []float64, ldq int, z []float64, ldz int,
-	s1, wr, safmin float64) {
+	istart int, s1, wr float64) {
 
 	bi := blas64.Implementation()
-	istart := ifirst
-
-	temp := h[istart*ldh+istart]
-	if s1 != 0 {
-		temp -= (wr / s1) * t[istart*ldt+istart]
-	}
-	temp2 := h[(istart+1)*ldh+istart]
+	temp := s1*h[istart*ldh+istart] - wr*t[istart*ldt+istart]
+	temp2 := s1 * h[(istart+1)*ldh+istart]
 
 	cs, sn, _ := impl.Dlartg(temp, temp2)
+	var r float64
 
 	for j := istart; j < ilast; j++ {
 		if j > istart {
 			temp = h[j*ldh+j-1]
 			temp2 = h[(j+1)*ldh+j-1]
-			cs, sn, _ = impl.Dlartg(temp, temp2)
-			h[j*ldh+j-1] = cs*temp + sn*temp2
+			cs, sn, r = impl.Dlartg(temp, temp2)
+			h[j*ldh+j-1] = r
 			h[(j+1)*ldh+j-1] = 0
 		}
 
@@ -467,8 +494,8 @@ func (impl Implementation) doQZSweepSingle(ilschr, ilq, ilz bool, n, ifirst, ila
 		}
 
 		if t[(j+1)*ldt+j] != 0 {
-			cs, sn, _ = impl.Dlartg(t[(j+1)*ldt+j+1], t[(j+1)*ldt+j])
-			t[(j+1)*ldt+j+1] = cs*t[(j+1)*ldt+j+1] + sn*t[(j+1)*ldt+j]
+			cs, sn, r = impl.Dlartg(t[(j+1)*ldt+j+1], t[(j+1)*ldt+j])
+			t[(j+1)*ldt+j+1] = r
 			t[(j+1)*ldt+j] = 0
 
 			nh := min(j+2, ilast) - ifrstm + 1
@@ -482,6 +509,40 @@ func (impl Implementation) doQZSweepSingle(ilschr, ilq, ilz bool, n, ifirst, ila
 			}
 		}
 	}
+}
+
+// dlarfg3 generates an elementary reflector for a three-element vector.
+func (impl Implementation) dlarfg3(alpha, x1, x2 float64) (beta, tau, v1, v2 float64) {
+	xnorm := impl.Dlapy2(x1, x2)
+	if xnorm == 0 {
+		return alpha, 0, x1, x2
+	}
+	beta = -math.Copysign(impl.Dlapy2(alpha, xnorm), alpha)
+	safmin := dlamchS / dlamchE
+	knt := 0
+	if math.Abs(beta) < safmin {
+		rsafmn := 1 / safmin
+		for {
+			knt++
+			x1 *= rsafmn
+			x2 *= rsafmn
+			beta *= rsafmn
+			alpha *= rsafmn
+			if math.Abs(beta) >= safmin {
+				break
+			}
+		}
+		xnorm = impl.Dlapy2(x1, x2)
+		beta = -math.Copysign(impl.Dlapy2(alpha, xnorm), alpha)
+	}
+	tau = (beta - alpha) / beta
+	scale := 1 / (alpha - beta)
+	x1 *= scale
+	x2 *= scale
+	for range knt {
+		beta *= safmin
+	}
+	return beta, tau, x1, x2
 }
 
 // doQZSweepDouble performs an implicit double-shift QZ sweep for complex
@@ -517,15 +578,7 @@ func (impl Implementation) doQZSweepDouble(ilschr, ilq, ilz bool, n, ifirst, ila
 	v3 := ad32l * ad21l
 
 	// Create Householder transformation to introduce bulge.
-	var vv [2]float64
-	vv[0] = v2
-	vv[1] = v3
-	v1, tau := impl.Dlarfg(3, v1, vv[:], 1)
-	_ = v1
-	var v [3]float64
-	v[0] = 1
-	v[1] = vv[0]
-	v[2] = vv[1]
+	_, tau, v2, v3 := impl.dlarfg3(v1, v2, v3)
 
 	// Chase the bulge through the matrix.
 	for j := istart; j < ilast-1; j++ {
@@ -533,12 +586,7 @@ func (impl Implementation) doQZSweepDouble(ilschr, ilq, ilz bool, n, ifirst, ila
 			v1 = h[j*ldh+j-1]
 			v2 = h[(j+1)*ldh+j-1]
 			v3 = h[(j+2)*ldh+j-1]
-			vv[0] = v2
-			vv[1] = v3
-			v1, tau = impl.Dlarfg(3, v1, vv[:], 1)
-			v[0] = 1
-			v[1] = vv[0]
-			v[2] = vv[1]
+			v1, tau, v2, v3 = impl.dlarfg3(v1, v2, v3)
 
 			h[j*ldh+j-1] = v1
 			h[(j+1)*ldh+j-1] = 0
@@ -546,22 +594,22 @@ func (impl Implementation) doQZSweepDouble(ilschr, ilq, ilz bool, n, ifirst, ila
 		}
 
 		// Apply Householder from left to H and T.
-		t2 := tau * v[1]
-		t3 := tau * v[2]
+		t2 := tau * v2
+		t3 := tau * v3
 		for jc := j; jc <= ilastm; jc++ {
-			sumh := h[j*ldh+jc] + v[1]*h[(j+1)*ldh+jc] + v[2]*h[(j+2)*ldh+jc]
+			sumh := h[j*ldh+jc] + v2*h[(j+1)*ldh+jc] + v3*h[(j+2)*ldh+jc]
 			h[j*ldh+jc] -= tau * sumh
 			h[(j+1)*ldh+jc] -= t2 * sumh
 			h[(j+2)*ldh+jc] -= t3 * sumh
 
-			sumt := t[j*ldt+jc] + v[1]*t[(j+1)*ldt+jc] + v[2]*t[(j+2)*ldt+jc]
+			sumt := t[j*ldt+jc] + v2*t[(j+1)*ldt+jc] + v3*t[(j+2)*ldt+jc]
 			t[j*ldt+jc] -= tau * sumt
 			t[(j+1)*ldt+jc] -= t2 * sumt
 			t[(j+2)*ldt+jc] -= t3 * sumt
 		}
 		if ilq {
 			for jr := 0; jr < n; jr++ {
-				sum := q[jr*ldq+j] + v[1]*q[jr*ldq+j+1] + v[2]*q[jr*ldq+j+2]
+				sum := q[jr*ldq+j] + v2*q[jr*ldq+j+1] + v3*q[jr*ldq+j+2]
 				q[jr*ldq+j] -= tau * sum
 				q[jr*ldq+j+1] -= t2 * sum
 				q[jr*ldq+j+2] -= t3 * sum
@@ -632,34 +680,33 @@ func (impl Implementation) doQZSweepDouble(ilschr, ilq, ilz bool, n, ifirst, ila
 		t1 := math.Sqrt(scl*scl + u1*u1 + u2*u2)
 		tauR := 1 + scl/t1
 		vs := -1 / (scl + t1)
-		v[0] = 1
-		v[1] = vs * u1
-		v[2] = vs * u2
+		v2 = vs * u1
+		v3 = vs * u2
 
 		// Apply right Householder to H, T, Z.
-		t2 = tauR * v[1]
-		t3 = tauR * v[2]
+		t2 = tauR * v2
+		t3 = tauR * v3
 		for jr := ifrstm; jr <= j+2; jr++ {
-			sumh := h[jr*ldh+j] + v[1]*h[jr*ldh+j+1] + v[2]*h[jr*ldh+j+2]
+			sumh := h[jr*ldh+j] + v2*h[jr*ldh+j+1] + v3*h[jr*ldh+j+2]
 			h[jr*ldh+j] -= tauR * sumh
 			h[jr*ldh+j+1] -= t2 * sumh
 			h[jr*ldh+j+2] -= t3 * sumh
 
-			sumt := t[jr*ldt+j] + v[1]*t[jr*ldt+j+1] + v[2]*t[jr*ldt+j+2]
+			sumt := t[jr*ldt+j] + v2*t[jr*ldt+j+1] + v3*t[jr*ldt+j+2]
 			t[jr*ldt+j] -= tauR * sumt
 			t[jr*ldt+j+1] -= t2 * sumt
 			t[jr*ldt+j+2] -= t3 * sumt
 		}
 		if j+3 <= ilast {
 			jr := j + 3
-			sumh := h[jr*ldh+j] + v[1]*h[jr*ldh+j+1] + v[2]*h[jr*ldh+j+2]
+			sumh := h[jr*ldh+j] + v2*h[jr*ldh+j+1] + v3*h[jr*ldh+j+2]
 			h[jr*ldh+j] -= tauR * sumh
 			h[jr*ldh+j+1] -= t2 * sumh
 			h[jr*ldh+j+2] -= t3 * sumh
 		}
 		if ilz {
 			for jr := 0; jr < n; jr++ {
-				sum := z[jr*ldz+j] + v[1]*z[jr*ldz+j+1] + v[2]*z[jr*ldz+j+2]
+				sum := z[jr*ldz+j] + v2*z[jr*ldz+j+1] + v3*z[jr*ldz+j+2]
 				z[jr*ldz+j] -= tauR * sum
 				z[jr*ldz+j+1] -= t2 * sum
 				z[jr*ldz+j+2] -= t3 * sum
@@ -702,97 +749,124 @@ func (impl Implementation) doQZSweepDouble(ilschr, ilq, ilz bool, n, ifirst, ila
 	}
 }
 
-// standardize2x2Block puts a 2x2 block at position j into Schur canonical form.
-// For H: equal diagonals with H(j+1,j)*H(j,j+1) < 0.
-// For T: diagonal with positive entries.
+// standardize2x2Block diagonalizes the T part of a complex 2x2 Schur block
+// and makes its diagonal positive.
 func (impl Implementation) standardize2x2Block(n, j, ifrstm, ilastm int,
 	h []float64, ldh int, t []float64, ldt int,
-	q []float64, ldq int, z []float64, ldz int, ilq, ilz bool) {
-
-	// Extract 2x2 block from H.
-	a := h[j*ldh+j]
-	b := h[j*ldh+j+1]
-	c := h[(j+1)*ldh+j]
-	d := h[(j+1)*ldh+j+1]
-
-	// Use Dlanv2 to standardize H's 2x2 block.
-	aa, bb, cc, dd, _, _, _, _, cs, sn := impl.Dlanv2(a, b, c, d)
-
-	// Store standardized H block.
-	h[j*ldh+j] = aa
-	h[j*ldh+j+1] = bb
-	h[(j+1)*ldh+j] = cc
-	h[(j+1)*ldh+j+1] = dd
+	q []float64, ldq int, z []float64, ldz int, ilq, ilz bool) (b11, b22 float64) {
 
 	bi := blas64.Implementation()
+	b22, b11, sr, cr, sl, cl := impl.Dlasv2(t[j*ldt+j], t[j*ldt+j+1], t[(j+1)*ldt+j+1])
+	if b11 < 0 {
+		cr = -cr
+		sr = -sr
+		b11 = -b11
+		b22 = -b22
+	}
 
-	// Apply Dlanv2 transformation to rest of H from left: rows j, j+1.
-	nh := ilastm - (j + 2) + 1
-	if nh > 0 {
-		bi.Drot(nh, h[j*ldh+j+2:], 1, h[(j+1)*ldh+j+2:], 1, cs, sn)
+	bi.Drot(ilastm-j+1, h[j*ldh+j:], 1, h[(j+1)*ldh+j:], 1, cl, sl)
+	bi.Drot(j+2-ifrstm, h[ifrstm*ldh+j:], ldh, h[ifrstm*ldh+j+1:], ldh, cr, sr)
+	if j+1 < ilastm {
+		bi.Drot(ilastm-j-1, t[j*ldt+j+2:], 1, t[(j+1)*ldt+j+2:], 1, cl, sl)
 	}
-	// Apply from right: columns j, j+1.
-	nh = j - ifrstm
-	if nh > 0 {
-		bi.Drot(nh, h[ifrstm*ldh+j:], ldh, h[ifrstm*ldh+j+1:], ldh, cs, sn)
-	}
-	// Apply to T from left: rows j, j+1.
-	nh = ilastm - j + 1
-	bi.Drot(nh, t[j*ldt+j:], 1, t[(j+1)*ldt+j:], 1, cs, sn)
-	// Apply to T from right: columns j, j+1.
-	nh = j + 2 - ifrstm
-	if nh > 0 {
-		bi.Drot(nh, t[ifrstm*ldt+j:], ldt, t[ifrstm*ldt+j+1:], ldt, cs, sn)
+	if ifrstm < j {
+		bi.Drot(j-ifrstm, t[ifrstm*ldt+j:], ldt, t[ifrstm*ldt+j+1:], ldt, cr, sr)
 	}
 	if ilq {
-		bi.Drot(n, q[j:], ldq, q[j+1:], ldq, cs, sn)
+		bi.Drot(n, q[j:], ldq, q[j+1:], ldq, cl, sl)
 	}
 	if ilz {
-		bi.Drot(n, z[j:], ldz, z[j+1:], ldz, cs, sn)
+		bi.Drot(n, z[j:], ldz, z[j+1:], ldz, cr, sr)
 	}
-
-	// Make T upper triangular with positive diagonal.
-	// After applying the Dlanv2 similarity transformation, T may have
-	// nonzero t21. We need to eliminate it using a right rotation.
-	// Also ensure T diagonals are positive.
-
-	t21 := t[(j+1)*ldt+j]
-
-	// Eliminate t21 using a right rotation on columns j, j+1.
-	// Find R2 = [cs2 sn2; -sn2 cs2] such that [t21, t22] * R2 = [0, *]
-	// This means cs2*t21 - sn2*t22 = 0.
-	if t21 != 0 {
-		cs2, sn2, _ := impl.Dlartg(t[(j+1)*ldt+j+1], t21)
-
-		// Apply T = T * R2 (column operation).
-		bi.Drot(j+2-ifrstm, t[ifrstm*ldt+j:], ldt, t[ifrstm*ldt+j+1:], ldt, cs2, -sn2)
-		t[(j+1)*ldt+j] = 0
-
-		// Apply H = H * R2 (column operation).
-		bi.Drot(j+2-ifrstm, h[ifrstm*ldh+j:], ldh, h[ifrstm*ldh+j+1:], ldh, cs2, -sn2)
-
-		// Apply Z = Z * R2.
+	t[j*ldt+j] = b11
+	t[j*ldt+j+1] = 0
+	t[(j+1)*ldt+j] = 0
+	t[(j+1)*ldt+j+1] = b22
+	if b22 < 0 {
+		for i := ifrstm; i <= j+1; i++ {
+			h[i*ldh+j+1] = -h[i*ldh+j+1]
+			t[i*ldt+j+1] = -t[i*ldt+j+1]
+		}
 		if ilz {
-			bi.Drot(n, z[j:], ldz, z[j+1:], ldz, cs2, -sn2)
+			bi.Dscal(n, -1, z[j+1:], ldz)
+		}
+		b22 = -b22
+	}
+	return b11, b22
+}
+
+func dhgeqzComplexEigenvalues(a11, a12, a21, a22, b11, b22, s1, wr, wi, safmin float64) (ar1, ai1, beta1, ar2, ai2, beta2 float64) {
+	c11r := s1*a11 - wr*b11
+	c11i := -wi * b11
+	c12 := s1 * a12
+	c21 := s1 * a21
+	c22r := s1*a22 - wr*b22
+	c22i := -wi * b22
+
+	var cz, szr, szi float64
+	if math.Abs(c11r)+math.Abs(c11i)+math.Abs(c12) > math.Abs(c21)+math.Abs(c22r)+math.Abs(c22i) {
+		t1 := dlapy3(c12, c11r, c11i)
+		cz = c12 / t1
+		szr = -c11r / t1
+		szi = -c11i / t1
+	} else {
+		cz = math.Hypot(c22r, c22i)
+		if cz <= safmin {
+			cz = 0
+			szr = 1
+			szi = 0
+		} else {
+			tempr := c22r / cz
+			tempi := c22i / cz
+			t1 := math.Hypot(cz, c21)
+			cz /= t1
+			szr = -c21 * tempr / t1
+			szi = c21 * tempi / t1
 		}
 	}
 
-	// Ensure T diagonals are positive.
-	// This is a left (row) transformation: negate row j of H and T.
-	// For the factorization H_orig = Q * H * Z^T, if H_new = D * H where D[j,j] = -1,
-	// then Q_new = Q * D (negate column j of Q).
-	if t[j*ldt+j] < 0 {
-		bi.Dscal(ilastm-ifrstm+1, -1, h[j*ldh+ifrstm:], 1)
-		bi.Dscal(ilastm-j+1, -1, t[j*ldt+j:], 1)
-		if ilq {
-			bi.Dscal(n, -1, q[j:], ldq)
+	an := math.Abs(a11) + math.Abs(a12) + math.Abs(a21) + math.Abs(a22)
+	bn := math.Abs(b11) + math.Abs(b22)
+	wabs := math.Abs(wr) + math.Abs(wi)
+	var cq, sqr, sqi float64
+	if s1*an > wabs*bn {
+		cq = cz * b11
+		sqr = szr * b22
+		sqi = -szi * b22
+	} else {
+		a1r := cz*a11 + szr*a12
+		a1i := szi * a12
+		a2r := cz*a21 + szr*a22
+		a2i := szi * a22
+		cq = math.Hypot(a1r, a1i)
+		if cq <= safmin {
+			cq = 0
+			sqr = 1
+			sqi = 0
+		} else {
+			tempr := a1r / cq
+			tempi := a1i / cq
+			sqr = tempr*a2r + tempi*a2i
+			sqi = tempi*a2r - tempr*a2i
 		}
 	}
-	if t[(j+1)*ldt+j+1] < 0 {
-		bi.Dscal(ilastm-ifrstm+1, -1, h[(j+1)*ldh+ifrstm:], 1)
-		bi.Dscal(ilastm-j, -1, t[(j+1)*ldt+j+1:], 1)
-		if ilq {
-			bi.Dscal(n, -1, q[j+1:], ldq)
-		}
-	}
+	t1 := dlapy3(cq, sqr, sqi)
+	cq /= t1
+	sqr /= t1
+	sqi /= t1
+
+	tempr := sqr*szr - sqi*szi
+	tempi := sqr*szi + sqi*szr
+	b1r := cq*cz*b11 + tempr*b22
+	b1i := tempi * b22
+	beta1 = math.Hypot(b1r, b1i)
+	b2r := cq*cz*b22 + tempr*b11
+	b2i := -tempi * b11
+	beta2 = math.Hypot(b2r, b2i)
+	s1inv := 1 / s1
+	ar1 = (wr * beta1) * s1inv
+	ai1 = (wi * beta1) * s1inv
+	ar2 = (wr * beta2) * s1inv
+	ai2 = -(wi * beta2) * s1inv
+	return ar1, ai1, beta1, ar2, ai2, beta2
 }

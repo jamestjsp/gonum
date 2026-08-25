@@ -11,6 +11,10 @@ import (
 	"gonum.org/v1/gonum/lapack"
 )
 
+// This implementation follows DGGES in Reference LAPACK 3.12.1 at commit
+// 6ec7f2bc4ecf4c4a93496aa2fa519575bc0e39ca, adapted to Gonum's row-major
+// storage and panic/bool error contracts. See THIRD_PARTY_LICENSES/LAPACK-LICENSE.
+//
 // Dgges computes for a pair of n×n real nonsymmetric matrices (A,B), the
 // generalized eigenvalues, the generalized real Schur form (S,T), and,
 // optionally, the left and/or right matrices of Schur vectors (VSL and VSR).
@@ -78,9 +82,11 @@ import (
 // selctg is true. If sort is lapack.SortNone, sdim will be 0. For a complex
 // conjugate pair, both eigenvalues are counted when either or both are selected.
 //
-// On return, ok reports whether the QZ iteration converged. If ok is false, some
-// eigenvalues may not have been computed, but a and b contain the partially
-// converged Schur form.
+// On return, ok reports whether the QZ iteration converged, all requested block
+// swaps were accepted, and the selected eigenvalues occupy the leading Schur
+// blocks. If QZ iteration fails, the partial outputs are returned without
+// back-permutation or unscaling, matching LAPACK. A rejected reorder is returned
+// after back-permutation and unscaling.
 //
 // Dgges is an internal routine. It is exported for testing purposes.
 func (impl Implementation) Dgges(jobvsl, jobvsr lapack.SchurComp, sort lapack.SchurSort, selctg lapack.SchurSelect, n int, a []float64, lda int, b []float64, ldb int, alphar, alphai, beta []float64, vsl []float64, ldvsl int, vsr []float64, ldvsr int, work []float64, lwork int, bwork []bool) (sdim int, ok bool) {
@@ -88,8 +94,10 @@ func (impl Implementation) Dgges(jobvsl, jobvsr lapack.SchurComp, sort lapack.Sc
 	wantvsr := jobvsr == lapack.SchurHess
 	wantst := sort == lapack.SortSelected
 
-	// Minimum workspace: 3*n (lscale, rscale, tau) + 6*n (Dggbal) = 9*n.
-	minwrk := max(1, 9*n)
+	minwrk := 1
+	if n > 0 {
+		minwrk = max(8*n, 6*n+16)
+	}
 
 	switch {
 	case jobvsl != lapack.SchurHess && jobvsl != lapack.SchurNone:
@@ -132,9 +140,9 @@ func (impl Implementation) Dgges(jobvsl, jobvsr lapack.SchurComp, sort lapack.Sc
 		impl.Dormqr(blas.Left, blas.Trans, n, n, n, nil, max(1, n), nil, nil, max(1, n), work, -1)
 		mqrwork := int(work[0])
 
-		// Query Dorgqr (only if wantvsr).
+		// Query Dorgqr when left Schur vectors are requested.
 		gqrwork := 0
-		if wantvsr {
+		if wantvsl {
 			impl.Dorgqr(n, n, n, nil, max(1, n), nil, work, -1)
 			gqrwork = int(work[0])
 		}
@@ -166,8 +174,9 @@ func (impl Implementation) Dgges(jobvsl, jobvsr lapack.SchurComp, sort lapack.Sc
 			tgsenwork = int(work[0])
 		}
 
-		// Compute maximum workspace needed.
-		maxwrk = 3*n + max(qrwork, mqrwork, gqrwork, hqzwork, tgsenwork)
+		// QR routines use the three n-element prefix arrays. Once the
+		// reduction is complete, the tau region can be reused.
+		maxwrk = max(3*n+max(qrwork, mqrwork, gqrwork), 2*n+max(hqzwork, tgsenwork))
 		maxwrk = max(maxwrk, minwrk)
 	}
 
@@ -241,19 +250,19 @@ func (impl Implementation) Dgges(jobvsl, jobvsr lapack.SchurComp, sort lapack.Sc
 	// Workspace layout:
 	//   work[0:n]     - lscale for Dggbal
 	//   work[n:2n]    - rscale for Dggbal
-	//   work[2n:3n]   - tau for Dgeqrf
-	//   work[3n:]     - workspace for subroutines
+	//   work[2n:2n+irows] - tau for Dgeqrf
+	//   remaining work    - workspace for QR subroutines
 	lscale := work[:n]
 	rscale := work[n : 2*n]
-	tau := work[2*n : 3*n]
-	iwrk := 3 * n
 
 	// Balance the matrix pair (A,B).
-	ilo, ihi := impl.Dggbal(lapack.PermuteScale, n, a, lda, b, ldb, lscale, rscale, work[iwrk:])
+	ilo, ihi := impl.Dggbal(lapack.Permute, n, a, lda, b, ldb, lscale, rscale, work[2*n:])
 
 	// Compute dimensions of the active submatrix.
 	irows := ihi - ilo + 1
 	icols := n - ilo
+	tau := work[2*n : 2*n+irows]
+	iwrk := 2*n + irows
 
 	// Compute QR factorization of B[ilo:ihi+1, ilo:n].
 	impl.Dgeqrf(irows, icols, b[ilo*ldb+ilo:], ldb, tau[:irows], work[iwrk:], lwork-iwrk)
@@ -275,13 +284,6 @@ func (impl Implementation) Dgges(jobvsl, jobvsr lapack.SchurComp, sort lapack.Sc
 		impl.Dlaset(blas.All, n, n, 0, 1, vsr, ldvsr)
 	}
 
-	// Zero lower triangle of B.
-	for i := 1; i < n; i++ {
-		for j := 0; j < i; j++ {
-			b[i*ldb+j] = 0
-		}
-	}
-
 	// Reduce to generalized Hessenberg form.
 	var compq, compz lapack.OrthoComp
 	if wantvsl {
@@ -297,6 +299,7 @@ func (impl Implementation) Dgges(jobvsl, jobvsr lapack.SchurComp, sort lapack.Sc
 	impl.Dgghrd(compq, compz, n, ilo, ihi, a, lda, b, ldb, vsl, ldvsl, vsr, ldvsr)
 
 	// Perform QZ algorithm.
+	iwrk = 2 * n
 	var compqz, compzz lapack.SchurComp
 	if wantvsl {
 		compqz = lapack.SchurOrig
@@ -311,7 +314,6 @@ func (impl Implementation) Dgges(jobvsl, jobvsr lapack.SchurComp, sort lapack.Sc
 	ok = impl.Dhgeqz(lapack.EigenvaluesAndSchur, compqz, compzz, n, ilo, ihi,
 		a, lda, b, ldb, alphar, alphai, beta,
 		vsl, ldvsl, vsr, ldvsr, work[iwrk:], lwork-iwrk)
-
 	if !ok {
 		work[0] = float64(maxwrk)
 		return 0, false
@@ -319,70 +321,150 @@ func (impl Implementation) Dgges(jobvsl, jobvsr lapack.SchurComp, sort lapack.Sc
 
 	// Sort eigenvalues if desired.
 	sdim = 0
-	if wantst {
-		// Populate bwork[] using selctg callback.
-		// For complex conjugate pairs, both must be selected together.
-		for i := 0; i < n; {
-			if i < n-1 && alphai[i] != 0 {
-				// Complex conjugate pair at positions i and i+1.
-				// Both must be selected if either is selected.
-				sel1 := selctg(alphar[i], alphai[i], beta[i])
-				sel2 := selctg(alphar[i+1], alphai[i+1], beta[i+1])
-				bwork[i] = sel1 || sel2
-				bwork[i+1] = sel1 || sel2
-				i += 2
-			} else {
-				// Real eigenvalue.
-				bwork[i] = selctg(alphar[i], alphai[i], beta[i])
-				i++
-			}
+	if ok && wantst {
+		if scalea {
+			impl.Dlascl(lapack.General, 0, 0, cscalea, anrm, 1, n, alphar, n)
+			impl.Dlascl(lapack.General, 0, 0, cscalea, anrm, 1, n, alphai, n)
+		}
+		if scaleb {
+			impl.Dlascl(lapack.General, 0, 0, cscaleb, bnrm, 1, n, beta, n)
 		}
 
-		// Count selected eigenvalues.
-		for i := 0; i < n; i++ {
-			if bwork[i] {
-				sdim++
-			}
+		// Populate bwork[] using selctg callback.
+		for i := range n {
+			bwork[i] = selctg(alphar[i], alphai[i], beta[i])
 		}
 
 		// Call Dtgsen to reorder eigenvalues.
-		if sdim > 0 && sdim < n {
-			// Allocate iwork for Dtgsen (ijob=0 needs n+6).
-			liwork := n + 6
-			iwork := make([]int, liwork)
+		var iwork [1]int
+		sdim, _, _, _, ok = impl.Dtgsen(0, wantvsl, wantvsr, bwork, n,
+			a, lda, b, ldb, alphar, alphai, beta,
+			vsl, ldvsl, vsr, ldvsr, work[iwrk:], lwork-iwrk, iwork[:], len(iwork))
 
-			var tgsenM int
-			tgsenM, _, _, _, ok = impl.Dtgsen(0, wantvsl, wantvsr, bwork, n,
-				a, lda, b, ldb, alphar, alphai, beta,
-				vsl, ldvsl, vsr, ldvsr, work[iwrk:], lwork-iwrk, iwork, liwork)
-
-			if !ok {
-				work[0] = float64(maxwrk)
-				return 0, false
-			}
-			sdim = tgsenM
+		if !ok {
+			// Continue through back-permutation and unscaling. LAPACK
+			// returns the partially reordered Schur form on this path.
 		}
 	}
 
 	// Back-transform eigenvectors.
 	if wantvsl {
-		impl.Dggbak(lapack.PermuteScale, blas.Left, n, ilo, ihi, lscale, rscale, n, vsl, ldvsl)
+		impl.Dggbak(lapack.Permute, blas.Left, n, ilo, ihi, lscale, rscale, n, vsl, ldvsl)
 	}
 	if wantvsr {
-		impl.Dggbak(lapack.PermuteScale, blas.Right, n, ilo, ihi, lscale, rscale, n, vsr, ldvsr)
+		impl.Dggbak(lapack.Permute, blas.Right, n, ilo, ihi, lscale, rscale, n, vsr, ldvsr)
+	}
+
+	// Protect complex eigenvalue representations from overflow and underflow.
+	safmin := dlamchS
+	safmax := 1 / safmin
+	if scalea {
+		for i := range n {
+			if alphai[i] == 0 {
+				continue
+			}
+			var scale float64
+			if alphar[i]/safmax > cscalea/anrm || safmin/alphar[i] > anrm/cscalea {
+				scale = math.Abs(a[i*lda+i] / alphar[i])
+			} else if alphai[i]/safmax > cscalea/anrm || safmin/alphai[i] > anrm/cscalea {
+				scale = math.Abs(a[i*lda+i+1] / alphai[i])
+			} else {
+				continue
+			}
+			beta[i] *= scale
+			alphar[i] *= scale
+			alphai[i] *= scale
+		}
+	}
+	if scaleb {
+		for i := range n {
+			if alphai[i] == 0 || !(beta[i]/safmax > cscaleb/bnrm || safmin/beta[i] > bnrm/cscaleb) {
+				continue
+			}
+			scale := math.Abs(b[i*ldb+i] / beta[i])
+			beta[i] *= scale
+			alphar[i] *= scale
+			alphai[i] *= scale
+		}
 	}
 
 	// Undo scaling.
 	if scalea {
-		impl.Dlascl(lapack.General, 0, 0, cscalea, anrm, n, n, a, lda)
-		impl.Dlascl(lapack.General, 0, 0, cscalea, anrm, n, 1, alphar, n)
-		impl.Dlascl(lapack.General, 0, 0, cscalea, anrm, n, 1, alphai, n)
+		impl.Dlascl(lapack.UpperHessenberg, 0, 0, cscalea, anrm, n, n, a, lda)
+		impl.Dlascl(lapack.General, 0, 0, cscalea, anrm, 1, n, alphar, n)
+		impl.Dlascl(lapack.General, 0, 0, cscalea, anrm, 1, n, alphai, n)
 	}
 	if scaleb {
-		impl.Dlascl(lapack.General, 0, 0, cscaleb, bnrm, n, n, b, ldb)
-		impl.Dlascl(lapack.General, 0, 0, cscaleb, bnrm, n, 1, beta, n)
+		impl.Dlascl(lapack.UpperTri, 0, 0, cscaleb, bnrm, n, n, b, ldb)
+		impl.Dlascl(lapack.General, 0, 0, cscaleb, bnrm, 1, n, beta, n)
+	}
+
+	if wantst {
+		sdim, ok = recheckDggesSelection(ok, selctg, alphar, alphai, beta)
 	}
 
 	work[0] = float64(maxwrk)
-	return sdim, true
+	return sdim, ok
+}
+
+func recheckDggesSelection(ok bool, selctg lapack.SchurSelect, alphar, alphai, beta []float64) (sdim int, reordered bool) {
+	reordered = ok
+	lastSelected := true
+	lastPairSelected := true
+	pair := 0
+	for i := range alphar {
+		selected := selctg(alphar[i], alphai[i], beta[i])
+		if alphai[i] == 0 {
+			if selected {
+				sdim++
+			}
+			pair = 0
+			if selected && !lastSelected {
+				reordered = false
+			}
+		} else if pair == 1 {
+			selected = selected || lastSelected
+			lastSelected = selected
+			if selected {
+				sdim += 2
+			}
+			pair = -1
+			if selected && !lastPairSelected {
+				reordered = false
+			}
+		} else {
+			pair = 1
+		}
+		lastPairSelected = lastSelected
+		lastSelected = selected
+	}
+	return sdim, reordered
+}
+
+// rescaleGeneralizedEigenvalues undoes the independent pencil scaling while
+// keeping each homogeneous eigenvalue triplet within the floating-point range.
+func rescaleGeneralizedEigenvalues(alphar, alphai, beta []float64, logAlphaScale, logBetaScale, target float64) {
+	if target == 0 {
+		target = 1
+	}
+	logTarget := math.Log(target)
+	for i := range alphar {
+		logR := scaledLogAbs(alphar[i], logAlphaScale)
+		logI := scaledLogAbs(alphai[i], logAlphaScale)
+		logB := scaledLogAbs(beta[i], logBetaScale)
+		logMax := math.Max(logR, math.Max(logI, logB))
+		if math.IsInf(logMax, -1) {
+			continue
+		}
+		alphar[i] = math.Copysign(math.Exp(logTarget+logR-logMax), alphar[i])
+		alphai[i] = math.Copysign(math.Exp(logTarget+logI-logMax), alphai[i])
+		beta[i] = math.Copysign(math.Exp(logTarget+logB-logMax), beta[i])
+	}
+}
+
+func scaledLogAbs(value, logScale float64) float64 {
+	if value == 0 {
+		return math.Inf(-1)
+	}
+	return math.Log(math.Abs(value)) + logScale
 }

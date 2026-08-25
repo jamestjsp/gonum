@@ -39,6 +39,127 @@ func DtgsylTest(t *testing.T, impl Dtgsyler) {
 	}
 
 	testDtgsylWorkspace(t, impl)
+	testDtgsylDifIdentity(t, impl)
+	testDtgsylScalingAcrossBlocks(t, impl)
+	testDtgsylTransposedScalingAcrossBlocks(t, impl)
+	testDtgsylTransIgnoresIjob(t, impl)
+}
+
+func testDtgsylTransIgnoresIjob(t *testing.T, impl Dtgsyler) {
+	for _, ijob := range []int{-1, 5} {
+		work := make([]float64, 1)
+		impl.Dtgsyl(blas.Trans, ijob, 1, 1,
+			nil, 1, nil, 1, nil, 1, nil, 1, nil, 1, nil, 1,
+			work, -1, nil)
+		if work[0] != 1 {
+			t.Errorf("ijob=%d: transposed workspace query=%v, want 1", ijob, work[0])
+		}
+
+		c := []float64{1}
+		f := []float64{1}
+		_, _, ok := impl.Dtgsyl(blas.Trans, ijob, 1, 1,
+			[]float64{2}, 1, []float64{3}, 1, c, 1,
+			[]float64{5}, 1, []float64{7}, 1, f, 1,
+			work, 1, make([]int, 8))
+		if !ok {
+			t.Errorf("ijob=%d: transposed solve reported coincident eigenvalues", ijob)
+		}
+	}
+}
+
+func testDtgsylTransposedScalingAcrossBlocks(t *testing.T, impl Dtgsyler) {
+	const m, n = 3, 1
+	a := []float64{3, 0, 0, 0, 4, 0, 0, 0, 5}
+	d := []float64{7, 0, 0, 0, 9, 0, 0, 0, 11}
+	b := []float64{1}
+	e := []float64{2}
+	cOrig := []float64{1e100, -2e307, 3e100}
+	fOrig := []float64{-3e100, 2e307, -1e100}
+	c := append([]float64(nil), cOrig...)
+	f := append([]float64(nil), fOrig...)
+	scale, _, ok := impl.Dtgsyl(blas.Trans, 0, m, n,
+		a, m, b, n, c, n, d, m, e, n, f, n,
+		make([]float64, 1), 1, make([]int, m+n+6))
+	if !ok {
+		t.Fatal("transposed scaled block solve reported coincident eigenvalues")
+	}
+	if scale >= 1 {
+		t.Fatalf("scale=%v, want scaling for extreme transposed right-hand side", scale)
+	}
+	for i := range m {
+		gotC := a[i*m+i]*c[i] + d[i*m+i]*f[i]
+		gotF := c[i]*b[0] + f[i]*e[0]
+		wantC := scale * cOrig[i]
+		wantF := -scale * fOrig[i]
+		tol := 1e-12 * math.Max(math.Abs(wantC), math.Abs(wantF))
+		if math.Abs(gotC-wantC) > tol || math.Abs(gotF-wantF) > tol {
+			t.Errorf("row %d residuals=(%g,%g), want (%g,%g)", i, gotC, gotF, wantC, wantF)
+		}
+	}
+}
+
+func testDtgsylScalingAcrossBlocks(t *testing.T, impl Dtgsyler) {
+	const m, n = 3, 1
+	a := []float64{
+		3, 0, 0,
+		0, 4, 0,
+		0, 0, 5,
+	}
+	d := []float64{
+		7, 0, 0,
+		0, 9, 0,
+		0, 0, 11,
+	}
+	b := []float64{1}
+	e := []float64{2}
+	cOrig := []float64{1e307, -2e307, 3e100}
+	fOrig := []float64{-3e307, 2e307, -1e100}
+	c := append([]float64(nil), cOrig...)
+	f := append([]float64(nil), fOrig...)
+	scale, _, ok := impl.Dtgsyl(blas.NoTrans, 0, m, n,
+		a, m, b, n, c, n, d, m, e, n, f, n,
+		make([]float64, 1), 1, make([]int, m+n+6))
+	if !ok {
+		t.Fatal("scaled block solve reported coincident eigenvalues")
+	}
+	if scale >= 1 {
+		t.Fatalf("scale=%v, want scaling for extreme right-hand side", scale)
+	}
+	for i := range m {
+		gotC := a[i*m+i]*c[i] - f[i]*b[0]
+		gotF := d[i*m+i]*c[i] - f[i]*e[0]
+		wantC := scale * cOrig[i]
+		wantF := scale * fOrig[i]
+		tol := 1e-12 * math.Max(math.Abs(wantC), math.Abs(wantF))
+		if math.Abs(gotC-wantC) > tol || math.Abs(gotF-wantF) > tol {
+			t.Errorf("row %d residuals=(%g,%g), want (%g,%g)", i, gotC, gotF, wantC, wantF)
+		}
+	}
+}
+
+func testDtgsylDifIdentity(t *testing.T, impl Dtgsyler) {
+	for _, test := range []struct {
+		ijob int
+		want float64
+	}{
+		{ijob: 1, want: 2},
+		{ijob: 2, want: 2},
+		{ijob: 3, want: 2},
+		{ijob: 4, want: 2},
+	} {
+		work := make([]float64, 2)
+		iwork := make([]int, 8)
+		_, dif, ok := impl.Dtgsyl(blas.NoTrans, test.ijob, 1, 1,
+			[]float64{2}, 1, []float64{0}, 1, []float64{0}, 1,
+			[]float64{0}, 1, []float64{-2}, 1, []float64{0}, 1,
+			work, len(work), iwork)
+		if !ok {
+			t.Fatalf("ijob=%d: identity operator reported coincident eigenvalues", test.ijob)
+		}
+		if math.Abs(dif-test.want) > 1e-14 {
+			t.Fatalf("ijob=%d: scaled identity operator DIF=%v, want %v", test.ijob, dif, test.want)
+		}
+	}
 }
 
 func testDtgsyl(t *testing.T, impl Dtgsyler, m, n int, trans blas.Transpose, ijob, extra int, rnd *rand.Rand) {
@@ -134,6 +255,17 @@ func testDtgsyl(t *testing.T, impl Dtgsyler, m, n int, trans blas.Transpose, ijo
 }
 
 func testDtgsylWorkspace(t *testing.T, impl Dtgsyler) {
+	t.Run("MissingQueryOutput", func(t *testing.T) {
+		defer func() {
+			if recover() == nil {
+				t.Fatal("workspace query accepted a missing output slot")
+			}
+		}()
+		impl.Dtgsyl(blas.NoTrans, 0, 1, 1,
+			nil, 1, nil, 1, nil, 1, nil, 1, nil, 1, nil, 1,
+			nil, -1, nil)
+	})
+
 	// Test workspace query.
 	for _, m := range []int{1, 5, 10} {
 		for _, n := range []int{1, 5, 10} {

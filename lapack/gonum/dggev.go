@@ -130,8 +130,11 @@ func (impl Implementation) Dggev(jobvl lapack.LeftEVJob, jobvr lapack.RightEVJob
 	mqrwork := int(work[0])
 
 	// Query Dorgqr.
-	impl.Dorgqr(n, n, n, nil, max(1, n), nil, work, -1)
-	gqrwork := int(work[0])
+	gqrwork := 0
+	if wantvl {
+		impl.Dorgqr(n, n, n, nil, max(1, n), nil, work, -1)
+		gqrwork = int(work[0])
+	}
 
 	// Query Dhgeqz.
 	impl.Dhgeqz(lapack.EigenvaluesAndSchur, lapack.SchurOrig, lapack.SchurOrig, n, 0, n-1,
@@ -142,7 +145,7 @@ func (impl Implementation) Dggev(jobvl lapack.LeftEVJob, jobvr lapack.RightEVJob
 	// Dtgevc needs 6*n workspace.
 	tgvcwork := 6 * n
 
-	maxwrk = 3*n + max(qrwork, mqrwork, gqrwork, hqzwork, tgvcwork)
+	maxwrk = max(3*n+max(qrwork, mqrwork, gqrwork), 2*n+max(hqzwork, tgvcwork))
 	maxwrk = max(maxwrk, minwrk)
 
 	if lwork == -1 {
@@ -209,11 +212,14 @@ func (impl Implementation) Dggev(jobvl lapack.LeftEVJob, jobvr lapack.RightEVJob
 	iwrk := 3 * n
 
 	// Balance the matrix pair (A,B).
-	ilo, ihi := impl.Dggbal(lapack.PermuteScale, n, a, lda, b, ldb, lscale, rscale, work[iwrk:])
+	ilo, ihi := impl.Dggbal(lapack.Permute, n, a, lda, b, ldb, lscale, rscale, work[2*n:])
 
 	// Compute dimensions of the active submatrix.
 	irows := ihi - ilo + 1
-	icols := n - ilo
+	icols := irows
+	if wantvl || wantvr {
+		icols = n - ilo
+	}
 
 	// QR factorization of B[ilo:ihi+1, ilo:n].
 	impl.Dgeqrf(irows, icols, b[ilo*ldb+ilo:], ldb, tau[:irows], work[iwrk:], lwork-iwrk)
@@ -254,9 +260,15 @@ func (impl Implementation) Dggev(jobvl lapack.LeftEVJob, jobvr lapack.RightEVJob
 	} else {
 		compz = lapack.OrthoNone
 	}
-	impl.Dgghrd(compq, compz, n, ilo, ihi, a, lda, b, ldb, vl, ldvl, vr, ldvr)
+	if wantvl || wantvr {
+		impl.Dgghrd(compq, compz, n, ilo, ihi, a, lda, b, ldb, vl, ldvl, vr, ldvr)
+	} else {
+		impl.Dgghrd(lapack.OrthoNone, lapack.OrthoNone, irows, 0, irows-1,
+			a[ilo*lda+ilo:], lda, b[ilo*ldb+ilo:], ldb, nil, 1, nil, 1)
+	}
 
 	// Perform QZ algorithm to get Schur form.
+	iwrk = 2 * n
 	var compqz, compzz lapack.SchurComp
 	if wantvl {
 		compqz = lapack.SchurOrig
@@ -268,7 +280,11 @@ func (impl Implementation) Dggev(jobvl lapack.LeftEVJob, jobvr lapack.RightEVJob
 	} else {
 		compzz = lapack.SchurNone
 	}
-	ok = impl.Dhgeqz(lapack.EigenvaluesAndSchur, compqz, compzz, n, ilo, ihi,
+	job := lapack.EigenvaluesOnly
+	if wantvl || wantvr {
+		job = lapack.EigenvaluesAndSchur
+	}
+	ok = impl.Dhgeqz(job, compqz, compzz, n, ilo, ihi,
 		a, lda, b, ldb, alphar, alphai, beta,
 		vl, ldvl, vr, ldvr, work[iwrk:], lwork-iwrk)
 
@@ -301,58 +317,53 @@ func (impl Implementation) Dggev(jobvl lapack.LeftEVJob, jobvr lapack.RightEVJob
 
 	// Back-transform eigenvectors.
 	if wantvl {
-		impl.Dggbak(lapack.PermuteScale, blas.Left, n, ilo, ihi, lscale, rscale, n, vl, ldvl)
-
-		// Normalize left eigenvectors.
-		for j := 0; j < n; j++ {
-			if alphai[j] == 0 {
-				// Real eigenvalue.
-				temp := bi.Dnrm2(n, vl[j:], ldvl)
-				if temp > dlamchS {
-					bi.Dscal(n, 1/temp, vl[j:], ldvl)
-				}
-			} else if alphai[j] > 0 {
-				// Complex pair.
-				temp := impl.Dlapy2(bi.Dnrm2(n, vl[j:], ldvl), bi.Dnrm2(n, vl[j+1:], ldvl))
-				if temp > dlamchS {
-					bi.Dscal(n, 1/temp, vl[j:], ldvl)
-					bi.Dscal(n, 1/temp, vl[j+1:], ldvl)
-				}
-			}
-		}
+		impl.Dggbak(lapack.Permute, blas.Left, n, ilo, ihi, lscale, rscale, n, vl, ldvl)
+		normalizeDggevEigenvectors(bi, n, alphai, vl, ldvl, smlnum)
 	}
 
 	if wantvr {
-		impl.Dggbak(lapack.PermuteScale, blas.Right, n, ilo, ihi, lscale, rscale, n, vr, ldvr)
-
-		// Normalize right eigenvectors.
-		for j := 0; j < n; j++ {
-			if alphai[j] == 0 {
-				// Real eigenvalue.
-				temp := bi.Dnrm2(n, vr[j:], ldvr)
-				if temp > dlamchS {
-					bi.Dscal(n, 1/temp, vr[j:], ldvr)
-				}
-			} else if alphai[j] > 0 {
-				// Complex pair.
-				temp := impl.Dlapy2(bi.Dnrm2(n, vr[j:], ldvr), bi.Dnrm2(n, vr[j+1:], ldvr))
-				if temp > dlamchS {
-					bi.Dscal(n, 1/temp, vr[j:], ldvr)
-					bi.Dscal(n, 1/temp, vr[j+1:], ldvr)
-				}
-			}
-		}
+		impl.Dggbak(lapack.Permute, blas.Right, n, ilo, ihi, lscale, rscale, n, vr, ldvr)
+		normalizeDggevEigenvectors(bi, n, alphai, vr, ldvr, smlnum)
 	}
 
 	// Undo scaling.
+	logAlphaScale := 0.0
+	logBetaScale := 0.0
 	if scalea {
-		impl.Dlascl(lapack.General, 0, 0, cscalea, anrm, n, 1, alphar, n)
-		impl.Dlascl(lapack.General, 0, 0, cscalea, anrm, n, 1, alphai, n)
+		logAlphaScale = math.Log(anrm) - math.Log(cscalea)
 	}
 	if scaleb {
-		impl.Dlascl(lapack.General, 0, 0, cscaleb, bnrm, n, 1, beta, n)
+		logBetaScale = math.Log(bnrm) - math.Log(cscaleb)
+	}
+	if scalea || scaleb {
+		rescaleGeneralizedEigenvalues(alphar, alphai, beta, logAlphaScale, logBetaScale, math.Max(anrm, bnrm))
 	}
 
 	work[0] = float64(maxwrk)
 	return true
+}
+
+func normalizeDggevEigenvectors(bi blas.Float64, n int, alphai, v []float64, ldv int, smlnum float64) {
+	for j := 0; j < n; j++ {
+		var vmax float64
+		switch {
+		case alphai[j] == 0:
+			for i := 0; i < n; i++ {
+				vmax = math.Max(vmax, math.Abs(v[i*ldv+j]))
+			}
+		case alphai[j] > 0:
+			for i := 0; i < n; i++ {
+				vmax = math.Max(vmax, math.Abs(v[i*ldv+j])+math.Abs(v[i*ldv+j+1]))
+			}
+		default:
+			continue
+		}
+		if vmax < smlnum {
+			continue
+		}
+		bi.Dscal(n, 1/vmax, v[j:], ldv)
+		if alphai[j] > 0 {
+			bi.Dscal(n, 1/vmax, v[j+1:], ldv)
+		}
+	}
 }

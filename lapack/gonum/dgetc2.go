@@ -75,8 +75,8 @@ func (impl Implementation) Dgetc2(n int, a []float64, lda int, ipiv, jpiv []int)
 	bi := blas64.Implementation()
 	for i := 0; i < n-1; i++ {
 		var xmax float64
-		for ip := i; ip < n; ip++ {
-			for jp := i; jp < n; jp++ {
+		for jp := i; jp < n; jp++ {
+			for ip := i; ip < n; ip++ {
 				if math.Abs(a[ip*lda+jp]) >= xmax {
 					xmax = math.Abs(a[ip*lda+jp])
 					ipv = ip

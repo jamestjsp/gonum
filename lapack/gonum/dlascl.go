@@ -20,9 +20,9 @@ func (impl Implementation) Dlascl(kind lapack.MatrixType, kl, ku int, cfrom, cto
 	switch kind {
 	default:
 		panic(badMatrixType)
-	case 'H', 'B', 'Q', 'Z': // See dlascl.f.
+	case 'B', 'Q', 'Z': // See dlascl.f.
 		panic("not implemented")
-	case lapack.General, lapack.UpperTri, lapack.LowerTri:
+	case lapack.General, lapack.UpperTri, lapack.LowerTri, lapack.UpperHessenberg:
 		if lda < max(1, n) {
 			panic(badLdA)
 		}
@@ -45,7 +45,7 @@ func (impl Implementation) Dlascl(kind lapack.MatrixType, kl, ku int, cfrom, cto
 	}
 
 	switch kind {
-	case lapack.General, lapack.UpperTri, lapack.LowerTri:
+	case lapack.General, lapack.UpperTri, lapack.LowerTri, lapack.UpperHessenberg:
 		if len(a) < (m-1)*lda+n {
 			panic(shortA)
 		}
@@ -55,8 +55,8 @@ func (impl Implementation) Dlascl(kind lapack.MatrixType, kl, ku int, cfrom, cto
 	bignum := 1 / smlnum
 	cfromc := cfrom
 	ctoc := cto
-	cfrom1 := cfromc * smlnum
 	for {
+		cfrom1 := cfromc * smlnum
 		var done bool
 		var mul, ctol float64
 		if cfrom1 == cfromc {
@@ -82,6 +82,9 @@ func (impl Implementation) Dlascl(kind lapack.MatrixType, kl, ku int, cfrom, cto
 			} else {
 				mul = ctoc / cfromc
 				done = true
+				if mul == 1 {
+					return
+				}
 			}
 		}
 		switch kind {
@@ -100,6 +103,12 @@ func (impl Implementation) Dlascl(kind lapack.MatrixType, kl, ku int, cfrom, cto
 		case lapack.LowerTri:
 			for i := 0; i < m; i++ {
 				for j := 0; j <= min(i, n-1); j++ {
+					a[i*lda+j] = a[i*lda+j] * mul
+				}
+			}
+		case lapack.UpperHessenberg:
+			for i := 0; i < m; i++ {
+				for j := max(0, i-1); j < n; j++ {
 					a[i*lda+j] = a[i*lda+j] * mul
 				}
 			}

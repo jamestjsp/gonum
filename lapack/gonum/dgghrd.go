@@ -64,6 +64,21 @@ func (impl Implementation) Dgghrd(compq, compz lapack.OrthoComp, n, ilo, ihi int
 	if n == 0 {
 		return
 	}
+	if n == 1 {
+		switch {
+		case compq == lapack.OrthoExplicit && len(q) < 1:
+			panic(shortQ)
+		case compz == lapack.OrthoExplicit && len(z) < 1:
+			panic(shortZ)
+		}
+		if compq == lapack.OrthoExplicit {
+			q[0] = 1
+		}
+		if compz == lapack.OrthoExplicit {
+			z[0] = 1
+		}
+		return
+	}
 
 	switch {
 	case len(a) < (n-1)*lda+n:
@@ -81,11 +96,6 @@ func (impl Implementation) Dgghrd(compq, compz lapack.OrthoComp, n, ilo, ihi int
 	}
 	if compz == lapack.OrthoExplicit {
 		impl.Dlaset(blas.All, n, n, 0, 1, z, ldz)
-	}
-
-	// Quick return if possible.
-	if n == 1 {
-		return
 	}
 
 	// Zero out lower triangle of B.

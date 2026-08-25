@@ -29,6 +29,72 @@ func DggbalTest(t *testing.T, impl Dggbaler) {
 	}
 
 	testDggbalSpecial(t, impl)
+	testDggbalReferenceScaling(t, impl)
+	testDggbalOffDiagonalIsolation(t, impl)
+	testDggbalUnusedInputs(t, impl)
+}
+
+func testDggbalUnusedInputs(t *testing.T, impl Dggbaler) {
+	for _, job := range []lapack.BalanceJob{lapack.Permute, lapack.Scale, lapack.PermuteScale} {
+		lscale := []float64{0}
+		rscale := []float64{0}
+		ilo, ihi := impl.Dggbal(job, 1, nil, 1, nil, 1, lscale, rscale, nil)
+		if ilo != 0 || ihi != 0 || lscale[0] != 1 || rscale[0] != 1 {
+			t.Errorf("job=%c: range=(%d,%d), scales=(%v,%v), want (0,0) and unit scales",
+				job, ilo, ihi, lscale[0], rscale[0])
+		}
+	}
+
+	a := []float64{1, 0, 0, 2}
+	b := []float64{1, 0, 0, 1}
+	impl.Dggbal(lapack.Permute, 2, a, 2, b, 2, make([]float64, 2), make([]float64, 2), nil)
+}
+
+func testDggbalOffDiagonalIsolation(t *testing.T, impl Dggbaler) {
+	a := []float64{0, 1, 2, 3}
+	b := make([]float64, 4)
+	lscale := make([]float64, 2)
+	rscale := make([]float64, 2)
+	ilo, ihi := impl.Dggbal(lapack.Permute, 2, a, 2, b, 2,
+		lscale, rscale, make([]float64, 12))
+	if ilo != 0 || ihi != 0 {
+		t.Fatalf("active range=(%d,%d), want (0,0)", ilo, ihi)
+	}
+	wantA := []float64{2, 3, 0, 1}
+	for i, want := range wantA {
+		if a[i] != want {
+			t.Errorf("A[%d]=%v, want %v", i, a[i], want)
+		}
+	}
+	if lscale[1] != 0 || rscale[1] != 1 {
+		t.Errorf("isolated permutation=(%v,%v), want (0,1)", lscale[1], rscale[1])
+	}
+}
+
+func testDggbalReferenceScaling(t *testing.T, impl Dggbaler) {
+	a := []float64{1e-10, 1, 1, 1e10}
+	b := []float64{1, 1, 1, 1}
+	lscale := make([]float64, 2)
+	rscale := make([]float64, 2)
+	ilo, ihi := impl.Dggbal(lapack.PermuteScale, 2, a, 2, b, 2,
+		lscale, rscale, make([]float64, 12))
+	if ilo != 0 || ihi != 1 {
+		t.Fatalf("active range=(%d,%d), want (0,1)", ilo, ihi)
+	}
+	wantScale := []float64{1e3, 1e-3}
+	wantA := []float64{1e-4, 1, 1, 1e4}
+	wantB := []float64{1e6, 1, 1, 1e-6}
+	for i := range 2 {
+		if lscale[i] != wantScale[i] || rscale[i] != wantScale[i] {
+			t.Errorf("scales[%d]=(%g,%g), want (%g,%g)", i, lscale[i], rscale[i], wantScale[i], wantScale[i])
+		}
+	}
+	for i := range 4 {
+		if math.Abs(a[i]-wantA[i]) > 1e-14*math.Abs(wantA[i]) ||
+			math.Abs(b[i]-wantB[i]) > 1e-14*math.Abs(wantB[i]) {
+			t.Errorf("entry %d: (A,B)=(%g,%g), want (%g,%g)", i, a[i], b[i], wantA[i], wantB[i])
+		}
+	}
 }
 
 func testDggbal(t *testing.T, impl Dggbaler, n int, job lapack.BalanceJob, extra int, rnd *rand.Rand) {
@@ -176,6 +242,19 @@ func testDggbalSpecial(t *testing.T, impl Dggbaler) {
 	work = make([]float64, 12)
 
 	ilo, ihi = impl.Dggbal(lapack.Scale, 2, a.Data, a.Stride, b.Data, b.Stride, lscale, rscale, work)
+	if lscale[0] == 1 && lscale[1] == 1 && rscale[0] == 1 && rscale[1] == 1 {
+		t.Error("badly scaled pair was left unscaled")
+	}
+	for i := 0; i < 2; i++ {
+		for j := 0; j < 2; j++ {
+			wantA := lscale[i] * aOrig.Data[i*aOrig.Stride+j] * rscale[j]
+			wantB := lscale[i] * bOrig.Data[i*bOrig.Stride+j] * rscale[j]
+			if a.Data[i*a.Stride+j] != wantA || b.Data[i*b.Stride+j] != wantB {
+				t.Errorf("scaled entry (%d,%d)=(%v,%v), want (%v,%v)", i, j,
+					a.Data[i*a.Stride+j], b.Data[i*b.Stride+j], wantA, wantB)
+			}
+		}
+	}
 
 	// Check that scaling reduced the condition number.
 	rowNormOrig := make([]float64, 2)

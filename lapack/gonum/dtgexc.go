@@ -29,6 +29,10 @@ package gonum
 // Dtgexc is an internal routine. It is exported for testing purposes.
 func (impl Implementation) Dtgexc(wantq, wantz bool, n int, a []float64, lda int, b []float64, ldb int,
 	q []float64, ldq int, z []float64, ldz int, ifst, ilst int, work []float64, lwork int) (ifstOut, ilstOut int, ok bool) {
+	minWork := 1
+	if n > 1 {
+		minWork = 4*n + 16
+	}
 
 	switch {
 	case n < 0:
@@ -41,17 +45,23 @@ func (impl Implementation) Dtgexc(wantq, wantz bool, n int, a []float64, lda int
 		panic(badLdQ)
 	case ldz < 1, wantz && ldz < n:
 		panic(badLdZ)
-	case lwork < max(1, 4*n+16) && lwork != -1:
+	case ifst < 0 || ifst >= n:
+		panic(badIfst)
+	case ilst < 0 || ilst >= n:
+		panic(badIlst)
+	case lwork < minWork && lwork != -1:
 		panic(badLWork)
+	case len(work) < 1:
+		panic(shortWork)
 	}
+	work[0] = float64(minWork)
 
 	// Workspace query.
 	if lwork == -1 {
-		work[0] = float64(4*n + 16)
 		return ifst, ilst, true
 	}
 
-	if n == 0 {
+	if n <= 1 {
 		return ifst, ilst, true
 	}
 
@@ -67,85 +77,136 @@ func (impl Implementation) Dtgexc(wantq, wantz bool, n int, a []float64, lda int
 	case len(work) < lwork:
 		panic(shortWork)
 	}
-
-	switch {
-	case ifst < 0 || ifst >= n:
-		panic(badIfst)
-	case ilst < 0 || ilst >= n:
-		panic(badIlst)
+	if ifst > 0 && a[ifst*lda+ifst-1] != 0 {
+		ifst--
+	}
+	if ilst > 0 && a[ilst*lda+ilst-1] != 0 {
+		ilst--
+	}
+	nbf := 1
+	if ifst < n-1 && a[(ifst+1)*lda+ifst] != 0 {
+		nbf = 2
+	}
+	nbl := 1
+	if ilst < n-1 && a[(ilst+1)*lda+ilst] != 0 {
+		nbl = 2
+	}
+	if ifst == ilst {
+		return ifst, ilst, true
+	}
+	if ifst < ilst {
+		if nbf == 2 && nbl == 1 {
+			ilst--
+		}
+		if nbf == 1 && nbl == 2 {
+			ilst++
+		}
 	}
 
-	ifstOut = ifst
-	ilstOut = ilst
-	ok = true
+	here := ifst
 
-	if n == 1 {
-		return ifstOut, ilstOut, ok
-	}
-
-	here := ifstOut
-
-	if ilstOut > ifstOut {
-		// Move block down.
-		for here < ilstOut {
-			// Determine the size of the current block.
-			nbf := 1
-			if here < n-1 && a[(here+1)*lda+here] != 0 {
-				nbf = 2
+	if ilst > ifst {
+		for here < ilst {
+			if nbf == 1 || nbf == 2 {
+				nbl = 1
+				if here+nbf < n-1 && a[(here+nbf+1)*lda+here+nbf] != 0 {
+					nbl = 2
+				}
+				if !impl.Dtgex2(wantq, wantz, n, a, lda, b, ldb, q, ldq, z, ldz, here, nbf, nbl, work, lwork) {
+					return ifst, here, false
+				}
+				here += nbl
+				if nbf == 2 && here+1 < n && a[(here+1)*lda+here] == 0 {
+					nbf = 3
+				}
+				continue
 			}
-			// Determine the size of the next block.
-			nbl := 1
-			if here+nbf < n-1 && a[(here+nbf+1)*lda+here+nbf] != 0 {
+
+			nbl = 1
+			if here+3 < n && a[(here+3)*lda+here+2] != 0 {
 				nbl = 2
 			}
-
-			// Swap the blocks.
-			swapOk := impl.Dtgex2(wantq, wantz, n, a, lda, b, ldb, q, ldq, z, ldz, here, nbf, nbl, work, lwork)
-			if !swapOk {
-				ilstOut = here
-				ok = false
-				return ifstOut, ilstOut, ok
+			if !impl.Dtgex2(wantq, wantz, n, a, lda, b, ldb, q, ldq, z, ldz, here+1, 1, nbl, work, lwork) {
+				return ifst, here, false
 			}
-
-			here += nbl
-
-			if nbl == 2 && here+1 < n && a[(here+1)*lda+here] == 0 {
-				// 2x2 block became two 1x1 blocks; adjust position.
+			if nbl == 1 {
+				if !impl.Dtgex2(wantq, wantz, n, a, lda, b, ldb, q, ldq, z, ldz, here, 1, 1, work, lwork) {
+					return ifst, here, false
+				}
+				here++
+				continue
 			}
+			if a[(here+2)*lda+here+1] == 0 {
+				nbl = 1
+			}
+			if nbl == 2 {
+				if !impl.Dtgex2(wantq, wantz, n, a, lda, b, ldb, q, ldq, z, ldz, here, 1, 2, work, lwork) {
+					return ifst, here, false
+				}
+				here += 2
+				continue
+			}
+			if !impl.Dtgex2(wantq, wantz, n, a, lda, b, ldb, q, ldq, z, ldz, here, 1, 1, work, lwork) {
+				return ifst, here, false
+			}
+			here++
+			if !impl.Dtgex2(wantq, wantz, n, a, lda, b, ldb, q, ldq, z, ldz, here, 1, 1, work, lwork) {
+				return ifst, here, false
+			}
+			here++
 		}
-	} else if ilstOut < ifstOut {
-		// Move block up.
-		for here > ilstOut {
-			// Determine the size of the current block.
-			nbf := 1
-			if here > 0 && a[here*lda+here-1] != 0 {
-				nbf = 2
-				here--
+	} else {
+		for here > ilst {
+			if nbf == 1 || nbf == 2 {
+				nbl = 1
+				if here >= 2 && a[(here-1)*lda+here-2] != 0 {
+					nbl = 2
+				}
+				if !impl.Dtgex2(wantq, wantz, n, a, lda, b, ldb, q, ldq, z, ldz, here-nbl, nbl, nbf, work, lwork) {
+					return ifst, here, false
+				}
+				here -= nbl
+				if nbf == 2 && here+1 < n && a[(here+1)*lda+here] == 0 {
+					nbf = 3
+				}
+				continue
 			}
-			// Determine the size of the previous block.
-			nbl := 1
+
+			nbl = 1
 			if here >= 2 && a[(here-1)*lda+here-2] != 0 {
 				nbl = 2
 			}
-
-			// Ensure we don't go below 0.
-			if here < nbl {
-				break
+			if !impl.Dtgex2(wantq, wantz, n, a, lda, b, ldb, q, ldq, z, ldz, here-nbl, nbl, 1, work, lwork) {
+				return ifst, here, false
 			}
-
-			// Swap the blocks.
-			swapOk := impl.Dtgex2(wantq, wantz, n, a, lda, b, ldb, q, ldq, z, ldz, here-nbl, nbl, nbf, work, lwork)
-			if !swapOk {
-				ilstOut = here
-				ok = false
-				return ifstOut, ilstOut, ok
+			if nbl == 1 {
+				if !impl.Dtgex2(wantq, wantz, n, a, lda, b, ldb, q, ldq, z, ldz, here, 1, 1, work, lwork) {
+					return ifst, here, false
+				}
+				here--
+				continue
 			}
-
-			here -= nbl
+			if a[here*lda+here-1] == 0 {
+				nbl = 1
+			}
+			if nbl == 2 {
+				if !impl.Dtgex2(wantq, wantz, n, a, lda, b, ldb, q, ldq, z, ldz, here-1, 2, 1, work, lwork) {
+					return ifst, here, false
+				}
+				here -= 2
+				continue
+			}
+			if !impl.Dtgex2(wantq, wantz, n, a, lda, b, ldb, q, ldq, z, ldz, here, 1, 1, work, lwork) {
+				return ifst, here, false
+			}
+			here--
+			if !impl.Dtgex2(wantq, wantz, n, a, lda, b, ldb, q, ldq, z, ldz, here, 1, 1, work, lwork) {
+				return ifst, here, false
+			}
+			here--
 		}
 	}
 
-	ifstOut = here
-	ilstOut = here
-	return ifstOut, ilstOut, ok
+	work[0] = float64(minWork)
+	return ifst, here, true
 }

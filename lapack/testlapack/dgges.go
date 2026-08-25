@@ -6,6 +6,7 @@ package testlapack
 
 import (
 	"fmt"
+	"math"
 	"math/rand/v2"
 	"testing"
 
@@ -38,6 +39,7 @@ func DggesTest(t *testing.T, impl Dggeser) {
 	}
 
 	// Test with special matrices.
+	tiny := math.SmallestNonzeroFloat64
 	for _, tc := range []struct {
 		name string
 		a, b blas64.General
@@ -99,15 +101,368 @@ func DggesTest(t *testing.T, impl Dggeser) {
 			},
 			b: eye(4, 4),
 		},
+		{
+			name: "Imbalanced dense pair",
+			a: blas64.General{
+				Rows: 3, Cols: 3, Stride: 3,
+				Data: []float64{
+					1, 2e-8, 3e-16,
+					4e8, 5, 6e-8,
+					7e16, 8e8, 10,
+				},
+			},
+			b: blas64.General{
+				Rows: 3, Cols: 3, Stride: 3,
+				Data: []float64{
+					2, 1e-8, 5e-17,
+					-1e8, 3, 2e-8,
+					2.5e15, -2e8, 4,
+				},
+			},
+		},
+		{
+			name: "Dggbal scaling pair",
+			a: blas64.General{
+				Rows: 2, Cols: 2, Stride: 2,
+				Data: []float64{1e-10, 1, 1, 1e10},
+			},
+			b: blas64.General{
+				Rows: 2, Cols: 2, Stride: 2,
+				Data: []float64{1, 1, 1, 1},
+			},
+		},
+		{
+			name: "Singular B with zero and infinite eigenvalues",
+			a: blas64.General{
+				Rows: 3, Cols: 3, Stride: 3,
+				Data: []float64{
+					0, 2, -1,
+					0, 3, 4,
+					0, 0, 5,
+				},
+			},
+			b: blas64.General{
+				Rows: 3, Cols: 3, Stride: 3,
+				Data: []float64{
+					0, 1, 0,
+					0, 0, 2,
+					0, 0, 1,
+				},
+			},
+		},
+		{
+			name: "Nearly singular B",
+			a: blas64.General{
+				Rows: 3, Cols: 3, Stride: 3,
+				Data: []float64{
+					1, 2, 0,
+					0, 2, 1,
+					0, 0, 3,
+				},
+			},
+			b: blas64.General{
+				Rows: 3, Cols: 3, Stride: 3,
+				Data: []float64{
+					1e-300, 1, 0,
+					0, 1, 1,
+					0, 0, 2,
+				},
+			},
+		},
+		{
+			name: "Nearly defective pencil",
+			a: blas64.General{
+				Rows: 2, Cols: 2, Stride: 2,
+				Data: []float64{
+					1, 1,
+					1e-14, 1,
+				},
+			},
+			b: eye(2, 2),
+		},
+		{
+			name: "Clustered conjugate pairs",
+			a: blas64.General{
+				Rows: 4, Cols: 4, Stride: 4,
+				Data: []float64{
+					1, -1, 1e-12, 0,
+					1, 1, 0, -1e-12,
+					0, 0, 1 + 1e-13, -(1 + 1e-13),
+					0, 0, 1 + 1e-13, 1 + 1e-13,
+				},
+			},
+			b: eye(4, 4),
+		},
+		{
+			name: "Complex block near splitting",
+			a: blas64.General{
+				Rows: 2, Cols: 2, Stride: 2,
+				Data: []float64{1, -1e-12, 1e-12, 1},
+			},
+			b: eye(2, 2),
+		},
+		{
+			name: "Very small pencil",
+			a: blas64.General{
+				Rows: 2, Cols: 2, Stride: 2,
+				Data: []float64{2e-300, -1e-300, 1e-300, 2e-300},
+			},
+			b: blas64.General{
+				Rows: 2, Cols: 2, Stride: 2,
+				Data: []float64{1e-300, 0, 0, 1e-300},
+			},
+		},
+		{
+			name: "Very large pencil",
+			a: blas64.General{
+				Rows: 2, Cols: 2, Stride: 2,
+				Data: []float64{2e300, -1e300, 1e300, 2e300},
+			},
+			b: blas64.General{
+				Rows: 2, Cols: 2, Stride: 2,
+				Data: []float64{1e300, 0, 0, 1e300},
+			},
+		},
+		{
+			name: "Subnormal pencil",
+			a: blas64.General{
+				Rows: 2, Cols: 2, Stride: 2,
+				Data: []float64{2 * tiny, -tiny, tiny, 2 * tiny},
+			},
+			b: blas64.General{
+				Rows: 2, Cols: 2, Stride: 2,
+				Data: []float64{tiny, 0, 0, tiny},
+			},
+		},
 	} {
 		testDggesMatrix(t, impl, tc.name, tc.a, tc.b, optimumWork)
 	}
 
 	// Test 2x2 block standardization specifically.
 	testDggesBlockStandardization(t, impl)
+	testDggesTwoByTwoShiftFallback(t, impl)
 
 	// Test sorting.
 	testDggesSorting(t, impl)
+	testDggesConjugatePairSorting(t, impl)
+	testDggesSortingUsesUnscaledEigenvalues(t, impl)
+	testDggesSortingPreservesAlphaScale(t, impl)
+	testDggesZeroAndInfiniteEigenvalues(t, impl)
+	testDggesExtremeScaleEigenvalueRepresentation(t, impl)
+	testDggesSelectionRecheck(t, impl)
+}
+
+func testDggesSortingPreservesAlphaScale(t *testing.T, impl Dggeser) {
+	const n = 2
+	a := []float64{1e-300, 0, 0, 1e-200}
+	b := []float64{1e-300, 0, 0, 1e-200}
+	alphar := make([]float64, n)
+	alphai := make([]float64, n)
+	beta := make([]float64, n)
+	bwork := make([]bool, n)
+	work := make([]float64, max(8*n, 6*n+16))
+	selector := func(alphar, _, _ float64) bool {
+		return alphar > 1e-299
+	}
+	sdim, ok := impl.Dgges(lapack.SchurNone, lapack.SchurNone, lapack.SortSelected, selector,
+		n, a, n, b, n, alphar, alphai, beta, nil, 1, nil, 1, work, len(work), bwork)
+	if !ok {
+		t.Fatal("scale-sensitive sorting case failed")
+	}
+	if sdim != 1 {
+		t.Fatalf("sdim=%d, want 1 when selector distinguishes homogeneous alpha scales", sdim)
+	}
+}
+
+func testDggesTwoByTwoShiftFallback(t *testing.T, impl Dggeser) {
+	const n = 14
+	rnd := rand.New(rand.NewPCG(93, 93))
+	var a, b []float64
+	for k := 0; k <= 396; k++ {
+		a = make([]float64, n*n)
+		b = make([]float64, n*n)
+		for i := range a {
+			exp := rnd.IntN(601) - 300
+			a[i] = rnd.NormFloat64() * math.Pow10(exp)
+			exp = rnd.IntN(601) - 300
+			b[i] = rnd.NormFloat64() * math.Pow10(exp)
+		}
+	}
+	work := make([]float64, 1)
+	impl.Dgges(lapack.SchurHess, lapack.SchurHess, lapack.SortNone, nil, n,
+		nil, n, nil, n, nil, nil, nil, nil, n, nil, n, work, -1, nil)
+	work = make([]float64, int(work[0]))
+	_, ok := impl.Dgges(lapack.SchurHess, lapack.SchurHess, lapack.SortNone, nil, n,
+		a, n, b, n, make([]float64, n), make([]float64, n), make([]float64, n),
+		make([]float64, n*n), n, make([]float64, n*n), n, work, len(work), nil)
+	if !ok {
+		t.Fatal("badly scaled 2x2 shift fallback did not converge")
+	}
+}
+
+func testDggesSortingUsesUnscaledEigenvalues(t *testing.T, impl Dggeser) {
+	const n = 2
+	a := []float64{1e-300, 0, 0, 2e-300}
+	b := []float64{1, 0, 0, 1}
+	alphar := make([]float64, n)
+	alphai := make([]float64, n)
+	beta := make([]float64, n)
+	bwork := make([]bool, n)
+	work := make([]float64, max(8*n, 6*n+16))
+	var seen []float64
+	selector := func(alphar, _, beta float64) bool {
+		seen = append(seen, alphar/beta)
+		return math.Abs(alphar/beta) > 1e-200
+	}
+	sdim, ok := impl.Dgges(lapack.SchurNone, lapack.SchurNone, lapack.SortSelected, selector,
+		n, a, n, b, n, alphar, alphai, beta, nil, 1, nil, 1, work, len(work), bwork)
+	if !ok {
+		t.Fatal("scaled sorting case failed")
+	}
+	if sdim != 0 {
+		t.Fatalf("sdim=%d, want 0 when selector sees unscaled eigenvalues", sdim)
+	}
+	for i, v := range seen[:n] {
+		if math.Abs(v) > 1e-200 {
+			t.Errorf("initial selector call %d saw scaled eigenvalue %v", i, v)
+		}
+	}
+}
+
+func testDggesExtremeScaleEigenvalueRepresentation(t *testing.T, impl Dggeser) {
+	n := 2
+	a := []float64{2e-105, -1e-105, 1e-105, 2e-105}
+	b := []float64{1e239, 0, 0, 1e239}
+	alphar := make([]float64, n)
+	alphai := make([]float64, n)
+	beta := make([]float64, n)
+	work := make([]float64, 1)
+	impl.Dgges(lapack.SchurNone, lapack.SchurNone, lapack.SortNone, nil,
+		n, nil, n, nil, n, nil, nil, nil, nil, 1, nil, 1, work, -1, nil)
+	work = make([]float64, int(work[0]))
+	_, ok := impl.Dgges(lapack.SchurNone, lapack.SchurNone, lapack.SortNone, nil,
+		n, a, n, b, n, alphar, alphai, beta, nil, 1, nil, 1, work, len(work), nil)
+	if !ok {
+		t.Fatal("extreme-scale test failed to converge")
+	}
+	for i := range n {
+		if math.IsInf(alphar[i], 0) || math.IsInf(alphai[i], 0) || math.IsInf(beta[i], 0) ||
+			math.IsNaN(alphar[i]) || math.IsNaN(alphai[i]) || math.IsNaN(beta[i]) {
+			t.Fatalf("non-finite eigenvalue representation at %d: alpha=(%g,%g), beta=%g", i, alphar[i], alphai[i], beta[i])
+		}
+		if beta[i] == 0 || alphai[i] == 0 {
+			t.Fatalf("lost finite complex eigenvalue at %d: alpha=(%g,%g), beta=%g", i, alphar[i], alphai[i], beta[i])
+		}
+	}
+}
+
+func testDggesZeroAndInfiniteEigenvalues(t *testing.T, impl Dggeser) {
+	n := 3
+	a := []float64{
+		0, 0, 0,
+		0, 2, 0,
+		0, 0, 3,
+	}
+	b := []float64{
+		0, 0, 0,
+		0, 0, 0,
+		0, 0, 1,
+	}
+	alphar := make([]float64, n)
+	alphai := make([]float64, n)
+	beta := make([]float64, n)
+	work := make([]float64, 1)
+	impl.Dgges(lapack.SchurNone, lapack.SchurNone, lapack.SortNone, nil,
+		n, nil, n, nil, n, nil, nil, nil, nil, 1, nil, 1, work, -1, nil)
+	work = make([]float64, int(work[0]))
+	_, ok := impl.Dgges(lapack.SchurNone, lapack.SchurNone, lapack.SortNone, nil,
+		n, a, n, b, n, alphar, alphai, beta, nil, 1, nil, 1, work, len(work), nil)
+	if !ok {
+		t.Fatal("zero and infinite eigenvalue test failed to converge")
+	}
+
+	var zero, infinite, finite int
+	for i := range n {
+		switch {
+		case beta[i] == 0 && alphar[i] == 0 && alphai[i] == 0:
+			zero++
+		case beta[i] == 0:
+			infinite++
+		case alphai[i] == 0 && math.Abs(alphar[i]/beta[i]-3) < 1e-14:
+			finite++
+		}
+	}
+	if zero != 1 || infinite != 1 || finite != 1 {
+		t.Fatalf("got (zero, infinite, finite-3)=(%d, %d, %d), want (1, 1, 1); alpha=(%v,%v), beta=%v",
+			zero, infinite, finite, alphar, alphai, beta)
+	}
+}
+
+func testDggesConjugatePairSorting(t *testing.T, impl Dggeser) {
+	n := 4
+	a := []float64{
+		-1, 0, 0, 0,
+		0, 3, -2, 0,
+		0, 2, 3, 0,
+		0, 0, 0, 1,
+	}
+	b := []float64{
+		1, 0, 0, 0,
+		0, 1, 0, 0,
+		0, 0, 1, 0,
+		0, 0, 0, 1,
+	}
+	alphar := make([]float64, n)
+	alphai := make([]float64, n)
+	beta := make([]float64, n)
+	vsl := make([]float64, n*n)
+	vsr := make([]float64, n*n)
+	bwork := make([]bool, n)
+	work := make([]float64, 1)
+	impl.Dgges(lapack.SchurHess, lapack.SchurHess, lapack.SortSelected, nil,
+		n, nil, n, nil, n, nil, nil, nil, nil, n, nil, n, work, -1, nil)
+	work = make([]float64, int(work[0]))
+	selector := func(_, alphai, _ float64) bool { return alphai > 0 }
+	sdim, ok := impl.Dgges(lapack.SchurHess, lapack.SchurHess, lapack.SortSelected, selector,
+		n, a, n, b, n, alphar, alphai, beta, vsl, n, vsr, n, work, len(work), bwork)
+	if !ok {
+		t.Fatal("conjugate-pair sorting failed")
+	}
+	if sdim != 2 {
+		t.Fatalf("got sdim=%d, want 2", sdim)
+	}
+	if alphai[0] == 0 || alphai[1] == 0 || alphai[0] != -alphai[1] {
+		t.Fatalf("leading block is not a conjugate pair: alphai=%v", alphai)
+	}
+	for i := sdim; i < n; i++ {
+		if alphai[i] != 0 {
+			t.Fatalf("unselected eigenvalue %d is complex: alphai=%v", i, alphai)
+		}
+	}
+}
+
+func testDggesSelectionRecheck(t *testing.T, impl Dggeser) {
+	n := 2
+	a := []float64{1, 0, 0, 2}
+	b := []float64{1, 0, 0, 1}
+	work := make([]float64, 1)
+	impl.Dgges(lapack.SchurNone, lapack.SchurNone, lapack.SortSelected, nil,
+		n, nil, n, nil, n, nil, nil, nil, nil, 1, nil, 1, work, -1, nil)
+	work = make([]float64, int(work[0]))
+	calls := 0
+	selector := func(alphar, alphai, beta float64) bool {
+		calls++
+		if calls <= n {
+			return alphar/beta > 1.5
+		}
+		return alphar/beta < 1.5
+	}
+	_, ok := impl.Dgges(lapack.SchurNone, lapack.SchurNone, lapack.SortSelected, selector,
+		n, a, n, b, n, make([]float64, n), make([]float64, n), make([]float64, n),
+		nil, 1, nil, 1, work, len(work), make([]bool, n))
+	if ok {
+		t.Fatal("sorting succeeded after selected eigenvalues no longer satisfied selector")
+	}
 }
 
 func testDgges(t *testing.T, impl Dggeser, n int, jobvsl, jobvsr lapack.SchurComp, extra int, wl worklen, rnd *rand.Rand) {
@@ -136,7 +491,10 @@ func testDgges(t *testing.T, impl Dggeser, n int, jobvsl, jobvsr lapack.SchurCom
 		vsr = nanGeneral(n, n, ldvsr)
 	}
 
-	minwork := max(1, 9*n)
+	minwork := 1
+	if n > 0 {
+		minwork = max(8*n, 6*n+16)
+	}
 	var lwork int
 	switch wl {
 	case minimumWork:
@@ -171,8 +529,8 @@ func testDgges(t *testing.T, impl Dggeser, n int, jobvsl, jobvsr lapack.SchurCom
 		return
 	}
 
-	if !isQuasiUpperTriangular(a) {
-		t.Errorf("%v: S is not quasi-upper-triangular", prefix)
+	if !isGeneralizedSchurForm(a, b) {
+		t.Errorf("%v: (S,T) is not in generalized real Schur form: S=%v T=%v", prefix, a.Data, b.Data)
 	}
 
 	if !isUpperTriangular(b) {
@@ -263,8 +621,8 @@ func testDggesMatrix(t *testing.T, impl Dggeser, name string, aOrig, bOrig blas6
 		return
 	}
 
-	if !isQuasiUpperTriangular(a) {
-		t.Errorf("%v: S is not quasi-upper-triangular", prefix)
+	if !isGeneralizedSchurForm(a, b) {
+		t.Errorf("%v: (S,T) is not in generalized real Schur form: S=%v T=%v", prefix, a.Data, b.Data)
 	}
 	if !isUpperTriangular(b) {
 		t.Errorf("%v: T is not upper triangular", prefix)
@@ -327,10 +685,7 @@ func residualGeneralizedSchur(M, S, VSL, VSR blas64.General) float64 {
 	return dlange(lapack.MaxColumnSum, n, n, R2.Data, R2.Stride)
 }
 
-// isQuasiUpperTriangular checks if the matrix is quasi-upper-triangular,
-// meaning it has at most 2x2 blocks on the diagonal (elements only on
-// diagonal and first subdiagonal).
-func isQuasiUpperTriangular(a blas64.General) bool {
+func isGeneralizedSchurForm(a, b blas64.General) bool {
 	n := a.Rows
 	for i := 2; i < n; i++ {
 		for j := 0; j < i-1; j++ {
@@ -338,6 +693,38 @@ func isQuasiUpperTriangular(a blas64.General) bool {
 				return false
 			}
 		}
+	}
+	for i := 0; i < n-1; i++ {
+		if a.Data[(i+1)*a.Stride+i] == 0 {
+			continue
+		}
+		if i+2 < n && a.Data[(i+2)*a.Stride+i+1] != 0 {
+			return false
+		}
+		b11 := b.Data[i*b.Stride+i]
+		b12 := b.Data[i*b.Stride+i+1]
+		b21 := b.Data[(i+1)*b.Stride+i]
+		b22 := b.Data[(i+1)*b.Stride+i+1]
+		if b12 != 0 || b21 != 0 || b11 <= 0 || b22 <= 0 {
+			return false
+		}
+		a11 := a.Data[i*a.Stride+i]
+		a12 := a.Data[i*a.Stride+i+1]
+		a21 := a.Data[(i+1)*a.Stride+i]
+		a22 := a.Data[(i+1)*a.Stride+i+1]
+		as := math.Max(math.Abs(a11), math.Max(math.Abs(a12), math.Max(math.Abs(a21), math.Abs(a22))))
+		bs := math.Max(b11, b22)
+		if as == 0 || bs == 0 {
+			return false
+		}
+		a11, a12, a21, a22 = a11/as, a12/as, a21/as, a22/as
+		b11, b22 = b11/bs, b22/bs
+		d := a11*b22 - a22*b11
+		discriminant := d*d + 4*b11*b22*a12*a21
+		if discriminant >= 0 {
+			return false
+		}
+		i++
 	}
 	return true
 }
@@ -471,7 +858,7 @@ func testDggesBlockStandardization(t *testing.T, impl Dggeser) {
 			1, 0,
 		},
 	}
-	b := eye(n, n)
+	b := blas64.General{Rows: n, Cols: n, Stride: n, Data: []float64{2, 1, 0, 3}}
 
 	alphar := make([]float64, n)
 	alphai := make([]float64, n)

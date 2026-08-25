@@ -50,7 +50,7 @@ func (impl Implementation) Dtgsy2(trans blas.Transpose, ijob, m, n int, a []floa
 		panic(badTrans)
 	}
 	switch {
-	case ijob < 0 || ijob > 2:
+	case trans == blas.NoTrans && (ijob < 0 || ijob > 2):
 		panic("lapack: invalid ijob")
 	case m < 0:
 		panic(mLT0)
@@ -147,12 +147,12 @@ func (impl Implementation) Dtgsy2(trans blas.Transpose, ijob, m, n int, a []floa
 
 		for j := p + 1; j <= p+q; j++ {
 			js := iwork[j]
-			je := iwork[j+1] - 1
+			je := abs(iwork[j+1]) - 1
 			nb := je - abs(js) + 1
 			if js < 0 {
 				js = -js
 			}
-			js-- // Convert to 0-based.
+			js--                        // Convert to 0-based.
 			je = abs(iwork[j]) + nb - 2 // Convert to 0-based end index.
 
 			for i := p; i >= 1; i-- {
@@ -162,7 +162,7 @@ func (impl Implementation) Dtgsy2(trans blas.Transpose, ijob, m, n int, a []floa
 				if is < 0 {
 					is = -is
 				}
-				is-- // Convert to 0-based.
+				is--             // Convert to 0-based.
 				ie = is + mb - 1 // 0-based end index.
 
 				// Solve the (I,J)-subsystem.
@@ -192,14 +192,7 @@ func (impl Implementation) Dtgsy2(trans blas.Transpose, ijob, m, n int, a []floa
 							scale *= scaloc
 						}
 					} else {
-						rdscal2, rdsum2 = impl.Dlatdf(lapack.MaximizeNormXJob(ijob & 2), 2, z[:], ldz, rhs[:], rdsum2, rdscal2, ipiv[:2], jpiv[:2])
-						if rdscal2 != 1 {
-							for kk := 0; kk < n; kk++ {
-								bi.Dscal(m, rdscal2, c[kk:], ldc)
-								bi.Dscal(m, rdscal2, f[kk:], ldf)
-							}
-							scale *= rdscal2
-						}
+						rdscal2, rdsum2 = impl.Dlatdf(lapack.MaximizeNormXJob(ijob&2), 2, z[:], ldz, rhs[:], rdsum2, rdscal2, ipiv[:2], jpiv[:2])
 					}
 					c[is*ldc+js] = rhs[0]
 					f[is*ldf+js] = rhs[1]
@@ -245,14 +238,7 @@ func (impl Implementation) Dtgsy2(trans blas.Transpose, ijob, m, n int, a []floa
 							scale *= scaloc
 						}
 					} else {
-						rdscal2, rdsum2 = impl.Dlatdf(lapack.MaximizeNormXJob(ijob & 2), 4, z[:], ldz, rhs[:], rdsum2, rdscal2, ipiv[:4], jpiv[:4])
-						if rdscal2 != 1 {
-							for kk := 0; kk < n; kk++ {
-								bi.Dscal(m, rdscal2, c[kk:], ldc)
-								bi.Dscal(m, rdscal2, f[kk:], ldf)
-							}
-							scale *= rdscal2
-						}
+						rdscal2, rdsum2 = impl.Dlatdf(lapack.MaximizeNormXJob(ijob&2), 4, z[:], ldz, rhs[:], rdsum2, rdscal2, ipiv[:4], jpiv[:4])
 					}
 					c[is*ldc+js] = rhs[0]
 					c[is*ldc+js+1] = rhs[1]
@@ -304,14 +290,7 @@ func (impl Implementation) Dtgsy2(trans blas.Transpose, ijob, m, n int, a []floa
 							scale *= scaloc
 						}
 					} else {
-						rdscal2, rdsum2 = impl.Dlatdf(lapack.MaximizeNormXJob(ijob & 2), 4, z[:], ldz, rhs[:], rdsum2, rdscal2, ipiv[:4], jpiv[:4])
-						if rdscal2 != 1 {
-							for kk := 0; kk < n; kk++ {
-								bi.Dscal(m, rdscal2, c[kk:], ldc)
-								bi.Dscal(m, rdscal2, f[kk:], ldf)
-							}
-							scale *= rdscal2
-						}
+						rdscal2, rdsum2 = impl.Dlatdf(lapack.MaximizeNormXJob(ijob&2), 4, z[:], ldz, rhs[:], rdsum2, rdscal2, ipiv[:4], jpiv[:4])
 					}
 					c[is*ldc+js] = rhs[0]
 					c[(is+1)*ldc+js] = rhs[1]
@@ -393,14 +372,7 @@ func (impl Implementation) Dtgsy2(trans blas.Transpose, ijob, m, n int, a []floa
 							scale *= scaloc
 						}
 					} else {
-						rdscal2, rdsum2 = impl.Dlatdf(lapack.MaximizeNormXJob(ijob & 2), 8, z[:], ldz, rhs[:], rdsum2, rdscal2, ipiv[:8], jpiv[:8])
-						if rdscal2 != 1 {
-							for kk := 0; kk < n; kk++ {
-								bi.Dscal(m, rdscal2, c[kk:], ldc)
-								bi.Dscal(m, rdscal2, f[kk:], ldf)
-							}
-							scale *= rdscal2
-						}
+						rdscal2, rdsum2 = impl.Dlatdf(lapack.MaximizeNormXJob(ijob&2), 8, z[:], ldz, rhs[:], rdsum2, rdscal2, ipiv[:8], jpiv[:8])
 					}
 					c[is*ldc+js] = rhs[0]
 					c[(is+1)*ldc+js] = rhs[1]
@@ -412,9 +384,7 @@ func (impl Implementation) Dtgsy2(trans blas.Transpose, ijob, m, n int, a []floa
 					f[(is+1)*ldf+js+1] = rhs[7]
 				}
 
-				if mb == 2 || nb == 2 {
-					pq++
-				}
+				pq++
 
 				// Substitute R[I,J] and L[I,J] into remaining equation.
 				if i > 1 {
@@ -441,17 +411,17 @@ func (impl Implementation) Dtgsy2(trans blas.Transpose, ijob, m, n int, a []floa
 			if is < 0 {
 				is = -is
 			}
-			is-- // Convert to 0-based.
+			is--             // Convert to 0-based.
 			ie = is + mb - 1 // 0-based end index.
 
 			for j := p + q; j >= p+1; j-- {
 				js := iwork[j]
-				je := iwork[j+1] - 1
+				je := abs(iwork[j+1]) - 1
 				nb := je - abs(js) + 1
 				if js < 0 {
 					js = -js
 				}
-				js-- // Convert to 0-based.
+				js--             // Convert to 0-based.
 				je = js + nb - 1 // 0-based end index.
 
 				// Solve the (I,J)-subsystem.
@@ -668,9 +638,7 @@ func (impl Implementation) Dtgsy2(trans blas.Transpose, ijob, m, n int, a []floa
 					f[(is+1)*ldf+js+1] = rhs[7]
 				}
 
-				if mb == 2 || nb == 2 {
-					pq++
-				}
+				pq++
 
 				// Substitute R[I,J] and L[I,J] into remaining equation.
 				// For trans case: R*Bᵀ + L*Eᵀ = -F, so both R*B and L*E update F.

@@ -42,6 +42,135 @@ func DtgsenTest(t *testing.T, impl Dtgsener) {
 	}
 
 	testDtgsenWorkspace(t, impl)
+	testDtgsenPartialWorkspaceQueries(t, impl)
+	testDtgsenTrivialSeparation(t, impl)
+	testDtgsenProjectionBounds(t, impl)
+	testDtgsenSingularConditionEstimate(t, impl)
+	testDtgsenNormalizesRealEigenvalueSigns(t, impl)
+	testDtgsenSeparationDirections(t, impl)
+	testDtgsenOneNormSeparation(t, impl)
+}
+
+func testDtgsenSingularConditionEstimate(t *testing.T, impl Dtgsener) {
+	const n = 2
+	a := []float64{1, 0, 0, 1}
+	b := []float64{1, 0, 0, 1}
+	work := make([]float64, 4*n+16)
+	iwork := make([]int, n+6)
+	_, _, _, _, ok := impl.Dtgsen(1, false, false, []bool{true, false}, n,
+		a, n, b, n, make([]float64, n), make([]float64, n), make([]float64, n),
+		nil, 1, nil, 1, work, len(work), iwork, len(iwork))
+	if !ok {
+		t.Fatal("singular condition estimate reported a reordering failure")
+	}
+}
+
+func testDtgsenNormalizesRealEigenvalueSigns(t *testing.T, impl Dtgsener) {
+	const n = 2
+	a := []float64{1, 2, 0, 3}
+	b := []float64{-2, 4, 0, -5}
+	q := eye(n, n).Data
+	alphar := make([]float64, n)
+	alphai := make([]float64, n)
+	beta := make([]float64, n)
+	work := make([]float64, 4*n+16)
+	iwork := make([]int, 1)
+	_, _, _, _, ok := impl.Dtgsen(0, true, false, []bool{false, false}, n,
+		a, n, b, n, alphar, alphai, beta, q, n, nil, 1,
+		work, len(work), iwork, len(iwork))
+	if !ok {
+		t.Fatal("real eigenvalue normalization failed")
+	}
+	for i, v := range beta {
+		if v < 0 {
+			t.Errorf("beta[%d]=%v, want non-negative Netlib representation", i, v)
+		}
+	}
+}
+
+func testDtgsenOneNormSeparation(t *testing.T, impl Dtgsener) {
+	for _, ijob := range []int{3, 5} {
+		work := make([]float64, 128)
+		iwork := make([]int, 32)
+		_, _, _, dif, ok := impl.Dtgsen(ijob, false, false, []bool{true, false}, 2,
+			[]float64{1, 4, 0, 2}, 2, []float64{1, 5, 0, 3}, 2,
+			make([]float64, 2), make([]float64, 2), make([]float64, 2),
+			nil, 1, nil, 1, work, len(work), iwork, len(iwork))
+		if !ok {
+			t.Fatalf("ijob=%d: separation estimate failed", ijob)
+		}
+		if math.Abs(dif[0]-0.25) > 1e-14 || math.Abs(dif[1]-0.25) > 1e-14 {
+			t.Fatalf("ijob=%d: DIF=%v, want [0.25 0.25]", ijob, dif)
+		}
+	}
+}
+
+func testDtgsenSeparationDirections(t *testing.T, impl Dtgsener) {
+	a := []float64{1, 4, 0, 2}
+	b := []float64{1, 5, 0, 3}
+	want := [2]float64{
+		dtgsylDif(t, impl, a[:1], b[:1], a[3:], b[3:]),
+		dtgsylDif(t, impl, a[3:], b[3:], a[:1], b[:1]),
+	}
+	work := make([]float64, 128)
+	iwork := make([]int, 32)
+	_, _, _, got, ok := impl.Dtgsen(2, false, false, []bool{true, false}, 2,
+		a, 2, b, 2, make([]float64, 2), make([]float64, 2), make([]float64, 2),
+		nil, 1, nil, 1, work, len(work), iwork, len(iwork))
+	if !ok {
+		t.Fatal("separation estimate failed")
+	}
+	for i := range got {
+		if math.Abs(got[i]-want[i]) > 1e-14 {
+			t.Fatalf("DIF[%d]=%v, want %v", i, got[i], want[i])
+		}
+	}
+}
+
+func dtgsylDif(t *testing.T, impl Dtgsyler, a, d, b, e []float64) float64 {
+	t.Helper()
+	work := make([]float64, 2)
+	iwork := make([]int, 8)
+	_, dif, ok := impl.Dtgsyl(blas.NoTrans, 3, 1, 1,
+		a, 1, b, 1, []float64{0}, 1,
+		d, 1, e, 1, []float64{0}, 1,
+		work, len(work), iwork)
+	if !ok {
+		t.Fatal("direct separation estimate failed")
+	}
+	return dif
+}
+
+func testDtgsenTrivialSeparation(t *testing.T, impl Dtgsener) {
+	work := make([]float64, 64)
+	iwork := make([]int, 16)
+	_, _, _, dif, ok := impl.Dtgsen(2, false, false, []bool{false}, 1,
+		[]float64{3}, 1, []float64{4}, 1,
+		make([]float64, 1), make([]float64, 1), make([]float64, 1),
+		nil, 1, nil, 1, work, len(work), iwork, len(iwork))
+	if !ok {
+		t.Fatal("trivial separation estimate failed")
+	}
+	if dif != [2]float64{5, 5} {
+		t.Fatalf("DIF=%v, want [5 5]", dif)
+	}
+}
+
+func testDtgsenProjectionBounds(t *testing.T, impl Dtgsener) {
+	work := make([]float64, 128)
+	iwork := make([]int, 32)
+	_, pl, pr, _, ok := impl.Dtgsen(1, false, false, []bool{true, false}, 2,
+		[]float64{1, 4, 0, 2}, 2, []float64{1, 5, 0, 3}, 2,
+		make([]float64, 2), make([]float64, 2), make([]float64, 2),
+		nil, 1, nil, 1, work, len(work), iwork, len(iwork))
+	if !ok {
+		t.Fatal("projection bound estimate failed")
+	}
+	wantPL := 1 / math.Sqrt(5)
+	wantPR := 1 / math.Sqrt2
+	if math.Abs(pl-wantPL) > 1e-14 || math.Abs(pr-wantPR) > 1e-14 {
+		t.Fatalf("PL=%v PR=%v, want PL=%v PR=%v", pl, pr, wantPL, wantPR)
+	}
 }
 
 func testDtgsen(t *testing.T, impl Dtgsener, n, ijob int, wantq, wantz bool, selectPattern string, rnd *rand.Rand) {
@@ -51,12 +180,25 @@ func testDtgsen(t *testing.T, impl Dtgsener, n, ijob int, wantq, wantz bool, sel
 		n, ijob, wantq, wantz, selectPattern)
 
 	if n == 0 {
-		// Quick return test.
-		var work [1]float64
-		var iwork [1]int
+		var workQuery [1]float64
+		var iworkQuery [1]int
+		impl.Dtgsen(ijob, wantq, wantz, nil, 0,
+			nil, 1, nil, 1, nil, nil, nil, nil, 1, nil, 1,
+			workQuery[:], -1, iworkQuery[:], -1)
+		wantLWork := 16
+		wantLIWork := 1
+		if ijob != 0 {
+			wantLIWork = 6
+		}
+		if workQuery[0] != float64(wantLWork) || iworkQuery[0] != wantLIWork {
+			t.Errorf("%s: workspace query=(%v,%d), want (%d,%d)", prefix,
+				workQuery[0], iworkQuery[0], wantLWork, wantLIWork)
+		}
+		work := make([]float64, wantLWork)
+		iwork := make([]int, wantLIWork)
 		m, pl, pr, dif, ok := impl.Dtgsen(ijob, wantq, wantz, nil, 0,
 			nil, 1, nil, 1, nil, nil, nil, nil, 1, nil, 1,
-			work[:], 1, iwork[:], 1)
+			work, len(work), iwork, len(iwork))
 		if m != 0 || !ok {
 			t.Errorf("%s: unexpected result for n=0", prefix)
 		}
@@ -170,7 +312,7 @@ func testDtgsen(t *testing.T, impl Dtgsener, n, ijob int, wantq, wantz bool, sel
 	var worksize [1]float64
 	var iworksize [1]int
 	impl.Dtgsen(ijob, wantq, wantz, selected, n,
-		nil, max(1, a.Stride), nil, max(1, b.Stride), nil, nil, nil,
+		a.Data, max(1, a.Stride), nil, max(1, b.Stride), nil, nil, nil,
 		nil, max(1, q.Stride), nil, max(1, z.Stride),
 		worksize[:], -1, iworksize[:], -1)
 	lwork := int(worksize[0])
@@ -186,20 +328,12 @@ func testDtgsen(t *testing.T, impl Dtgsener, n, ijob int, wantq, wantz bool, sel
 		q.Data, q.Stride, z.Data, z.Stride,
 		work, lwork, iwork, liwork)
 
-	// Check m matches expected.
-	if m != expectedM && (selectPattern != "none" && selectPattern != "all") {
-		// For none and all, no reordering happens, so m should still match.
-		if selectPattern == "none" && m != 0 {
-			t.Errorf("%s: m=%d, want 0 for no selection", prefix, m)
-		}
-		if selectPattern == "all" && m != n {
-			t.Errorf("%s: m=%d, want %d for all selection", prefix, m, n)
-		}
+	if m != expectedM {
+		t.Errorf("%s: m=%d, want %d", prefix, m, expectedM)
 	}
 
-	// Check ok is true (unless we expect failure).
 	if !ok {
-		t.Logf("%s: reordering failed (ok=false), continuing checks", prefix)
+		t.Fatalf("%s: reordering failed", prefix)
 	}
 
 	// Check that selected eigenvalues are in the leading m positions.
@@ -247,13 +381,21 @@ func testDtgsen(t *testing.T, impl Dtgsener, n, ijob int, wantq, wantz bool, sel
 }
 
 func testDtgsenWorkspace(t *testing.T, impl Dtgsener) {
-	for _, n := range []int{1, 5, 10} {
+	for _, n := range []int{0, 1, 5, 20} {
+		a := make([]float64, n*n)
+		selected := make([]bool, n)
+		for i := 0; i < n; i++ {
+			a[i*n+i] = 1
+			selected[i] = i < n/2
+		}
+		m := n / 2
 		for _, ijob := range []int{0, 1, 2, 3, 4, 5} {
 			var worksize [1]float64
 			var iworksize [1]int
-			impl.Dtgsen(ijob, true, true, nil, n,
-				nil, n, nil, n, nil, nil, nil,
-				nil, n, nil, n,
+			ld := max(1, n)
+			impl.Dtgsen(ijob, true, true, selected, n,
+				a, ld, nil, ld, nil, nil, nil,
+				nil, ld, nil, ld,
 				worksize[:], -1, iworksize[:], -1)
 			lwork := int(worksize[0])
 			liwork := iworksize[0]
@@ -261,25 +403,52 @@ func testDtgsenWorkspace(t *testing.T, impl Dtgsener) {
 			// Verify minimum workspace requirements.
 			var lwmin, liwmin int
 			if ijob == 1 || ijob == 2 || ijob == 4 {
-				lwmin = max(1, 4*n+16, 2*n*(n+2)+16)
+				lwmin = max(1, 4*n+16, 2*m*(n-m))
 				liwmin = max(1, n+6)
 			} else if ijob == 3 || ijob == 5 {
-				lwmin = max(1, 4*n+16, 4*n*(n+1)+16)
-				liwmin = max(1, 2*n*(n+2)+16)
+				lwmin = max(1, 4*n+16, 4*m*(n-m))
+				liwmin = max(1, 2*m*(n-m), n+6)
 			} else {
 				lwmin = max(1, 4*n+16)
-				liwmin = max(1, n+6)
+				liwmin = 1
 			}
 
-			if lwork < lwmin {
-				t.Errorf("n=%d, ijob=%d: workspace query returned lwork=%d, want >= %d",
+			if lwork != lwmin {
+				t.Errorf("n=%d, ijob=%d: workspace query returned lwork=%d, want %d",
 					n, ijob, lwork, lwmin)
 			}
-			if liwork < liwmin {
-				t.Errorf("n=%d, ijob=%d: workspace query returned liwork=%d, want >= %d",
+			if liwork != liwmin {
+				t.Errorf("n=%d, ijob=%d: workspace query returned liwork=%d, want %d",
 					n, ijob, liwork, liwmin)
 			}
 		}
+	}
+}
+
+func testDtgsenPartialWorkspaceQueries(t *testing.T, impl Dtgsener) {
+	const n = 2
+	a := []float64{1, 0, 0, 2}
+	selected := []bool{true, false}
+	const wantLWork = 24
+	const wantLIWork = 8
+	for _, tc := range []struct {
+		name          string
+		lwork, liwork int
+	}{
+		{name: "Float", lwork: -1, liwork: 1},
+		{name: "Integer", lwork: 1, liwork: -1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			work := []float64{-1}
+			iwork := []int{-1}
+			impl.Dtgsen(1, false, false, selected, n,
+				a, n, nil, n, nil, nil, nil,
+				nil, 1, nil, 1,
+				work, tc.lwork, iwork, tc.liwork)
+			if work[0] != wantLWork || iwork[0] != wantLIWork {
+				t.Fatalf("workspace query=(%v,%d), want (%d,%d)", work[0], iwork[0], wantLWork, wantLIWork)
+			}
+		})
 	}
 }
 

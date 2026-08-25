@@ -21,6 +21,7 @@ type Dggever interface {
 
 func DggevTest(t *testing.T, impl Dggever) {
 	testDggevWorkspace(t, impl)
+	testDggevMinimumWorkspace(t, impl)
 	testDggevEmpty(t, impl)
 
 	for _, n := range []int{1, 2, 3, 4, 5} {
@@ -31,6 +32,52 @@ func DggevTest(t *testing.T, impl Dggever) {
 	testDggevEigenvectors(t, impl)
 	testDggevComplexEigenvalues(t, impl)
 	testDggevSingularPencil(t, impl)
+	testDggevExtremeScaleEigenvalueRepresentation(t, impl)
+}
+
+func testDggevExtremeScaleEigenvalueRepresentation(t *testing.T, impl Dggever) {
+	const n = 2
+	a := []float64{2e-105, -1e-105, 1e-105, 2e-105}
+	b := []float64{1e239, 0, 0, 1e239}
+	alphar := make([]float64, n)
+	alphai := make([]float64, n)
+	beta := make([]float64, n)
+	work := make([]float64, 8*n)
+	if !impl.Dggev(lapack.LeftEVNone, lapack.RightEVNone, n,
+		a, n, b, n, alphar, alphai, beta, nil, 1, nil, 1, work, len(work)) {
+		t.Fatal("extreme-scale solve did not converge")
+	}
+	for i := range n {
+		if math.IsInf(alphar[i], 0) || math.IsInf(alphai[i], 0) || math.IsInf(beta[i], 0) ||
+			math.IsNaN(alphar[i]) || math.IsNaN(alphai[i]) || math.IsNaN(beta[i]) {
+			t.Fatalf("non-finite eigenvalue representation at %d: alpha=(%g,%g), beta=%g", i, alphar[i], alphai[i], beta[i])
+		}
+		if beta[i] == 0 || alphai[i] == 0 {
+			t.Fatalf("lost finite complex eigenvalue at %d: alpha=(%g,%g), beta=%g", i, alphar[i], alphai[i], beta[i])
+		}
+	}
+}
+
+func testDggevMinimumWorkspace(t *testing.T, impl Dggever) {
+	n := 4
+	a := []float64{
+		1, 2, 3, 4,
+		5, 7, 11, 13,
+		17, 19, 23, 29,
+		31, 37, 41, 43,
+	}
+	b := []float64{
+		2, 1, 0, 1,
+		1, 3, 1, 0,
+		0, 1, 4, 1,
+		1, 0, 1, 5,
+	}
+	work := make([]float64, 8*n)
+	if !impl.Dggev(lapack.LeftEVNone, lapack.RightEVNone, n,
+		a, n, b, n, make([]float64, n), make([]float64, n), make([]float64, n),
+		nil, 1, nil, 1, work, len(work)) {
+		t.Fatal("minimum-workspace solve did not converge")
+	}
 }
 
 func testDggevWorkspace(t *testing.T, impl Dggever) {
@@ -303,7 +350,6 @@ func testDggevSingularPencil(t *testing.T, impl Dggever) {
 			alphar := make([]float64, n)
 			alphai := make([]float64, n)
 			beta := make([]float64, n)
-
 			work := make([]float64, 1)
 			impl.Dggev(lapack.LeftEVNone, lapack.RightEVNone, n,
 				nil, n, nil, n, nil, nil, nil, nil, 1, nil, 1, work, -1)
@@ -387,17 +433,19 @@ func testDggevComplexEigenvalues(t *testing.T, impl Dggever) {
 			alphar := make([]float64, n)
 			alphai := make([]float64, n)
 			beta := make([]float64, n)
+			vl := make([]float64, n*n)
+			vr := make([]float64, n*n)
 
 			work := make([]float64, 1)
-			impl.Dggev(lapack.LeftEVNone, lapack.RightEVNone, n,
-				nil, n, nil, n, nil, nil, nil, nil, 1, nil, 1, work, -1)
+			impl.Dggev(lapack.LeftEVCompute, lapack.RightEVCompute, n,
+				nil, n, nil, n, nil, nil, nil, nil, n, nil, n, work, -1)
 			lwork := int(work[0])
 			work = make([]float64, lwork)
 
-			ok := impl.Dggev(lapack.LeftEVNone, lapack.RightEVNone, n,
+			ok := impl.Dggev(lapack.LeftEVCompute, lapack.RightEVCompute, n,
 				a, n, b, n,
 				alphar, alphai, beta,
-				nil, 1, nil, 1,
+				vl, n, vr, n,
 				work, lwork)
 
 			if !ok {
@@ -413,6 +461,31 @@ func testDggevComplexEigenvalues(t *testing.T, impl Dggever) {
 			if !hasComplex {
 				t.Error("expected complex eigenvalues but found none")
 			}
+			checkDggevNormalization(t, alphai, vl, n)
+			checkDggevNormalization(t, alphai, vr, n)
 		})
+	}
+}
+
+func checkDggevNormalization(t *testing.T, alphai, v []float64, ldv int) {
+	t.Helper()
+	n := len(alphai)
+	for j := 0; j < n; j++ {
+		var vmax float64
+		switch {
+		case alphai[j] == 0:
+			for i := 0; i < n; i++ {
+				vmax = math.Max(vmax, math.Abs(v[i*ldv+j]))
+			}
+		case alphai[j] > 0:
+			for i := 0; i < n; i++ {
+				vmax = math.Max(vmax, math.Abs(v[i*ldv+j])+math.Abs(v[i*ldv+j+1]))
+			}
+		default:
+			continue
+		}
+		if math.Abs(vmax-1) > 1e-14 {
+			t.Errorf("eigenvector %d normalization=%v, want 1", j, vmax)
+		}
 	}
 }
