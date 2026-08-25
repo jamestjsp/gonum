@@ -19,14 +19,11 @@ type Implementation struct{}
 const (
 	blockSize   = 64 // b x b matrix
 	minParBlock = 4  // minimum number of (m,n) blocks needed to go parallel
-	// minParFLOPsPerWorker is the per-worker multiply-add floor for the Dgemm
-	// serial/parallel dispatch gate: the parallel path is taken only when
-	// m*n*k >= minParFLOPsPerWorker * min(parBlocks, GOMAXPROCS), i.e. when
-	// every worker that can be occupied receives enough work to amortize
-	// goroutine fan-out overhead. Tuned via BenchmarkDgemmCrossover (see
-	// dgemm_threshold_bench_test.go); with this value 100³ on 4 workers takes
-	// the parallel path while shapes like 128×128×8 stay serial.
-	minParFLOPsPerWorker = 1 << 17
+	// The Dgemm serial/parallel crossover differs substantially for the pure-Go
+	// kernels used on Darwin arm64. Preserve the existing calibration as the
+	// default and use the measured lower floor only on that platform.
+	minParFLOPsPerWorkerDefault     = 1 << 17
+	minParFLOPsPerWorkerDarwinARM64 = 1 << 15
 )
 
 // blocks returns the number of divisions of the dimension length with the given

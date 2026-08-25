@@ -121,11 +121,11 @@ func benchDgemmJ10Rect(b *testing.B, m, n, k int, parallel bool) {
 }
 
 // BenchmarkDgemmCrossover measures the serial/parallel crossover boundary of
-// the J10 dispatch gate (see dgemmSerialFasterThanParallel and
-// minParFLOPsPerWorker) on shapes near the cutoff, at four workers and at the
-// machine default. mode=serial forces dgemmSerial, mode=parallel forces
+// the J10 dispatch gate (see dgemmParallelWorkerCount and
+// dgemmMinParFLOPsPerWorker) on shapes near the cutoff, at four workers and at
+// the machine default. mode=serial forces dgemmSerial, mode=parallel forces
 // dgemmParallelBlocked, and mode=dispatch goes through Dgemm, taking whatever
-// path the gate picks. Compare the forced paths with:
+// path the platform-calibrated gate picks. Compare the forced paths with:
 //
 //	go test ./blas/gonum/ -run=NONE -bench=BenchmarkDgemmCrossover -count=10 | benchstat -col /mode -
 func BenchmarkDgemmCrossover(b *testing.B) {
@@ -138,7 +138,7 @@ func BenchmarkDgemmCrossover(b *testing.B) {
 		{200, 200, 200}, // 8.00e6 ops, 16 blocks
 		{1000, 100, 10}, // 1.00e6 ops, 32 blocks, skinny
 		{100, 1000, 10}, // 1.00e6 ops, 32 blocks, skinny
-		{128, 128, 8},   // 131e3 ops, 4 blocks: the original J10 protected shape
+		{128, 128, 8},   // 131e3 ops, 4 blocks: architecture-sensitive crossover
 	}
 	workerCounts := []int{4}
 	if def := runtime.GOMAXPROCS(0); def != 4 {

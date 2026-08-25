@@ -151,49 +151,66 @@ func dgemmParallel(aTrans, bTrans bool, m, n, k int, a []float64, lda int, b []f
 	// multiplies, though this code does not copy matrices to attempt to eliminate
 	// cache misses.
 
-	if dgemmSerialFasterThanParallel(m, n, k) {
+	workers := dgemmParallelWorkerCount(m, n, k)
+	if workers == 0 {
 		// The matrix multiplication is small in the dimensions where it can be
 		// computed concurrently, or too small overall to benefit from parallelism.
 		// Just do it in serial.
 		dgemmSerial(aTrans, bTrans, m, n, k, a, lda, b, ldb, c, ldc, alpha)
 		return
 	}
-	dgemmParallelBlocked(aTrans, bTrans, m, n, k, a, lda, b, ldb, c, ldc, alpha)
+	dgemmParallelBlockedWorkers(aTrans, bTrans, m, n, k, a, lda, b, ldb, c, ldc, alpha, workers)
 }
 
-// dgemmSerialFasterThanParallel reports whether an m×k · k×n multiplication
-// is expected to run faster on the serial path than on the blocked parallel
-// path (J10 dispatch gate). Two conditions must hold to go parallel: there
-// must be enough (m,n) tiles to fan out across (the legacy block-count check),
-// and each worker that can actually be occupied must receive enough multiply-add
+// dgemmParallelWorkerCount returns the number of workers to use for an m×k ·
+// k×n multiplication, or zero when the serial path is expected to be faster
+// (J10 dispatch gate). Two conditions must hold to go parallel: there must be
+// enough (m,n) tiles to fan out across (the legacy block-count check), and
+// each worker that can actually be occupied must receive enough multiply-add
 // work to amortize goroutine fan-out overhead. The legacy gate only counted
 // blocks, which over-fired for shapes like m=n=128, k=1 (4 blocks but only
 // 16K ops); a flat FLOP cutoff in turn under-fired for shapes like 100³ on
-// four workers. The per-worker floor covers both regimes; see minParFLOPsPerWorker
-// and BenchmarkDgemmCrossover.
-func dgemmSerialFasterThanParallel(m, n, k int) bool {
+// four workers. The per-worker floor covers both regimes and is calibrated
+// for the active kernel family; see dgemmMinParFLOPsPerWorker and
+// BenchmarkDgemmCrossover.
+func dgemmParallelWorkerCount(m, n, k int) int {
 	parBlocks := blocks(m, blockSize) * blocks(n, blockSize)
 	if parBlocks < minParBlock {
-		return true
+		return 0
 	}
 	workers := min(parBlocks, runtime.GOMAXPROCS(0))
 	if workers < 2 {
 		// Fan-out cannot help when only one worker can run.
-		return true
+		return 0
 	}
-	return int64(m)*int64(n)*int64(k) < minParFLOPsPerWorker*int64(workers)
+	if int64(m)*int64(n)*int64(k) < dgemmMinParFLOPsPerWorker()*int64(workers) {
+		return 0
+	}
+	return workers
 }
 
-// dgemmParallelBlocked is the blocked parallel Dgemm kernel. It must only be
-// called via dgemmParallel, which owns the serial/parallel dispatch decision;
-// tests and benchmarks may call it directly to force the parallel path.
+func dgemmMinParFLOPsPerWorker() int64 {
+	if runtime.GOOS == "darwin" && runtime.GOARCH == "arm64" {
+		return minParFLOPsPerWorkerDarwinARM64
+	}
+	return minParFLOPsPerWorkerDefault
+}
+
+// dgemmParallelBlocked forces the blocked parallel Dgemm kernel for tests and
+// benchmarks that compare it with the serial path.
 func dgemmParallelBlocked(aTrans, bTrans bool, m, n, k int, a []float64, lda int, b []float64, ldb int, c []float64, ldc int, alpha float64) {
+	parBlocks := blocks(m, blockSize) * blocks(n, blockSize)
+	workers := min(parBlocks, runtime.GOMAXPROCS(0))
+	dgemmParallelBlockedWorkers(aTrans, bTrans, m, n, k, a, lda, b, ldb, c, ldc, alpha, workers)
+}
+
+func dgemmParallelBlockedWorkers(aTrans, bTrans bool, m, n, k int, a []float64, lda int, b []float64, ldb int, c []float64, ldc int, alpha float64, workers int) {
 	maxKLen := k
 	parBlocks := blocks(m, blockSize) * blocks(n, blockSize)
 
 	// workerLimit acts a number of maximum concurrent workers,
 	// with the limit set to the number of procs available.
-	workerLimit := make(chan struct{}, runtime.GOMAXPROCS(0))
+	workerLimit := make(chan struct{}, workers)
 
 	// wg is used to wait for all
 	var wg sync.WaitGroup
