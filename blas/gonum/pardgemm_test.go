@@ -6,6 +6,7 @@ package gonum
 
 import (
 	"math/rand/v2"
+	"runtime"
 	"testing"
 
 	"gonum.org/v1/gonum/blas"
@@ -181,4 +182,38 @@ func randmat(r, c, stride int, rnd *rand.Rand) []float64 {
 		data[i] = rnd.NormFloat64()
 	}
 	return data
+}
+
+// TestDgemmDispatchGate pins the serial/parallel dispatch decision (J10 gate,
+// see dgemmSerialFasterThanParallel) at fixed worker counts. In particular,
+// 100x100x100 on four workers must take the parallel path: with the earlier
+// flat m*n*k < 1<<20 cutoff it went serial, a +59% regression on four-worker
+// hosts (gonum PR #4 review).
+func TestDgemmDispatchGate(t *testing.T) {
+	for _, test := range []struct {
+		m, n, k    int
+		workers    int
+		wantSerial bool
+	}{
+		{100, 100, 100, 4, false}, // 1e6 ops, 4 blocks: the reviewer's M1 shape
+		{100, 100, 100, 8, false},
+		{128, 128, 128, 4, false},
+		{200, 200, 200, 8, false},
+		{1000, 100, 10, 4, false}, // skinny, 32 blocks, 1e6 ops
+		{128, 128, 8, 4, true},    // 131e3 ops: the original J10 protected shape
+		{128, 128, 8, 32, true},
+		{60, 60, 60, 8, true}, // 1 (m,n) block: block-count gate
+		{64, 64, 64, 8, true},
+		{80, 80, 80, 4, true},    // 512e3 ops < 4 workers * 2^17
+		{100, 100, 100, 1, true}, // single proc: fan-out cannot help
+		{1024, 1024, 1024, 1, true},
+	} {
+		old := runtime.GOMAXPROCS(test.workers)
+		got := dgemmSerialFasterThanParallel(test.m, test.n, test.k)
+		runtime.GOMAXPROCS(old)
+		if got != test.wantSerial {
+			t.Errorf("dgemmSerialFasterThanParallel(%d,%d,%d) at GOMAXPROCS=%d: got serial=%v, want %v",
+				test.m, test.n, test.k, test.workers, got, test.wantSerial)
+		}
+	}
 }

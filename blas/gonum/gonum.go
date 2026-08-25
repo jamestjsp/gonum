@@ -19,11 +19,14 @@ type Implementation struct{}
 const (
 	blockSize   = 64 // b x b matrix
 	minParBlock = 4  // minimum number of (m,n) blocks needed to go parallel
-	// minParFLOPs is the FLOP-count cutoff (≈ 2*m*n*k) below which Dgemm stays
-	// serial regardless of block count. Tuned to ~1e6 ops via the J10 microbench
-	// (BenchmarkDgemmJ10*) so goroutine fan-out costs do not dominate small calls.
-	// Below this point, dgemmSerial wins on a 4-core 12th-gen i7-1270P.
-	minParFLOPs = 1 << 20
+	// minParFLOPsPerWorker is the per-worker multiply-add floor for the Dgemm
+	// serial/parallel dispatch gate: the parallel path is taken only when
+	// m*n*k >= minParFLOPsPerWorker * min(parBlocks, GOMAXPROCS), i.e. when
+	// every worker that can be occupied receives enough work to amortize
+	// goroutine fan-out overhead. Tuned via BenchmarkDgemmCrossover (see
+	// dgemm_threshold_bench_test.go); with this value 100³ on 4 workers takes
+	// the parallel path while shapes like 128×128×8 stay serial.
+	minParFLOPsPerWorker = 1 << 17
 )
 
 // blocks returns the number of divisions of the dimension length with the given
