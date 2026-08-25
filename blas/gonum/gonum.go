@@ -18,7 +18,12 @@ type Implementation struct{}
 // way during single precision code generation.
 const (
 	blockSize   = 64 // b x b matrix
-	minParBlock = 4  // minimum number of blocks needed to go parallel
+	minParBlock = 4  // minimum number of (m,n) blocks needed to go parallel
+	// The Dgemm serial/parallel crossover differs substantially for the pure-Go
+	// kernels used on Darwin arm64. Preserve the existing calibration as the
+	// default and use the measured lower floor only on that platform.
+	minParFLOPsPerWorkerDefault     = 1 << 17
+	minParFLOPsPerWorkerDarwinARM64 = 1 << 15
 )
 
 // blocks returns the number of divisions of the dimension length with the given

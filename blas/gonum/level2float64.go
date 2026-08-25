@@ -290,7 +290,14 @@ func (Implementation) Dgemv(tA blas.Transpose, m, n int, alpha float64, a []floa
 		return
 	}
 
-	// Form y = alpha * A * x + y
+	// Form y = alpha * A * x + y. Use the row-block parallel path for the
+	// common unit-increment case once the work is large enough to amortize
+	// goroutine setup; the serial GemvN/GemvT kernels remain the fallback
+	// for strided x/y.
+	if incX == 1 && incY == 1 && m*n >= dgemvParallelThreshold {
+		dgemvParallel(tA != blas.NoTrans, m, n, alpha, a, lda, x, beta, y)
+		return
+	}
 	if tA == blas.NoTrans {
 		f64.GemvN(uintptr(m), uintptr(n), alpha, a, uintptr(lda), x, uintptr(incX), beta, y, uintptr(incY))
 		return
