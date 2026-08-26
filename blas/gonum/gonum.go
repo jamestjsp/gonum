@@ -24,6 +24,15 @@ const (
 	// default and use the measured lower floor only on that platform.
 	minParFLOPsPerWorkerDefault     = 1 << 17
 	minParFLOPsPerWorkerDarwinARM64 = 1 << 15
+	// The Sgemm crossover was measured separately (BenchmarkSgemmCrossover,
+	// amd64): despite float32 doing twice the multiply-adds per cache line,
+	// the serial/parallel boundary lands in the same bracket as Dgemm —
+	// serial wins at 80x80x80 (512e3 ops, 4 blocks), parallel wins at
+	// 100x100x100 (1e6 ops) — so the per-worker floor matches. The Darwin
+	// arm64 floor reuses the Dgemm default/Darwin ratio; it has not been
+	// measured on that platform.
+	sgemmMinParFLOPsPerWorkerDefault     = 1 << 17
+	sgemmMinParFLOPsPerWorkerDarwinARM64 = 1 << 15
 )
 
 // blocks returns the number of divisions of the dimension length with the given
