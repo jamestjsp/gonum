@@ -2,8 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-//go:build !amd64 || noasm || gccgo || safe
-// +build !amd64 noasm gccgo safe
+//go:build (!amd64 && (!arm64 || !go1.27 || !goexperiment.simd)) || noasm || gccgo || safe
 
 package f64
 
@@ -16,23 +15,6 @@ package f64
 func DotUnitary(x, y []float64) (sum float64) {
 	for i, v := range x {
 		sum += y[i] * v
-	}
-	return sum
-}
-
-// DotInc is
-//
-//	for i := 0; i < int(n); i++ {
-//		sum += y[iy] * x[ix]
-//		ix += incX
-//		iy += incY
-//	}
-//	return sum
-func DotInc(x, y []float64, n, incX, incY, ix, iy uintptr) (sum float64) {
-	for i := 0; i < int(n); i++ {
-		sum += y[iy] * x[ix]
-		ix += incX
-		iy += incY
 	}
 	return sum
 }
