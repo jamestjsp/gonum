@@ -26,6 +26,8 @@ Do not assume that `GOEXPERIMENT=simd`, package paths, method names, build tags,
 
 Trace the public BLAS operation into `internal/asm` and identify every important downstream caller before optimizing. Gonum's AMD64 assembly is useful algorithmic evidence, but ARM64 intrinsics need their own generated-code and benchmark validation.
 
+Check whether the routine is source-generated across precisions. Add generator rewrites for new helper names, regenerate, and inspect the diff; do not let a double-precision dispatch accidentally survive in generated single-precision code.
+
 Keep the SIMD implementation behind precise architecture, Go-version, experiment, and opt-out build constraints. Preserve scalar behavior for older Go releases, unsupported architectures, `safe`, `noasm`, and GCCGo unless current repository policy says otherwise.
 
 Prefer the portable `simd` API when current toolchains make it competitive and it removes architecture-specific duplication. Retain `simd/archsimd` when a required operation or measured performance still demands it.
@@ -48,6 +50,8 @@ Inspect the compiled kernel with `go tool objdump` or compiler diagnostics and c
 Benchmark on the actual target CPU against a clean worktree at the current base commit, using the same toolchain, experiment flags, environment, and `GOMAXPROCS`. Use repeated interleaved samples and `benchstat`; stop and rerun when unrelated compilation or thermal/load interference contaminates the host.
 
 Measure both focused kernels and representative BLAS consumers. Include small sizes to expose SIMD overhead, large sizes for throughput, transpose and shape variants where relevant, and allocation counts. Do not promote a cutoff or dispatch rule from one shape, worker count, or architecture.
+
+Keep a kernel only when its useful-size gain outweighs setup cost. A sub-nanosecond short-vector branch can still accumulate inside Level 2 or Level 3 loops, so benchmark those consumers before accepting a crossover.
 
 ## Validate the matrix
 
