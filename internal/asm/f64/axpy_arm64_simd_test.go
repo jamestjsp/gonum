@@ -62,3 +62,59 @@ func TestAxpyUnitarySIMDOverlap(t *testing.T) {
 		})
 	}
 }
+
+func TestAxpyUnitaryToSIMD(t *testing.T) {
+	for n := 0; n <= 17; n++ {
+		x := make([]float64, n)
+		y := make([]float64, n)
+		dst := make([]float64, n)
+		want := make([]float64, n)
+		for i := range x {
+			x[i] = float64(i - 4)
+			y[i] = float64(2*i + 1)
+			want[i] = 0.5*x[i] + y[i]
+		}
+		AxpyUnitaryTo(dst, 0.5, x, y)
+		if !slices.Equal(dst, want) {
+			t.Errorf("n=%d: unexpected result: got %v want %v", n, dst, want)
+		}
+	}
+}
+
+func TestAxpyUnitaryToSIMDOverlap(t *testing.T) {
+	tests := []struct {
+		name             string
+		dstStart, xStart int
+		yStart, length   int
+	}{
+		{name: "destination is x", dstStart: 0, xStart: 0, yStart: 16, length: 12},
+		{name: "destination is y", dstStart: 16, xStart: 0, yStart: 16, length: 12},
+		{name: "destination ahead of x", dstStart: 1, xStart: 0, yStart: 16, length: 12},
+		{name: "destination behind x", dstStart: 0, xStart: 1, yStart: 16, length: 12},
+		{name: "destination ahead of y", dstStart: 17, xStart: 0, yStart: 16, length: 12},
+		{name: "destination behind y", dstStart: 16, xStart: 0, yStart: 17, length: 12},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got := make([]float64, 32)
+			for i := range got {
+				got[i] = float64(i + 1)
+			}
+			want := slices.Clone(got)
+			wantDst := want[test.dstStart : test.dstStart+test.length]
+			wantX := want[test.xStart : test.xStart+test.length]
+			wantY := want[test.yStart : test.yStart+test.length]
+			for i, v := range wantX {
+				wantDst[i] = 2*v + wantY[i]
+			}
+
+			dst := got[test.dstStart : test.dstStart+test.length]
+			x := got[test.xStart : test.xStart+test.length]
+			y := got[test.yStart : test.yStart+test.length]
+			AxpyUnitaryTo(dst, 2, x, y)
+			if !slices.Equal(got, want) {
+				t.Fatalf("unexpected backing slice: got %v want %v", got, want)
+			}
+		})
+	}
+}

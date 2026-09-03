@@ -49,7 +49,6 @@ func (Implementation) Dnrm2(n int, x []float64, incX int) float64 {
 //
 // Dasum returns 0 if incX is negative.
 func (Implementation) Dasum(n int, x []float64, incX int) float64 {
-	var sum float64
 	if n < 0 {
 		panic(nLT0)
 	}
@@ -63,12 +62,16 @@ func (Implementation) Dasum(n int, x []float64, incX int) float64 {
 		panic(shortX)
 	}
 	if incX == 1 {
-		x = x[:n]
-		for _, v := range x {
-			sum += math.Abs(v)
+		if n < 16 {
+			var sum float64
+			for _, v := range x[:n] {
+				sum += math.Abs(v)
+			}
+			return sum
 		}
-		return sum
+		return f64.DasumUnitary(x[:n])
 	}
+	var sum float64
 	for i := 0; i < n; i++ {
 		sum += math.Abs(x[i*incX])
 	}
@@ -145,10 +148,14 @@ func (Implementation) Dswap(n int, x []float64, incX int, y []float64, incY int)
 		panic(shortY)
 	}
 	if incX == 1 && incY == 1 {
-		x = x[:n]
-		for i, v := range x {
-			x[i], y[i] = y[i], v
+		if n < 16 {
+			x = x[:n]
+			for i, v := range x {
+				x[i], y[i] = y[i], v
+			}
+			return
 		}
+		f64.SwapUnitary(x[:n], y[:n])
 		return
 	}
 	var ix, iy int
@@ -458,11 +465,15 @@ func (Implementation) Drot(n int, x []float64, incX int, y []float64, incY int, 
 		panic(shortY)
 	}
 	if incX == 1 && incY == 1 {
-		x = x[:n]
-		for i, vx := range x {
-			vy := y[i]
-			x[i], y[i] = c*vx+s*vy, c*vy-s*vx
+		if n < 16 {
+			x = x[:n]
+			for i, vx := range x {
+				vy := y[i]
+				x[i], y[i] = c*vx+s*vy, c*vy-s*vx
+			}
+			return
 		}
+		f64.RotUnitary(x[:n], y[:n], c, s)
 		return
 	}
 	var ix, iy int
@@ -513,11 +524,15 @@ func (Implementation) Drotm(n int, x []float64, incX int, y []float64, incY int,
 		h21 := p.H[1]
 		h22 := p.H[3]
 		if incX == 1 && incY == 1 {
-			x = x[:n]
-			for i, vx := range x {
-				vy := y[i]
-				x[i], y[i] = float64(vx*h11)+float64(vy*h12), float64(vx*h21)+float64(vy*h22)
+			if n < 16 {
+				x = x[:n]
+				for i, vx := range x {
+					vy := y[i]
+					x[i], y[i] = float64(vx*h11)+float64(vy*h12), float64(vx*h21)+float64(vy*h22)
+				}
+				return
 			}
+			f64.RotmUnitaryRescaling(x[:n], y[:n], h11, h12, h21, h22)
 			return
 		}
 		var ix, iy int
@@ -538,11 +553,15 @@ func (Implementation) Drotm(n int, x []float64, incX int, y []float64, incY int,
 		h12 := p.H[2]
 		h21 := p.H[1]
 		if incX == 1 && incY == 1 {
-			x = x[:n]
-			for i, vx := range x {
-				vy := y[i]
-				x[i], y[i] = vx+float64(vy*h12), float64(vx*h21)+vy
+			if n < 16 {
+				x = x[:n]
+				for i, vx := range x {
+					vy := y[i]
+					x[i], y[i] = vx+float64(vy*h12), float64(vx*h21)+vy
+				}
+				return
 			}
+			f64.RotmUnitaryOffDiagonal(x[:n], y[:n], h12, h21)
 			return
 		}
 		var ix, iy int
@@ -563,11 +582,15 @@ func (Implementation) Drotm(n int, x []float64, incX int, y []float64, incY int,
 		h11 := p.H[0]
 		h22 := p.H[3]
 		if incX == 1 && incY == 1 {
-			x = x[:n]
-			for i, vx := range x {
-				vy := y[i]
-				x[i], y[i] = float64(vx*h11)+vy, -vx+float64(vy*h22)
+			if n < 16 {
+				x = x[:n]
+				for i, vx := range x {
+					vy := y[i]
+					x[i], y[i] = float64(vx*h11)+vy, -vx+float64(vy*h22)
+				}
+				return
 			}
+			f64.RotmUnitaryDiagonal(x[:n], y[:n], h11, h22)
 			return
 		}
 		var ix, iy int
