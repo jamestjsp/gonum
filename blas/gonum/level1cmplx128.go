@@ -362,10 +362,7 @@ func (Implementation) Zdscal(n int, alpha float64, x []complex128, incX int) {
 		return
 	}
 	if incX == 1 {
-		x = x[:n]
-		for i, v := range x {
-			x[i] = complex(alpha*real(v), alpha*imag(v))
-		}
+		c128.DscalUnitary(alpha, x[:n])
 		return
 	}
 	for ix := 0; ix < n*incX; ix += incX {

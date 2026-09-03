@@ -10,9 +10,7 @@ package c64
 //		x[i] *= alpha
 //	}
 func ScalUnitary(alpha complex64, x []complex64) {
-	for i := range x {
-		x[i] *= alpha
-	}
+	scalUnitary(alpha, x)
 }
 
 // ScalUnitaryTo is
@@ -21,9 +19,7 @@ func ScalUnitary(alpha complex64, x []complex64) {
 //		dst[i] = alpha * v
 //	}
 func ScalUnitaryTo(dst []complex64, alpha complex64, x []complex64) {
-	for i, v := range x {
-		dst[i] = alpha * v
-	}
+	scalUnitaryTo(dst, alpha, x)
 }
 
 // ScalInc is
@@ -64,9 +60,7 @@ func ScalIncTo(dst []complex64, incDst uintptr, alpha complex64, x []complex64, 
 //		x[i] = complex(real(v)*alpha, imag(v)*alpha)
 //	}
 func SscalUnitary(alpha float32, x []complex64) {
-	for i, v := range x {
-		x[i] = complex(real(v)*alpha, imag(v)*alpha)
-	}
+	sscalUnitary(alpha, x)
 }
 
 // SscalInc is

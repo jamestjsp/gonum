@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
+//go:build !arm64 || !go1.27 || !goexperiment.simd || noasm || gccgo || safe
+
 package f32
 
 // ScalUnitary is

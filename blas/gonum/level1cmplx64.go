@@ -380,10 +380,7 @@ func (Implementation) Csscal(n int, alpha float32, x []complex64, incX int) {
 		return
 	}
 	if incX == 1 {
-		x = x[:n]
-		for i, v := range x {
-			x[i] = complex(alpha*real(v), alpha*imag(v))
-		}
+		c64.SscalUnitary(alpha, x[:n])
 		return
 	}
 	for ix := 0; ix < n*incX; ix += incX {

@@ -23,11 +23,17 @@ cat level1float64.go \
 \
 | gofmt -r 'f64.AxpyInc -> f32.AxpyInc' \
 | gofmt -r 'f64.AxpyUnitary -> f32.AxpyUnitary' \
+| gofmt -r 'f64.DasumUnitary -> f32.SasumUnitary' \
 | gofmt -r 'f64.DotUnitary -> f32.DotUnitary' \
 | gofmt -r 'f64.L2NormInc -> f32.L2NormInc' \
 | gofmt -r 'f64.L2NormUnitary -> f32.L2NormUnitary' \
 | gofmt -r 'f64.ScalInc -> f32.ScalInc' \
 | gofmt -r 'f64.ScalUnitary -> f32.ScalUnitary' \
+| gofmt -r 'f64.SwapUnitary -> f32.SwapUnitary' \
+| gofmt -r 'f64.RotUnitary -> f32.RotUnitary' \
+| gofmt -r 'f64.RotmUnitaryRescaling -> f32.RotmUnitaryRescaling' \
+| gofmt -r 'f64.RotmUnitaryOffDiagonal -> f32.RotmUnitaryOffDiagonal' \
+| gofmt -r 'f64.RotmUnitaryDiagonal -> f32.RotmUnitaryDiagonal' \
 \
 | sed -e "s_^\(func (Implementation) \)D\(.*\)\$_$WARNINGF32\1S\2_" \
       -e 's_^// D_// S_' \
@@ -52,6 +58,7 @@ cat level1cmplx128.go \
 | gofmt -r 'c128.DotcUnitary -> c64.DotcUnitary' \
 | gofmt -r 'c128.DotuInc -> c64.DotuInc' \
 | gofmt -r 'c128.DotuUnitary -> c64.DotuUnitary' \
+| gofmt -r 'c128.DscalUnitary -> c64.SscalUnitary' \
 | gofmt -r 'c128.ScalInc -> c64.ScalInc' \
 | gofmt -r 'c128.ScalUnitary -> c64.ScalUnitary' \
 | gofmt -r 'dcabs1 -> scabs1' \
@@ -134,9 +141,13 @@ cat level2float64.go \
 | gofmt -r 'f64.GemvT -> f32.GemvT' \
 | gofmt -r 'Implementation{}.Dscal -> Implementation{}.Sscal' \
 \
+| sed -e '/^\t\/\/ Form y = alpha \* A \* x + y\. Use the row-block parallel path/,/^\t\/\/ for strided x\/y\.$/c\
+// Form y = alpha * A * x + y' \
+      -e '/^\tif incX == 1 && incY == 1 && m\*n >= dgemvParallelThreshold {/,/^\t}$/d' \
 | sed -e "s_^\(func (Implementation) \)D\(.*\)\$_$WARNINGF32\1S\2_" \
       -e 's_^// D_// S_' \
       -e 's_"gonum.org/v1/gonum/internal/asm/f64"_"gonum.org/v1/gonum/internal/asm/f32"_' \
+| gofmt \
 >> level2float32.go
 
 echo Generating level2cmplx64.go
