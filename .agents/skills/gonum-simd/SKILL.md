@@ -32,6 +32,8 @@ Keep the SIMD implementation behind precise architecture, Go-version, experiment
 
 Prefer the portable `simd` API when current toolchains make it competitive and it removes architecture-specific duplication. Retain `simd/archsimd` when a required operation or measured performance still demands it.
 
+Keep portable candidates in the owning numeric package, with Gonum-style names such as `DotUnitarySIMD`; benchmark packages should contain only manifests, tests, and runners. Keep an architecture-specific leaf only when generated code, a missing portable operation, or target benchmarks justify it, and name it `<routine>_simd_<goarch>.go`. This makes stable-SIMD migration a build-constraint and API review instead of a source move.
+
 ## Preserve semantics
 
 Add persistent tests for:

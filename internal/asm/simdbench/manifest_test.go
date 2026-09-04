@@ -8,6 +8,7 @@ import (
 	"bufio"
 	"fmt"
 	"go/ast"
+	"go/build/constraint"
 	"go/parser"
 	"go/token"
 	"os"
@@ -38,6 +39,7 @@ func TestAMD64SIMDCandidateCoverage(t *testing.T) {
 	fset := token.NewFileSet()
 	for _, pkg := range []string{"c128", "c64", "f32", "f64"} {
 		path := filepath.Join(asmRoot, pkg, "simd.go")
+		checkPortableSIMDBuildConstraint(t, path)
 		file, err := parser.ParseFile(fset, path, nil, 0)
 		if err != nil {
 			t.Fatalf("parse %s: %v", path, err)
@@ -76,6 +78,42 @@ func TestAMD64SIMDCandidateCoverage(t *testing.T) {
 	for _, candidate := range want {
 		if !reachesSIMD(candidate, directSIMD, calls, make(map[string]bool)) {
 			t.Errorf("%s does not reach a simd package operation", candidate)
+		}
+	}
+}
+
+func checkPortableSIMDBuildConstraint(t *testing.T, path string) {
+	t.Helper()
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var expression constraint.Expr
+	for line := range strings.SplitSeq(string(content), "\n") {
+		if !strings.HasPrefix(line, "//go:build ") {
+			continue
+		}
+		expression, err = constraint.Parse(line)
+		if err != nil {
+			t.Fatalf("parse build constraint in %s: %v", path, err)
+		}
+		break
+	}
+	if expression == nil {
+		t.Fatalf("%s has no build constraint", path)
+	}
+	for _, arch := range []string{"amd64", "arm64", "riscv64"} {
+		if !expression.Eval(func(tag string) bool {
+			return tag == "go1.27" || tag == "goexperiment.simd" || tag == arch
+		}) {
+			t.Errorf("%s is not portable to %s", path, arch)
+		}
+	}
+	for _, optOut := range []string{"safe", "noasm", "gccgo"} {
+		if expression.Eval(func(tag string) bool {
+			return tag == "go1.27" || tag == "goexperiment.simd" || tag == "amd64" || tag == optOut
+		}) {
+			t.Errorf("%s does not honor %s", path, optOut)
 		}
 	}
 }
