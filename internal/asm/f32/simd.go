@@ -2,13 +2,16 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-//go:build go1.27 && goexperiment.simd && amd64 && !safe && !noasm && !gccgo
+//go:build go1.27 && goexperiment.simd && !safe && !noasm && !gccgo
 
-package simdbench
+package f32
 
-import "simd"
+import (
+	"simd"
+	"unsafe"
+)
 
-func F32AxpyUnitarySIMD(alpha float32, x, y []float32) {
+func AxpyUnitarySIMD(alpha float32, x, y []float32) {
 	if !simdSlicesCompatible(x, y[:len(x)]) {
 		for i, value := range x {
 			y[i] += alpha * value
@@ -26,7 +29,7 @@ func F32AxpyUnitarySIMD(alpha float32, x, y []float32) {
 	}
 }
 
-func F32AxpyUnitaryToSIMD(dst []float32, alpha float32, x, y []float32) {
+func AxpyUnitaryToSIMD(dst []float32, alpha float32, x, y []float32) {
 	if !simdSlicesCompatible(dst[:len(x)], x) || !simdSlicesCompatible(dst[:len(x)], y[:len(x)]) {
 		for i, value := range x {
 			dst[i] = alpha*value + y[i]
@@ -44,10 +47,10 @@ func F32AxpyUnitaryToSIMD(dst []float32, alpha float32, x, y []float32) {
 	}
 }
 
-func F32AxpyIncSIMD(alpha float32, x, y []float32, n, incX, incY, ix, iy uintptr) {
+func AxpyIncSIMD(alpha float32, x, y []float32, n, incX, incY, ix, iy uintptr) {
 	width := simd.BroadcastFloat32s(0).Len()
 	a := simd.BroadcastFloat32s(alpha)
-	var xb, yb [16]float32
+	var xb, yb [64]float32
 	remaining := int(n)
 	for remaining >= width {
 		for lane := 0; lane < width; lane++ {
@@ -71,10 +74,10 @@ func F32AxpyIncSIMD(alpha float32, x, y []float32, n, incX, incY, ix, iy uintptr
 	}
 }
 
-func F32AxpyIncToSIMD(dst []float32, incDst, idst uintptr, alpha float32, x, y []float32, n, incX, incY, ix, iy uintptr) {
+func AxpyIncToSIMD(dst []float32, incDst, idst uintptr, alpha float32, x, y []float32, n, incX, incY, ix, iy uintptr) {
 	width := simd.BroadcastFloat32s(0).Len()
 	a := simd.BroadcastFloat32s(alpha)
-	var xb, yb, out [16]float32
+	var xb, yb, out [64]float32
 	remaining := int(n)
 	for remaining >= width {
 		for lane := 0; lane < width; lane++ {
@@ -98,7 +101,7 @@ func F32AxpyIncToSIMD(dst []float32, incDst, idst uintptr, alpha float32, x, y [
 	}
 }
 
-func F32DotUnitarySIMD(x, y []float32) float32 {
+func DotUnitarySIMD(x, y []float32) float32 {
 	acc := simd.BroadcastFloat32s(0)
 	width := acc.Len()
 	var i int
@@ -112,10 +115,10 @@ func F32DotUnitarySIMD(x, y []float32) float32 {
 	return sum
 }
 
-func F32DotIncSIMD(x, y []float32, n, incX, incY, ix, iy uintptr) float32 {
+func DotIncSIMD(x, y []float32, n, incX, incY, ix, iy uintptr) float32 {
 	acc := simd.BroadcastFloat32s(0)
 	width := acc.Len()
-	var xb, yb [16]float32
+	var xb, yb [64]float32
 	remaining := int(n)
 	for remaining >= width {
 		for lane := 0; lane < width; lane++ {
@@ -136,10 +139,10 @@ func F32DotIncSIMD(x, y []float32, n, incX, incY, ix, iy uintptr) float32 {
 	return sum
 }
 
-func F32DdotUnitarySIMD(x, y []float32) float64 {
+func DdotUnitarySIMD(x, y []float32) float64 {
 	acc := simd.BroadcastFloat64s(0)
 	width := acc.Len()
-	var xb, yb [8]float64
+	var xb, yb [32]float64
 	var i int
 	for ; i+width <= len(x); i += width {
 		for lane := 0; lane < width; lane++ {
@@ -155,10 +158,10 @@ func F32DdotUnitarySIMD(x, y []float32) float64 {
 	return sum
 }
 
-func F32DdotIncSIMD(x, y []float32, n, incX, incY, ix, iy uintptr) float64 {
+func DdotIncSIMD(x, y []float32, n, incX, incY, ix, iy uintptr) float64 {
 	acc := simd.BroadcastFloat64s(0)
 	width := acc.Len()
-	var xb, yb [8]float64
+	var xb, yb [32]float64
 	remaining := int(n)
 	for remaining >= width {
 		for lane := 0; lane < width; lane++ {
@@ -179,7 +182,7 @@ func F32DdotIncSIMD(x, y []float32, n, incX, incY, ix, iy uintptr) float64 {
 	return sum
 }
 
-func F32SumSIMD(x []float32) float32 {
+func SumSIMD(x []float32) float32 {
 	acc := simd.BroadcastFloat32s(0)
 	width := acc.Len()
 	var i int
@@ -194,7 +197,7 @@ func F32SumSIMD(x []float32) float32 {
 }
 
 func reduceF32(value simd.Float32s) float32 {
-	var lanes [16]float32
+	var lanes [64]float32
 	width := value.Len()
 	value.Store(lanes[:])
 	var sum float32
@@ -204,7 +207,18 @@ func reduceF32(value simd.Float32s) float32 {
 	return sum
 }
 
-func F32GerSIMD(m, n uintptr, alpha float32, x []float32, incX uintptr, y []float32, incY uintptr, a []float32, lda uintptr) {
+func reduceF64(value simd.Float64s) float64 {
+	var lanes [32]float64
+	width := value.Len()
+	value.Store(lanes[:])
+	var sum float64
+	for _, lane := range lanes[:width] {
+		sum += lane
+	}
+	return sum
+}
+
+func GerSIMD(m, n uintptr, alpha float32, x []float32, incX uintptr, y []float32, incY uintptr, a []float32, lda uintptr) {
 	var ix, iy uintptr
 	if int(incX) < 0 {
 		ix = uintptr(-int(m-1) * int(incX))
@@ -213,7 +227,21 @@ func F32GerSIMD(m, n uintptr, alpha float32, x []float32, incX uintptr, y []floa
 		iy = uintptr(-int(n-1) * int(incY))
 	}
 	for row := uintptr(0); row < m; row++ {
-		F32AxpyIncSIMD(alpha*x[ix], y, a[row*lda:row*lda+n], n, incY, 1, iy, 0)
+		AxpyIncSIMD(alpha*x[ix], y, a[row*lda:row*lda+n], n, incY, 1, iy, 0)
 		ix += incX
 	}
+}
+
+func simdSlicesCompatible(a, b []float32) bool {
+	if len(a) == 0 || len(b) == 0 {
+		return true
+	}
+	aStart := uintptr(unsafe.Pointer(unsafe.SliceData(a)))
+	bStart := uintptr(unsafe.Pointer(unsafe.SliceData(b)))
+	if aStart == bStart {
+		return true
+	}
+	aEnd := aStart + uintptr(len(a))*unsafe.Sizeof(a[0])
+	bEnd := bStart + uintptr(len(b))*unsafe.Sizeof(b[0])
+	return aEnd <= bStart || bEnd <= aStart
 }

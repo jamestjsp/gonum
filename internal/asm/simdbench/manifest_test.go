@@ -24,34 +24,31 @@ func TestAMD64SIMDCandidateCoverage(t *testing.T) {
 	if !ok {
 		t.Fatal("could not locate manifest test")
 	}
-	dir := filepath.Dir(filename)
+	asmRoot := filepath.Dir(filepath.Dir(filename))
 
 	want := make([]string, len(AMD64Assembly))
 	for i, entry := range AMD64Assembly {
-		want[i] = strings.ToUpper(entry.Package) + entry.Symbol + "SIMD"
+		want[i] = entry.Package + "." + entry.Symbol + "SIMD"
 	}
 	sort.Strings(want)
 
-	files, err := filepath.Glob(filepath.Join(dir, "*_amd64.go"))
-	if err != nil {
-		t.Fatal(err)
-	}
 	var got []string
 	directSIMD := make(map[string]bool)
 	calls := make(map[string]map[string]bool)
 	fset := token.NewFileSet()
-	for _, path := range files {
+	for _, pkg := range []string{"c128", "c64", "f32", "f64"} {
+		path := filepath.Join(asmRoot, pkg, "simd.go")
 		file, err := parser.ParseFile(fset, path, nil, 0)
 		if err != nil {
-			t.Fatalf("parse %s: %v", filepath.Base(path), err)
+			t.Fatalf("parse %s: %v", path, err)
 		}
 		for _, declaration := range file.Decls {
 			function, ok := declaration.(*ast.FuncDecl)
 			if !ok || function.Body == nil {
 				continue
 			}
-			name := function.Name.Name
-			if ast.IsExported(name) && strings.HasSuffix(name, "SIMD") {
+			name := pkg + "." + function.Name.Name
+			if ast.IsExported(function.Name.Name) && strings.HasSuffix(function.Name.Name, "SIMD") {
 				got = append(got, name)
 			}
 			calls[name] = make(map[string]bool)
@@ -62,7 +59,7 @@ func TestAMD64SIMDCandidateCoverage(t *testing.T) {
 				}
 				switch target := call.Fun.(type) {
 				case *ast.Ident:
-					calls[name][target.Name] = true
+					calls[name][pkg+"."+target.Name] = true
 				case *ast.SelectorExpr:
 					if receiver, ok := target.X.(*ast.Ident); ok && receiver.Name == "simd" {
 						directSIMD[name] = true
@@ -88,7 +85,7 @@ func TestAMD64BenchmarkCoverage(t *testing.T) {
 	if !ok {
 		t.Fatal("could not locate manifest test")
 	}
-	path := filepath.Join(filepath.Dir(filename), "coverage_amd64_test.go")
+	path := filepath.Join(filepath.Dir(filename), "coverage_simd_test.go")
 	file, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
 	if err != nil {
 		t.Fatal(err)

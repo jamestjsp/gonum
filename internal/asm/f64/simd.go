@@ -2,16 +2,17 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-//go:build go1.27 && goexperiment.simd && amd64 && !safe && !noasm && !gccgo
+//go:build go1.27 && goexperiment.simd && !safe && !noasm && !gccgo
 
-package simdbench
+package f64
 
 import (
 	"math"
 	"simd"
+	"unsafe"
 )
 
-func F64AddSIMD(dst, src []float64) {
+func AddSIMD(dst, src []float64) {
 	if !simdSlicesCompatible(dst[:len(src)], src) {
 		for i, value := range src {
 			dst[i] += value
@@ -28,7 +29,7 @@ func F64AddSIMD(dst, src []float64) {
 	}
 }
 
-func F64AddConstSIMD(alpha float64, x []float64) {
+func AddConstSIMD(alpha float64, x []float64) {
 	a := simd.BroadcastFloat64s(alpha)
 	width := a.Len()
 	var i int
@@ -40,7 +41,7 @@ func F64AddConstSIMD(alpha float64, x []float64) {
 	}
 }
 
-func F64AxpyUnitarySIMD(alpha float64, x, y []float64) {
+func AxpyUnitarySIMD(alpha float64, x, y []float64) {
 	if !simdSlicesCompatible(x, y[:len(x)]) {
 		for i, value := range x {
 			y[i] += alpha * value
@@ -58,7 +59,7 @@ func F64AxpyUnitarySIMD(alpha float64, x, y []float64) {
 	}
 }
 
-func F64AxpyUnitaryToSIMD(dst []float64, alpha float64, x, y []float64) {
+func AxpyUnitaryToSIMD(dst []float64, alpha float64, x, y []float64) {
 	if !simdSlicesCompatible(dst[:len(x)], x) || !simdSlicesCompatible(dst[:len(x)], y[:len(x)]) {
 		for i, value := range x {
 			dst[i] = alpha*value + y[i]
@@ -76,9 +77,9 @@ func F64AxpyUnitaryToSIMD(dst []float64, alpha float64, x, y []float64) {
 	}
 }
 
-func F64AxpyIncSIMD(alpha float64, x, y []float64, n, incX, incY, ix, iy uintptr) {
+func AxpyIncSIMD(alpha float64, x, y []float64, n, incX, incY, ix, iy uintptr) {
 	width := simd.BroadcastFloat64s(0).Len()
-	var xb, yb [8]float64
+	var xb, yb [32]float64
 	remaining := int(n)
 	for remaining >= width {
 		for lane := 0; lane < width; lane++ {
@@ -102,9 +103,9 @@ func F64AxpyIncSIMD(alpha float64, x, y []float64, n, incX, incY, ix, iy uintptr
 	}
 }
 
-func F64AxpyIncToSIMD(dst []float64, incDst, idst uintptr, alpha float64, x, y []float64, n, incX, incY, ix, iy uintptr) {
+func AxpyIncToSIMD(dst []float64, incDst, idst uintptr, alpha float64, x, y []float64, n, incX, incY, ix, iy uintptr) {
 	width := simd.BroadcastFloat64s(0).Len()
-	var xb, yb, out [8]float64
+	var xb, yb, out [32]float64
 	remaining := int(n)
 	for remaining >= width {
 		for lane := 0; lane < width; lane++ {
@@ -128,7 +129,7 @@ func F64AxpyIncToSIMD(dst []float64, incDst, idst uintptr, alpha float64, x, y [
 	}
 }
 
-func F64CumSumSIMD(dst, src []float64) []float64 {
+func CumSumSIMD(dst, src []float64) []float64 {
 	if !simdSlicesCompatible(dst[:len(src)], src) {
 		var sum float64
 		for i, value := range src {
@@ -138,7 +139,7 @@ func F64CumSumSIMD(dst, src []float64) []float64 {
 		return dst
 	}
 	width := simd.BroadcastFloat64s(0).Len()
-	var lanes [8]float64
+	var lanes [32]float64
 	var sum float64
 	var i int
 	for ; i+width <= len(src); i += width {
@@ -156,7 +157,7 @@ func F64CumSumSIMD(dst, src []float64) []float64 {
 	return dst
 }
 
-func F64CumProdSIMD(dst, src []float64) []float64 {
+func CumProdSIMD(dst, src []float64) []float64 {
 	if !simdSlicesCompatible(dst[:len(src)], src) {
 		product := 1.0
 		for i, value := range src {
@@ -166,7 +167,7 @@ func F64CumProdSIMD(dst, src []float64) []float64 {
 		return dst
 	}
 	width := simd.BroadcastFloat64s(0).Len()
-	var lanes [8]float64
+	var lanes [32]float64
 	product := 1.0
 	var i int
 	for ; i+width <= len(src); i += width {
@@ -184,7 +185,7 @@ func F64CumProdSIMD(dst, src []float64) []float64 {
 	return dst
 }
 
-func F64DivSIMD(dst, src []float64) {
+func DivSIMD(dst, src []float64) {
 	if !simdSlicesCompatible(dst[:len(src)], src) {
 		for i, value := range src {
 			dst[i] /= value
@@ -201,7 +202,7 @@ func F64DivSIMD(dst, src []float64) {
 	}
 }
 
-func F64DivToSIMD(dst, x, y []float64) []float64 {
+func DivToSIMD(dst, x, y []float64) []float64 {
 	if !simdSlicesCompatible(dst[:len(x)], x) || !simdSlicesCompatible(dst[:len(x)], y[:len(x)]) {
 		for i, value := range x {
 			dst[i] = value / y[i]
@@ -219,7 +220,7 @@ func F64DivToSIMD(dst, x, y []float64) []float64 {
 	return dst
 }
 
-func F64DotUnitarySIMD(x, y []float64) float64 {
+func DotUnitarySIMD(x, y []float64) float64 {
 	acc := simd.BroadcastFloat64s(0)
 	width := acc.Len()
 	var i int
@@ -233,10 +234,10 @@ func F64DotUnitarySIMD(x, y []float64) float64 {
 	return sum
 }
 
-func F64DotIncSIMD(x, y []float64, n, incX, incY, ix, iy uintptr) float64 {
+func DotIncSIMD(x, y []float64, n, incX, incY, ix, iy uintptr) float64 {
 	acc := simd.BroadcastFloat64s(0)
 	width := acc.Len()
-	var xb, yb [8]float64
+	var xb, yb [32]float64
 	remaining := int(n)
 	for remaining >= width {
 		for lane := 0; lane < width; lane++ {
@@ -257,7 +258,7 @@ func F64DotIncSIMD(x, y []float64, n, incX, incY, ix, iy uintptr) float64 {
 	return sum
 }
 
-func F64L1NormSIMD(x []float64) float64 {
+func L1NormSIMD(x []float64) float64 {
 	acc := simd.BroadcastFloat64s(0)
 	width := acc.Len()
 	var i int
@@ -271,10 +272,10 @@ func F64L1NormSIMD(x []float64) float64 {
 	return sum
 }
 
-func F64L1NormIncSIMD(x []float64, n, incX int) float64 {
+func L1NormIncSIMD(x []float64, n, incX int) float64 {
 	acc := simd.BroadcastFloat64s(0)
 	width := acc.Len()
-	var values [8]float64
+	var values [32]float64
 	index := 0
 	remaining := n
 	for remaining >= width {
@@ -293,7 +294,7 @@ func F64L1NormIncSIMD(x []float64, n, incX int) float64 {
 	return sum
 }
 
-func F64L1DistSIMD(x, y []float64) float64 {
+func L1DistSIMD(x, y []float64) float64 {
 	acc := simd.BroadcastFloat64s(0)
 	width := acc.Len()
 	var i int
@@ -307,13 +308,13 @@ func F64L1DistSIMD(x, y []float64) float64 {
 	return sum
 }
 
-func F64LinfDistSIMD(x, y []float64) float64 {
+func LinfDistSIMD(x, y []float64) float64 {
 	if len(x) == 0 {
 		return 0
 	}
 	maximum := math.Abs(y[0] - x[0])
 	width := simd.BroadcastFloat64s(0).Len()
-	var lanes [8]float64
+	var lanes [32]float64
 	i := 1
 	for ; i+width <= len(x); i += width {
 		simd.LoadFloat64s(y[i:]).Sub(simd.LoadFloat64s(x[i:])).Abs().Store(lanes[:])
@@ -332,10 +333,10 @@ func F64LinfDistSIMD(x, y []float64) float64 {
 	return maximum
 }
 
-func F64L2NormUnitarySIMD(x []float64) float64 {
+func L2NormUnitarySIMD(x []float64) float64 {
 	var state f64NormState
 	width := simd.BroadcastFloat64s(0).Len()
-	var lanes [8]float64
+	var lanes [32]float64
 	var i int
 	for ; i+width <= len(x); i += width {
 		simd.LoadFloat64s(x[i:]).Abs().Store(lanes[:])
@@ -349,10 +350,10 @@ func F64L2NormUnitarySIMD(x []float64) float64 {
 	return state.norm()
 }
 
-func F64L2NormIncSIMD(x []float64, n, incX uintptr) float64 {
+func L2NormIncSIMD(x []float64, n, incX uintptr) float64 {
 	var state f64NormState
 	width := simd.BroadcastFloat64s(0).Len()
-	var lanes [8]float64
+	var lanes [32]float64
 	var index uintptr
 	remaining := int(n)
 	for remaining >= width {
@@ -373,10 +374,10 @@ func F64L2NormIncSIMD(x []float64, n, incX uintptr) float64 {
 	return state.norm()
 }
 
-func F64L2DistanceUnitarySIMD(x, y []float64) float64 {
+func L2DistanceUnitarySIMD(x, y []float64) float64 {
 	var state f64NormState
 	width := simd.BroadcastFloat64s(0).Len()
-	var lanes [8]float64
+	var lanes [32]float64
 	var i int
 	for ; i+width <= len(x); i += width {
 		simd.LoadFloat64s(x[i:]).Sub(simd.LoadFloat64s(y[i:])).Abs().Store(lanes[:])
@@ -426,7 +427,7 @@ func (s f64NormState) norm() float64 {
 	return s.scale * math.Sqrt(s.sumSquares)
 }
 
-func F64ScalUnitarySIMD(alpha float64, x []float64) {
+func ScalUnitarySIMD(alpha float64, x []float64) {
 	a := simd.BroadcastFloat64s(alpha)
 	width := a.Len()
 	var i int
@@ -438,7 +439,7 @@ func F64ScalUnitarySIMD(alpha float64, x []float64) {
 	}
 }
 
-func F64ScalUnitaryToSIMD(dst []float64, alpha float64, x []float64) {
+func ScalUnitaryToSIMD(dst []float64, alpha float64, x []float64) {
 	if !simdSlicesCompatible(dst[:len(x)], x) {
 		for i, value := range x {
 			dst[i] = alpha * value
@@ -456,10 +457,10 @@ func F64ScalUnitaryToSIMD(dst []float64, alpha float64, x []float64) {
 	}
 }
 
-func F64ScalIncSIMD(alpha float64, x []float64, n, incX uintptr) {
+func ScalIncSIMD(alpha float64, x []float64, n, incX uintptr) {
 	width := simd.BroadcastFloat64s(0).Len()
 	a := simd.BroadcastFloat64s(alpha)
-	var values [8]float64
+	var values [32]float64
 	var index uintptr
 	remaining := int(n)
 	for remaining >= width {
@@ -481,10 +482,10 @@ func F64ScalIncSIMD(alpha float64, x []float64, n, incX uintptr) {
 	}
 }
 
-func F64ScalIncToSIMD(dst []float64, incDst uintptr, alpha float64, x []float64, n, incX uintptr) {
+func ScalIncToSIMD(dst []float64, incDst uintptr, alpha float64, x []float64, n, incX uintptr) {
 	width := simd.BroadcastFloat64s(0).Len()
 	a := simd.BroadcastFloat64s(alpha)
-	var values [8]float64
+	var values [32]float64
 	var ix, idst uintptr
 	remaining := int(n)
 	for remaining >= width {
@@ -506,7 +507,7 @@ func F64ScalIncToSIMD(dst []float64, incDst uintptr, alpha float64, x []float64,
 	}
 }
 
-func F64SumSIMD(x []float64) float64 {
+func SumSIMD(x []float64) float64 {
 	acc := simd.BroadcastFloat64s(0)
 	width := acc.Len()
 	var i int
@@ -521,7 +522,7 @@ func F64SumSIMD(x []float64) float64 {
 }
 
 func reduceF64(value simd.Float64s) float64 {
-	var lanes [8]float64
+	var lanes [32]float64
 	width := value.Len()
 	value.Store(lanes[:])
 	var sum float64
@@ -531,7 +532,7 @@ func reduceF64(value simd.Float64s) float64 {
 	return sum
 }
 
-func F64GerSIMD(m, n uintptr, alpha float64, x []float64, incX uintptr, y []float64, incY uintptr, a []float64, lda uintptr) {
+func GerSIMD(m, n uintptr, alpha float64, x []float64, incX uintptr, y []float64, incY uintptr, a []float64, lda uintptr) {
 	var ix, iy uintptr
 	if int(incX) < 0 {
 		ix = uintptr(-int(m-1) * int(incX))
@@ -540,12 +541,12 @@ func F64GerSIMD(m, n uintptr, alpha float64, x []float64, incX uintptr, y []floa
 		iy = uintptr(-int(n-1) * int(incY))
 	}
 	for row := uintptr(0); row < m; row++ {
-		F64AxpyIncSIMD(alpha*x[ix], y, a[row*lda:row*lda+n], n, incY, 1, iy, 0)
+		AxpyIncSIMD(alpha*x[ix], y, a[row*lda:row*lda+n], n, incY, 1, iy, 0)
 		ix += incX
 	}
 }
 
-func F64GemvNSIMD(m, n uintptr, alpha float64, a []float64, lda uintptr, x []float64, incX uintptr, beta float64, y []float64, incY uintptr) {
+func GemvNSIMD(m, n uintptr, alpha float64, a []float64, lda uintptr, x []float64, incX uintptr, beta float64, y []float64, incY uintptr) {
 	var ix, iy uintptr
 	if int(incX) < 0 {
 		ix = uintptr(-int(n-1) * int(incX))
@@ -554,7 +555,7 @@ func F64GemvNSIMD(m, n uintptr, alpha float64, a []float64, lda uintptr, x []flo
 		iy = uintptr(-int(m-1) * int(incY))
 	}
 	for row := uintptr(0); row < m; row++ {
-		dot := F64DotIncSIMD(x, a[row*lda:row*lda+n], n, incX, 1, ix, 0)
+		dot := DotIncSIMD(x, a[row*lda:row*lda+n], n, incX, 1, ix, 0)
 		if beta == 0 {
 			y[iy] = alpha * dot
 		} else {
@@ -564,7 +565,7 @@ func F64GemvNSIMD(m, n uintptr, alpha float64, a []float64, lda uintptr, x []flo
 	}
 }
 
-func F64GemvTSIMD(m, n uintptr, alpha float64, a []float64, lda uintptr, x []float64, incX uintptr, beta float64, y []float64, incY uintptr) {
+func GemvTSIMD(m, n uintptr, alpha float64, a []float64, lda uintptr, x []float64, incX uintptr, beta float64, y []float64, incY uintptr) {
 	var ix, iy uintptr
 	if int(incX) < 0 {
 		ix = uintptr(-int(m-1) * int(incX))
@@ -579,12 +580,26 @@ func F64GemvTSIMD(m, n uintptr, alpha float64, a []float64, lda uintptr, x []flo
 			index += incY
 		}
 	} else if int(incY) < 0 {
-		F64ScalIncSIMD(beta, y, n, uintptr(-int(incY)))
+		ScalIncSIMD(beta, y, n, uintptr(-int(incY)))
 	} else {
-		F64ScalIncSIMD(beta, y, n, incY)
+		ScalIncSIMD(beta, y, n, incY)
 	}
 	for row := uintptr(0); row < m; row++ {
-		F64AxpyIncSIMD(alpha*x[ix], a[row*lda:row*lda+n], y, n, 1, incY, 0, iy)
+		AxpyIncSIMD(alpha*x[ix], a[row*lda:row*lda+n], y, n, 1, incY, 0, iy)
 		ix += incX
 	}
+}
+
+func simdSlicesCompatible(a, b []float64) bool {
+	if len(a) == 0 || len(b) == 0 {
+		return true
+	}
+	aStart := uintptr(unsafe.Pointer(unsafe.SliceData(a)))
+	bStart := uintptr(unsafe.Pointer(unsafe.SliceData(b)))
+	if aStart == bStart {
+		return true
+	}
+	aEnd := aStart + uintptr(len(a))*unsafe.Sizeof(a[0])
+	bEnd := bStart + uintptr(len(b))*unsafe.Sizeof(b[0])
+	return aEnd <= bStart || bEnd <= aStart
 }
