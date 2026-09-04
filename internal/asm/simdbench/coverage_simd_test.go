@@ -24,16 +24,32 @@ type kernelRun struct {
 
 func TestSIMDCandidateEquivalence(t *testing.T) {
 	for _, entry := range AMD64Assembly {
-		entry := entry
-		t.Run(entry.Package+"/"+entry.Symbol, func(t *testing.T) {
-			assembly := newKernelRun(entry, 33, false)
-			candidate := newKernelRun(entry, 33, true)
-			assembly.run()
-			candidate.run()
-			if !sameKernelResult(assembly.result(), candidate.result()) {
-				t.Fatalf("assembly=%v SIMD=%v", assembly.result(), candidate.result())
-			}
-		})
+		for _, n := range []int{0, 1, 2, 3, 4, 7, 8, 15, 16, 17, 31, 32, 33, 65} {
+			t.Run(fmt.Sprintf("%s/%s/n=%d", entry.Package, entry.Symbol, n), func(t *testing.T) {
+				current := newKernelRun(entry, n, false, false)
+				candidate := newKernelRun(entry, n, true, false)
+				current.run()
+				candidate.run()
+				if !sameKernelResult(current.result(), candidate.result()) {
+					t.Fatalf("current=%v SIMD=%v", current.result(), candidate.result())
+				}
+			})
+		}
+	}
+}
+
+func TestSIMDCandidateAllocations(t *testing.T) {
+	for _, entry := range AMD64Assembly {
+		for _, useSIMD := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/%s/simd=%t", entry.Package, entry.Symbol, useSIMD), func(t *testing.T) {
+				runner := newKernelRun(entry, 33, useSIMD, true)
+				allocs := testing.AllocsPerRun(100, runner.run)
+				benchmarkSink = runner.result()
+				if allocs != 0 {
+					t.Fatalf("got %g allocations per call, want zero", allocs)
+				}
+			})
+		}
 	}
 }
 
@@ -48,7 +64,7 @@ func BenchmarkCurrentVsSIMD(b *testing.B) {
 			}{{"current", false}, {"simd", true}} {
 				name := fmt.Sprintf("%s/%s/n=%d/implementation=%s", entry.Package, entry.Symbol, size, implementation.name)
 				b.Run(name, func(b *testing.B) {
-					runner := newKernelRun(entry, size, implementation.simd)
+					runner := newKernelRun(entry, size, implementation.simd, true)
 					b.ReportAllocs()
 					b.ResetTimer()
 					for i := 0; i < b.N; i++ {
@@ -75,7 +91,14 @@ func choose[T any](useSIMD bool, candidate, assembly T) T {
 	return assembly
 }
 
-func newKernelRun(entry Entry, n int, useSIMD bool) kernelRun {
+func newKernelRun(entry Entry, n int, useSIMD, stableInputs bool) kernelRun {
+	realScale := 0.75
+	complexScale := complex(0.75, -0.25)
+	if stableInputs {
+		// Repeated in-place scaling must not decay into subnormal operands.
+		realScale = -1
+		complexScale = 1i
+	}
 	key := entry.Package + "." + entry.Symbol
 	switch key {
 	case "f64.Add":
@@ -112,6 +135,11 @@ func newKernelRun(entry Entry, n int, useSIMD bool) kernelRun {
 		return sliceRun(func() { fn(dst, x) }, dst)
 	case "f64.Div":
 		x, y := f64Values(n, 1.2), f64Values(n, 2.1)
+		if stableInputs {
+			for i := range x {
+				x[i] = -1
+			}
+		}
 		fn := choose(useSIMD, asmf64.DivSIMD, asmf64.Div)
 		return sliceRun(func() { fn(y, x) }, y)
 	case "f64.DivTo":
@@ -166,7 +194,7 @@ func newKernelRun(entry Entry, n int, useSIMD bool) kernelRun {
 	case "f64.ScalUnitary":
 		x := f64Values(n, 0.2)
 		fn := choose(useSIMD, asmf64.ScalUnitarySIMD, asmf64.ScalUnitary)
-		return sliceRun(func() { fn(0.75, x) }, x)
+		return sliceRun(func() { fn(realScale, x) }, x)
 	case "f64.ScalUnitaryTo":
 		x, dst := f64Values(n, 0.2), make([]float64, n)
 		fn := choose(useSIMD, asmf64.ScalUnitaryToSIMD, asmf64.ScalUnitaryTo)
@@ -174,7 +202,7 @@ func newKernelRun(entry Entry, n int, useSIMD bool) kernelRun {
 	case "f64.ScalInc":
 		x := f64Values(2*n, 0.2)
 		fn := choose(useSIMD, asmf64.ScalIncSIMD, asmf64.ScalInc)
-		return sliceRun(func() { fn(0.75, x, uintptr(n), 2) }, x)
+		return sliceRun(func() { fn(realScale, x, uintptr(n), 2) }, x)
 	case "f64.ScalIncTo":
 		x, dst := f64Values(2*n, 0.2), make([]float64, 2*n)
 		fn := choose(useSIMD, asmf64.ScalIncToSIMD, asmf64.ScalIncTo)
@@ -298,19 +326,19 @@ func newKernelRun(entry Entry, n int, useSIMD bool) kernelRun {
 	case "c128.DscalUnitary":
 		x := c128Values(n, 0.2)
 		fn := choose(useSIMD, asmc128.DscalUnitarySIMD, asmc128.DscalUnitary)
-		return sliceRun(func() { fn(0.75, x) }, x)
+		return sliceRun(func() { fn(realScale, x) }, x)
 	case "c128.DscalInc":
 		x := c128Values(2*n, 0.2)
 		fn := choose(useSIMD, asmc128.DscalIncSIMD, asmc128.DscalInc)
-		return sliceRun(func() { fn(0.75, x, uintptr(n), 2) }, x)
+		return sliceRun(func() { fn(realScale, x, uintptr(n), 2) }, x)
 	case "c128.ScalUnitary":
 		x := c128Values(n, 0.2)
 		fn := choose(useSIMD, asmc128.ScalUnitarySIMD, asmc128.ScalUnitary)
-		return sliceRun(func() { fn(complex(0.75, -0.25), x) }, x)
+		return sliceRun(func() { fn(complexScale, x) }, x)
 	case "c128.ScalInc":
 		x := c128Values(2*n, 0.2)
 		fn := choose(useSIMD, asmc128.ScalIncSIMD, asmc128.ScalInc)
-		return sliceRun(func() { fn(complex(0.75, -0.25), x, uintptr(n), 2) }, x)
+		return sliceRun(func() { fn(complexScale, x, uintptr(n), 2) }, x)
 	case "c128.DotcUnitary":
 		x, y := c128Values(n, 0.2), c128Values(n, 0.7)
 		fn := choose(useSIMD, asmc128.DotcUnitarySIMD, asmc128.DotcUnitary)
