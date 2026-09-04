@@ -6,7 +6,10 @@
 
 package c64
 
-import "simd"
+import (
+	"simd"
+	"unsafe"
+)
 
 func AxpyUnitarySIMD(alpha complex64, x, y []complex64) {
 	AxpyUnitaryToSIMD(y, alpha, x, y)
@@ -14,12 +17,19 @@ func AxpyUnitarySIMD(alpha complex64, x, y []complex64) {
 
 func AxpyUnitaryToSIMD(dst []complex64, alpha complex64, x, y []complex64) {
 	width := simd.BroadcastFloat32s(0).Len()
-	var xr, xi, yr, yi, rr, ri [64]float32
+	ar := simd.BroadcastFloat32s(real(alpha))
+	ai := simd.BroadcastFloat32s(imag(alpha))
+	xr := make([]uint32, width)
+	xi := make([]uint32, width)
+	yr := make([]uint32, width)
+	yi := make([]uint32, width)
+	rr := make([]uint32, width)
+	ri := make([]uint32, width)
 	var i int
 	for ; i+width <= len(x); i += width {
 		portableLoadComplex64(x[i:], xr[:], xi[:], width)
 		portableLoadComplex64(y[i:], yr[:], yi[:], width)
-		complex64MulAdd(alpha, xr[:], xi[:], yr[:], yi[:], rr[:], ri[:])
+		complex64MulAdd(ar, ai, xr[:], xi[:], yr[:], yi[:], rr[:], ri[:])
 		portableStoreComplex64(dst[i:], rr[:], ri[:], width)
 	}
 	for ; i < len(x); i++ {
@@ -33,18 +43,28 @@ func AxpyIncSIMD(alpha complex64, x, y []complex64, n, incX, incY, ix, iy uintpt
 
 func AxpyIncToSIMD(dst []complex64, incDst, idst uintptr, alpha complex64, x, y []complex64, n, incX, incY, ix, iy uintptr) {
 	width := simd.BroadcastFloat32s(0).Len()
-	var xr, xi, yr, yi, rr, ri [64]float32
+	ar := simd.BroadcastFloat32s(real(alpha))
+	ai := simd.BroadcastFloat32s(imag(alpha))
+	xr := make([]uint32, width)
+	xi := make([]uint32, width)
+	yr := make([]uint32, width)
+	yi := make([]uint32, width)
+	rr := make([]uint32, width)
+	ri := make([]uint32, width)
 	remaining := int(n)
 	for remaining >= width {
 		for lane := 0; lane < width; lane++ {
-			xr[lane], xi[lane] = real(x[ix]), imag(x[ix])
-			yr[lane], yi[lane] = real(y[iy]), imag(y[iy])
+			xv := (*[2]uint32)(unsafe.Pointer(&x[ix]))
+			xr[lane], xi[lane] = xv[0], xv[1]
+			yv := (*[2]uint32)(unsafe.Pointer(&y[iy]))
+			yr[lane], yi[lane] = yv[0], yv[1]
 			ix += incX
 			iy += incY
 		}
-		complex64MulAdd(alpha, xr[:], xi[:], yr[:], yi[:], rr[:], ri[:])
+		complex64MulAdd(ar, ai, xr[:], xi[:], yr[:], yi[:], rr[:], ri[:])
 		for lane := 0; lane < width; lane++ {
-			dst[idst] = complex(rr[lane], ri[lane])
+			value := (*[2]uint32)(unsafe.Pointer(&dst[idst]))
+			value[0], value[1] = rr[lane], ri[lane]
 			idst += incDst
 		}
 		remaining -= width
@@ -69,13 +89,16 @@ func portableDotUnitarySIMD(x, y []complex64, conjugate bool) complex64 {
 	width := simd.BroadcastFloat32s(0).Len()
 	realAcc := simd.BroadcastFloat32s(0)
 	imagAcc := simd.BroadcastFloat32s(0)
-	var xr, xi, yr, yi [64]float32
-	var i int
-	for ; i+width <= len(x); i += width {
-		portableLoadComplex64(x[i:], xr[:], xi[:], width)
-		portableLoadComplex64(y[i:], yr[:], yi[:], width)
-		xrv, xiv := simd.LoadFloat32s(xr[:]), simd.LoadFloat32s(xi[:])
-		yrv, yiv := simd.LoadFloat32s(yr[:]), simd.LoadFloat32s(yi[:])
+	xr := make([]uint32, width)
+	xi := make([]uint32, width)
+	yr := make([]uint32, width)
+	yi := make([]uint32, width)
+	y = y[:len(x):len(x)]
+	for len(x) >= width {
+		portableLoadComplex64(x[:width], xr[:], xi[:], width)
+		portableLoadComplex64(y[:width], yr[:], yi[:], width)
+		xrv, xiv := simd.LoadUint32s(xr[:]).BitsToFloat32(), simd.LoadUint32s(xi[:]).BitsToFloat32()
+		yrv, yiv := simd.LoadUint32s(yr[:]).BitsToFloat32(), simd.LoadUint32s(yi[:]).BitsToFloat32()
 		if conjugate {
 			realAcc = xrv.Mul(yrv).Add(xiv.Mul(yiv)).Add(realAcc)
 			imagAcc = xrv.Mul(yiv).Sub(xiv.Mul(yrv)).Add(imagAcc)
@@ -83,13 +106,14 @@ func portableDotUnitarySIMD(x, y []complex64, conjugate bool) complex64 {
 			realAcc = xrv.Mul(yrv).Sub(xiv.Mul(yiv)).Add(realAcc)
 			imagAcc = xrv.Mul(yiv).Add(xiv.Mul(yrv)).Add(imagAcc)
 		}
+		x, y = x[width:], y[width:]
 	}
 	sum := complex(portableReduceF32(realAcc), portableReduceF32(imagAcc))
-	for ; i < len(x); i++ {
+	for i, value := range x {
 		if conjugate {
-			sum += conj64(x[i]) * y[i]
+			sum += conj64(value) * y[i]
 		} else {
-			sum += x[i] * y[i]
+			sum += value * y[i]
 		}
 	}
 	return sum
@@ -107,17 +131,22 @@ func portableDotIncSIMD(x, y []complex64, n, incX, incY, ix, iy uintptr, conjuga
 	width := simd.BroadcastFloat32s(0).Len()
 	realAcc := simd.BroadcastFloat32s(0)
 	imagAcc := simd.BroadcastFloat32s(0)
-	var xr, xi, yr, yi [64]float32
+	xr := make([]uint32, width)
+	xi := make([]uint32, width)
+	yr := make([]uint32, width)
+	yi := make([]uint32, width)
 	remaining := int(n)
 	for remaining >= width {
 		for lane := 0; lane < width; lane++ {
-			xr[lane], xi[lane] = real(x[ix]), imag(x[ix])
-			yr[lane], yi[lane] = real(y[iy]), imag(y[iy])
+			xv := (*[2]uint32)(unsafe.Pointer(&x[ix]))
+			xr[lane], xi[lane] = xv[0], xv[1]
+			yv := (*[2]uint32)(unsafe.Pointer(&y[iy]))
+			yr[lane], yi[lane] = yv[0], yv[1]
 			ix += incX
 			iy += incY
 		}
-		xrv, xiv := simd.LoadFloat32s(xr[:]), simd.LoadFloat32s(xi[:])
-		yrv, yiv := simd.LoadFloat32s(yr[:]), simd.LoadFloat32s(yi[:])
+		xrv, xiv := simd.LoadUint32s(xr[:]).BitsToFloat32(), simd.LoadUint32s(xi[:]).BitsToFloat32()
+		yrv, yiv := simd.LoadUint32s(yr[:]).BitsToFloat32(), simd.LoadUint32s(yi[:]).BitsToFloat32()
 		if conjugate {
 			realAcc = xrv.Mul(yrv).Add(xiv.Mul(yiv)).Add(realAcc)
 			imagAcc = xrv.Mul(yiv).Sub(xiv.Mul(yrv)).Add(imagAcc)
@@ -140,23 +169,24 @@ func portableDotIncSIMD(x, y []complex64, n, incX, incY, ix, iy uintptr, conjuga
 	return sum
 }
 
-func complex64MulAdd(alpha complex64, xr, xi, yr, yi, rr, ri []float32) {
-	ar := simd.BroadcastFloat32s(real(alpha))
-	ai := simd.BroadcastFloat32s(imag(alpha))
-	xrv, xiv := simd.LoadFloat32s(xr), simd.LoadFloat32s(xi)
-	xrv.Mul(ar).Sub(xiv.Mul(ai)).Add(simd.LoadFloat32s(yr)).Store(rr)
-	xrv.Mul(ai).Add(xiv.Mul(ar)).Add(simd.LoadFloat32s(yi)).Store(ri)
+func complex64MulAdd(ar, ai simd.Float32s, xr, xi, yr, yi, rr, ri []uint32) {
+	xrv, xiv := simd.LoadUint32s(xr).BitsToFloat32(), simd.LoadUint32s(xi).BitsToFloat32()
+	xrv.Mul(ar).Sub(xiv.Mul(ai)).Add(simd.LoadUint32s(yr).BitsToFloat32()).ToBits().Store(rr)
+	xrv.Mul(ai).Add(xiv.Mul(ar)).Add(simd.LoadUint32s(yi).BitsToFloat32()).ToBits().Store(ri)
 }
 
-func portableLoadComplex64(src []complex64, realPart, imagPart []float32, width int) {
-	for i, value := range src[:width] {
-		realPart[i], imagPart[i] = real(value), imag(value)
+// Integer lane transfers avoid legacy SSE moves inside AMD64 AVX loops.
+func portableLoadComplex64(src []complex64, realPart, imagPart []uint32, width int) {
+	for i := range src[:width] {
+		value := (*[2]uint32)(unsafe.Pointer(&src[i]))
+		realPart[i], imagPart[i] = value[0], value[1]
 	}
 }
 
-func portableStoreComplex64(dst []complex64, realPart, imagPart []float32, width int) {
+func portableStoreComplex64(dst []complex64, realPart, imagPart []uint32, width int) {
 	for i := 0; i < width; i++ {
-		dst[i] = complex(realPart[i], imagPart[i])
+		value := (*[2]uint32)(unsafe.Pointer(&dst[i]))
+		value[0], value[1] = realPart[i], imagPart[i]
 	}
 }
 
@@ -165,8 +195,8 @@ func conj64(value complex64) complex64 {
 }
 
 func portableReduceF32(value simd.Float32s) float32 {
-	var lanes [64]float32
 	width := value.Len()
+	lanes := make([]float32, width)
 	value.Store(lanes[:])
 	var sum float32
 	for _, lane := range lanes[:width] {

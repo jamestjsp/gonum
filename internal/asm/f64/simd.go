@@ -22,7 +22,7 @@ func AddSIMD(dst, src []float64) {
 	width := simd.BroadcastFloat64s(0).Len()
 	var i int
 	for ; i+width <= len(src); i += width {
-		simd.LoadFloat64s(dst[i:]).Add(simd.LoadFloat64s(src[i:])).Store(dst[i:])
+		simd.LoadFloat64s(dst[i : i+width]).Add(simd.LoadFloat64s(src[i : i+width])).Store(dst[i : i+width])
 	}
 	for ; i < len(src); i++ {
 		dst[i] += src[i]
@@ -34,7 +34,7 @@ func AddConstSIMD(alpha float64, x []float64) {
 	width := a.Len()
 	var i int
 	for ; i+width <= len(x); i += width {
-		simd.LoadFloat64s(x[i:]).Add(a).Store(x[i:])
+		simd.LoadFloat64s(x[i : i+width]).Add(a).Store(x[i : i+width])
 	}
 	for ; i < len(x); i++ {
 		x[i] += alpha
@@ -50,12 +50,13 @@ func AxpyUnitarySIMD(alpha float64, x, y []float64) {
 	}
 	a := simd.BroadcastFloat64s(alpha)
 	width := a.Len()
-	var i int
-	for ; i+width <= len(x); i += width {
-		simd.LoadFloat64s(x[i:]).Mul(a).Add(simd.LoadFloat64s(y[i:])).Store(y[i:])
+	y = y[:len(x):len(x)]
+	for len(x) >= width {
+		simd.LoadFloat64s(x[:width]).Mul(a).Add(simd.LoadFloat64s(y[:width])).Store(y[:width])
+		x, y = x[width:], y[width:]
 	}
-	for ; i < len(x); i++ {
-		y[i] += alpha * x[i]
+	for i, value := range x {
+		y[i] += alpha * value
 	}
 }
 
@@ -68,30 +69,40 @@ func AxpyUnitaryToSIMD(dst []float64, alpha float64, x, y []float64) {
 	}
 	a := simd.BroadcastFloat64s(alpha)
 	width := a.Len()
-	var i int
-	for ; i+width <= len(x); i += width {
-		simd.LoadFloat64s(x[i:]).Mul(a).Add(simd.LoadFloat64s(y[i:])).Store(dst[i:])
+	y, dst = y[:len(x):len(x)], dst[:len(x):len(x)]
+	for len(x) >= width {
+		simd.LoadFloat64s(x[:width]).Mul(a).Add(simd.LoadFloat64s(y[:width])).Store(dst[:width])
+		x, y, dst = x[width:], y[width:], dst[width:]
 	}
-	for ; i < len(x); i++ {
-		dst[i] = alpha*x[i] + y[i]
+	for i, value := range x {
+		dst[i] = alpha*value + y[i]
 	}
 }
 
 func AxpyIncSIMD(alpha float64, x, y []float64, n, incX, incY, ix, iy uintptr) {
+	if n == 0 {
+		return
+	}
+	if incX == 1 && incY == 1 {
+		AxpyUnitarySIMD(alpha, x[ix:ix+n], y[iy:iy+n])
+		return
+	}
 	width := simd.BroadcastFloat64s(0).Len()
-	var xb, yb [32]float64
+	// Integer staging avoids legacy SSE loads between AVX operations on amd64.
+	xb := make([]uint64, width)
+	yb := make([]uint64, width)
 	remaining := int(n)
 	for remaining >= width {
 		for lane := 0; lane < width; lane++ {
-			xb[lane] = x[ix]
-			yb[lane] = y[iy]
+			xb[lane] = *(*uint64)(unsafe.Pointer(&x[ix]))
+			yb[lane] = *(*uint64)(unsafe.Pointer(&y[iy]))
 			ix += incX
 			iy += incY
 		}
-		simd.LoadFloat64s(xb[:]).Mul(simd.BroadcastFloat64s(alpha)).Add(simd.LoadFloat64s(yb[:])).Store(yb[:])
+		simd.LoadUint64s(xb).BitsToFloat64().Mul(simd.BroadcastFloat64s(alpha)).Add(simd.LoadUint64s(yb).BitsToFloat64()).ToBits().Store(yb)
 		write := iy - uintptr(width)*incY
 		for lane := 0; lane < width; lane++ {
-			y[write] = yb[lane]
+			*(*uint64)(unsafe.Pointer(&y[write])) = yb[lane]
 			write += incY
 		}
 		remaining -= width
@@ -104,19 +115,28 @@ func AxpyIncSIMD(alpha float64, x, y []float64, n, incX, incY, ix, iy uintptr) {
 }
 
 func AxpyIncToSIMD(dst []float64, incDst, idst uintptr, alpha float64, x, y []float64, n, incX, incY, ix, iy uintptr) {
+	if n == 0 {
+		return
+	}
+	if incDst == 1 && incX == 1 && incY == 1 {
+		AxpyUnitaryToSIMD(dst[idst:idst+n], alpha, x[ix:ix+n], y[iy:iy+n])
+		return
+	}
 	width := simd.BroadcastFloat64s(0).Len()
-	var xb, yb, out [32]float64
+	xb := make([]uint64, width)
+	yb := make([]uint64, width)
+	out := make([]uint64, width)
 	remaining := int(n)
 	for remaining >= width {
 		for lane := 0; lane < width; lane++ {
-			xb[lane] = x[ix]
-			yb[lane] = y[iy]
+			xb[lane] = *(*uint64)(unsafe.Pointer(&x[ix]))
+			yb[lane] = *(*uint64)(unsafe.Pointer(&y[iy]))
 			ix += incX
 			iy += incY
 		}
-		simd.LoadFloat64s(xb[:]).Mul(simd.BroadcastFloat64s(alpha)).Add(simd.LoadFloat64s(yb[:])).Store(out[:])
+		simd.LoadUint64s(xb).BitsToFloat64().Mul(simd.BroadcastFloat64s(alpha)).Add(simd.LoadUint64s(yb).BitsToFloat64()).ToBits().Store(out)
 		for lane := 0; lane < width; lane++ {
-			dst[idst] = out[lane]
+			*(*uint64)(unsafe.Pointer(&dst[idst])) = out[lane]
 			idst += incDst
 		}
 		remaining -= width
@@ -139,16 +159,17 @@ func CumSumSIMD(dst, src []float64) []float64 {
 		return dst
 	}
 	width := simd.BroadcastFloat64s(0).Len()
-	var lanes [32]float64
+	lanes := make([]float64, width)
 	var sum float64
 	var i int
 	for ; i+width <= len(src); i += width {
-		simd.LoadFloat64s(src[i:]).Store(lanes[:])
+		simd.LoadFloat64s(src[i : i+width]).Store(lanes[:])
 		for lane := 1; lane < width; lane++ {
 			lanes[lane] += lanes[lane-1]
 		}
-		simd.LoadFloat64s(lanes[:]).Add(simd.BroadcastFloat64s(sum)).Store(dst[i:])
-		sum = dst[i+width-1]
+		result := simd.LoadFloat64s(lanes).Add(simd.BroadcastFloat64s(sum))
+		sum = lanes[width-1] + sum
+		result.Store(dst[i : i+width])
 	}
 	for ; i < len(src); i++ {
 		sum += src[i]
@@ -167,16 +188,17 @@ func CumProdSIMD(dst, src []float64) []float64 {
 		return dst
 	}
 	width := simd.BroadcastFloat64s(0).Len()
-	var lanes [32]float64
+	lanes := make([]float64, width)
 	product := 1.0
 	var i int
 	for ; i+width <= len(src); i += width {
-		simd.LoadFloat64s(src[i:]).Store(lanes[:])
+		simd.LoadFloat64s(src[i : i+width]).Store(lanes[:])
 		for lane := 1; lane < width; lane++ {
 			lanes[lane] *= lanes[lane-1]
 		}
-		simd.LoadFloat64s(lanes[:]).Mul(simd.BroadcastFloat64s(product)).Store(dst[i:])
-		product = dst[i+width-1]
+		result := simd.LoadFloat64s(lanes).Mul(simd.BroadcastFloat64s(product))
+		product = lanes[width-1] * product
+		result.Store(dst[i : i+width])
 	}
 	for ; i < len(src); i++ {
 		product *= src[i]
@@ -195,7 +217,7 @@ func DivSIMD(dst, src []float64) {
 	width := simd.BroadcastFloat64s(0).Len()
 	var i int
 	for ; i+width <= len(src); i += width {
-		simd.LoadFloat64s(dst[i:]).Div(simd.LoadFloat64s(src[i:])).Store(dst[i:])
+		simd.LoadFloat64s(dst[i : i+width]).Div(simd.LoadFloat64s(src[i : i+width])).Store(dst[i : i+width])
 	}
 	for ; i < len(src); i++ {
 		dst[i] /= src[i]
@@ -212,7 +234,7 @@ func DivToSIMD(dst, x, y []float64) []float64 {
 	width := simd.BroadcastFloat64s(0).Len()
 	var i int
 	for ; i+width <= len(x); i += width {
-		simd.LoadFloat64s(x[i:]).Div(simd.LoadFloat64s(y[i:])).Store(dst[i:])
+		simd.LoadFloat64s(x[i : i+width]).Div(simd.LoadFloat64s(y[i : i+width])).Store(dst[i : i+width])
 	}
 	for ; i < len(x); i++ {
 		dst[i] = x[i] / y[i]
@@ -222,31 +244,49 @@ func DivToSIMD(dst, x, y []float64) []float64 {
 
 func DotUnitarySIMD(x, y []float64) float64 {
 	acc := simd.BroadcastFloat64s(0)
+	acc1, acc2, acc3 := acc, acc, acc
 	width := acc.Len()
-	var i int
-	for ; i+width <= len(x); i += width {
-		acc = simd.LoadFloat64s(x[i:]).Mul(simd.LoadFloat64s(y[i:])).Add(acc)
+	y = y[:len(x):len(x)]
+	for len(x) >= 4*width {
+		xblock, yblock := x[:4*width], y[:4*width]
+		acc = simd.LoadFloat64s(xblock[:width]).Mul(simd.LoadFloat64s(yblock[:width])).Add(acc)
+		acc1 = simd.LoadFloat64s(xblock[width : 2*width]).Mul(simd.LoadFloat64s(yblock[width : 2*width])).Add(acc1)
+		acc2 = simd.LoadFloat64s(xblock[2*width : 3*width]).Mul(simd.LoadFloat64s(yblock[2*width : 3*width])).Add(acc2)
+		acc3 = simd.LoadFloat64s(xblock[3*width : 4*width]).Mul(simd.LoadFloat64s(yblock[3*width : 4*width])).Add(acc3)
+		x, y = x[4*width:], y[4*width:]
+	}
+	acc = acc.Add(acc1).Add(acc2.Add(acc3))
+	for len(x) >= width {
+		acc = simd.LoadFloat64s(x[:width]).Mul(simd.LoadFloat64s(y[:width])).Add(acc)
+		x, y = x[width:], y[width:]
 	}
 	sum := reduceF64(acc)
-	for ; i < len(x); i++ {
-		sum += x[i] * y[i]
+	for i, value := range x {
+		sum += value * y[i]
 	}
 	return sum
 }
 
 func DotIncSIMD(x, y []float64, n, incX, incY, ix, iy uintptr) float64 {
+	if n == 0 {
+		return 0
+	}
+	if incX == 1 && incY == 1 {
+		return DotUnitarySIMD(x[ix:ix+n], y[iy:iy+n])
+	}
 	acc := simd.BroadcastFloat64s(0)
 	width := acc.Len()
-	var xb, yb [32]float64
+	xb := make([]uint64, width)
+	yb := make([]uint64, width)
 	remaining := int(n)
 	for remaining >= width {
 		for lane := 0; lane < width; lane++ {
-			xb[lane] = x[ix]
-			yb[lane] = y[iy]
+			xb[lane] = *(*uint64)(unsafe.Pointer(&x[ix]))
+			yb[lane] = *(*uint64)(unsafe.Pointer(&y[iy]))
 			ix += incX
 			iy += incY
 		}
-		acc = simd.LoadFloat64s(xb[:]).Mul(simd.LoadFloat64s(yb[:])).Add(acc)
+		acc = simd.LoadUint64s(xb).BitsToFloat64().Mul(simd.LoadUint64s(yb).BitsToFloat64()).Add(acc)
 		remaining -= width
 	}
 	sum := reduceF64(acc)
@@ -263,7 +303,7 @@ func L1NormSIMD(x []float64) float64 {
 	width := acc.Len()
 	var i int
 	for ; i+width <= len(x); i += width {
-		acc = simd.LoadFloat64s(x[i:]).Abs().Add(acc)
+		acc = simd.LoadFloat64s(x[i : i+width]).Abs().Add(acc)
 	}
 	sum := reduceF64(acc)
 	for ; i < len(x); i++ {
@@ -273,17 +313,23 @@ func L1NormSIMD(x []float64) float64 {
 }
 
 func L1NormIncSIMD(x []float64, n, incX int) float64 {
+	if n <= 0 {
+		return 0
+	}
+	if incX == 1 {
+		return L1NormSIMD(x[:n])
+	}
 	acc := simd.BroadcastFloat64s(0)
 	width := acc.Len()
-	var values [32]float64
+	values := make([]uint64, width)
 	index := 0
 	remaining := n
 	for remaining >= width {
 		for lane := 0; lane < width; lane++ {
-			values[lane] = x[index]
+			values[lane] = *(*uint64)(unsafe.Pointer(&x[index]))
 			index += incX
 		}
-		acc = simd.LoadFloat64s(values[:]).Abs().Add(acc)
+		acc = simd.LoadUint64s(values).BitsToFloat64().Abs().Add(acc)
 		remaining -= width
 	}
 	sum := reduceF64(acc)
@@ -299,7 +345,7 @@ func L1DistSIMD(x, y []float64) float64 {
 	width := acc.Len()
 	var i int
 	for ; i+width <= len(x); i += width {
-		acc = simd.LoadFloat64s(x[i:]).Sub(simd.LoadFloat64s(y[i:])).Abs().Add(acc)
+		acc = simd.LoadFloat64s(x[i : i+width]).Sub(simd.LoadFloat64s(y[i : i+width])).Abs().Add(acc)
 	}
 	sum := reduceF64(acc)
 	for ; i < len(x); i++ {
@@ -314,10 +360,10 @@ func LinfDistSIMD(x, y []float64) float64 {
 	}
 	maximum := math.Abs(y[0] - x[0])
 	width := simd.BroadcastFloat64s(0).Len()
-	var lanes [32]float64
+	lanes := make([]float64, width)
 	i := 1
 	for ; i+width <= len(x); i += width {
-		simd.LoadFloat64s(y[i:]).Sub(simd.LoadFloat64s(x[i:])).Abs().Store(lanes[:])
+		simd.LoadFloat64s(y[i : i+width]).Sub(simd.LoadFloat64s(x[i : i+width])).Abs().Store(lanes[:])
 		for _, value := range lanes[:width] {
 			if value > maximum || math.IsNaN(maximum) {
 				maximum = value
@@ -432,7 +478,7 @@ func ScalUnitarySIMD(alpha float64, x []float64) {
 	width := a.Len()
 	var i int
 	for ; i+width <= len(x); i += width {
-		simd.LoadFloat64s(x[i:]).Mul(a).Store(x[i:])
+		simd.LoadFloat64s(x[i : i+width]).Mul(a).Store(x[i : i+width])
 	}
 	for ; i < len(x); i++ {
 		x[i] *= alpha
@@ -450,7 +496,7 @@ func ScalUnitaryToSIMD(dst []float64, alpha float64, x []float64) {
 	width := a.Len()
 	var i int
 	for ; i+width <= len(x); i += width {
-		simd.LoadFloat64s(x[i:]).Mul(a).Store(dst[i:])
+		simd.LoadFloat64s(x[i : i+width]).Mul(a).Store(dst[i : i+width])
 	}
 	for ; i < len(x); i++ {
 		dst[i] = alpha * x[i]
@@ -458,20 +504,27 @@ func ScalUnitaryToSIMD(dst []float64, alpha float64, x []float64) {
 }
 
 func ScalIncSIMD(alpha float64, x []float64, n, incX uintptr) {
+	if n == 0 {
+		return
+	}
+	if incX == 1 {
+		ScalUnitarySIMD(alpha, x[:n])
+		return
+	}
 	width := simd.BroadcastFloat64s(0).Len()
 	a := simd.BroadcastFloat64s(alpha)
-	var values [32]float64
+	values := make([]uint64, width)
 	var index uintptr
 	remaining := int(n)
 	for remaining >= width {
 		for lane := 0; lane < width; lane++ {
-			values[lane] = x[index]
+			values[lane] = *(*uint64)(unsafe.Pointer(&x[index]))
 			index += incX
 		}
-		simd.LoadFloat64s(values[:]).Mul(a).Store(values[:])
+		simd.LoadUint64s(values).BitsToFloat64().Mul(a).ToBits().Store(values)
 		write := index - uintptr(width)*incX
 		for lane := 0; lane < width; lane++ {
-			x[write] = values[lane]
+			*(*uint64)(unsafe.Pointer(&x[write])) = values[lane]
 			write += incX
 		}
 		remaining -= width
@@ -483,19 +536,26 @@ func ScalIncSIMD(alpha float64, x []float64, n, incX uintptr) {
 }
 
 func ScalIncToSIMD(dst []float64, incDst uintptr, alpha float64, x []float64, n, incX uintptr) {
+	if n == 0 {
+		return
+	}
+	if incDst == 1 && incX == 1 {
+		ScalUnitaryToSIMD(dst[:n], alpha, x[:n])
+		return
+	}
 	width := simd.BroadcastFloat64s(0).Len()
 	a := simd.BroadcastFloat64s(alpha)
-	var values [32]float64
+	values := make([]uint64, width)
 	var ix, idst uintptr
 	remaining := int(n)
 	for remaining >= width {
 		for lane := 0; lane < width; lane++ {
-			values[lane] = x[ix]
+			values[lane] = *(*uint64)(unsafe.Pointer(&x[ix]))
 			ix += incX
 		}
-		simd.LoadFloat64s(values[:]).Mul(a).Store(values[:])
+		simd.LoadUint64s(values).BitsToFloat64().Mul(a).ToBits().Store(values)
 		for lane := 0; lane < width; lane++ {
-			dst[idst] = values[lane]
+			*(*uint64)(unsafe.Pointer(&dst[idst])) = values[lane]
 			idst += incDst
 		}
 		remaining -= width
@@ -509,21 +569,30 @@ func ScalIncToSIMD(dst []float64, incDst uintptr, alpha float64, x []float64, n,
 
 func SumSIMD(x []float64) float64 {
 	acc := simd.BroadcastFloat64s(0)
+	acc1, acc2, acc3 := acc, acc, acc
 	width := acc.Len()
-	var i int
-	for ; i+width <= len(x); i += width {
-		acc = simd.LoadFloat64s(x[i:]).Add(acc)
+	for len(x) >= 4*width {
+		acc = simd.LoadFloat64s(x[:width]).Add(acc)
+		acc1 = simd.LoadFloat64s(x[width : 2*width]).Add(acc1)
+		acc2 = simd.LoadFloat64s(x[2*width : 3*width]).Add(acc2)
+		acc3 = simd.LoadFloat64s(x[3*width : 4*width]).Add(acc3)
+		x = x[4*width:]
+	}
+	acc = acc.Add(acc1).Add(acc2.Add(acc3))
+	for len(x) >= width {
+		acc = simd.LoadFloat64s(x[:width]).Add(acc)
+		x = x[width:]
 	}
 	sum := reduceF64(acc)
-	for ; i < len(x); i++ {
-		sum += x[i]
+	for _, value := range x {
+		sum += value
 	}
 	return sum
 }
 
 func reduceF64(value simd.Float64s) float64 {
-	var lanes [32]float64
 	width := value.Len()
+	lanes := make([]float64, width)
 	value.Store(lanes[:])
 	var sum float64
 	for _, lane := range lanes[:width] {
