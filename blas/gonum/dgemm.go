@@ -263,6 +263,9 @@ func dgemmParallelBlockedWorkers(aTrans, bTrans bool, m, n, k int, a []float64, 
 
 // dgemmSerial is serial matrix multiply
 func dgemmSerial(aTrans, bTrans bool, m, n, k int, a []float64, lda int, b []float64, ldb int, c []float64, ldc int, alpha float64) {
+	if useGEMMSIMD && dgemmSerialSIMD(aTrans, bTrans, m, n, k, a, lda, b, ldb, c, ldc, alpha) {
+		return
+	}
 	switch {
 	case !aTrans && !bTrans:
 		dgemmSerialNotNot(m, n, k, a, lda, b, ldb, c, ldc, alpha)
