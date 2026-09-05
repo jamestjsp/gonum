@@ -3,15 +3,18 @@
 SIMD candidates live beside the routines they may replace in
 `internal/asm/{f32,f64,c64,c128}/simd.go` and cover every BLAS-related AMD64
 assembly entry point. Portable operations are shared across architectures.
+Portable GEMM tiles live in `blas/gonum/{d,s}gemm_simd.go`.
 Small AMD64 leaves handle complex permutations and widened dot products where
 the portable API or compiler-generated conversions would require scalar staging.
 Other targets retain portable fallbacks. This package keeps only the
 coverage manifest, equivalence tests, and comparison benchmarks.
 
-The candidates do not change production dispatch. Current AMD64 assembly and
-the tuned ARM64 implementations remain active until a candidate is faster on
-the target architecture. On AMD64, `current` below means assembly; on ARM64 it
-means the current ARM64 implementation.
+With Go 1.27 SIMD enabled, measured ARM64 paths now use portable kernels for
+real GEMM, selected contiguous GEMV shapes, and sufficiently long float64 norms.
+Other candidates remain comparison-only; AMD64 production assembly is unchanged.
+See the [BLAS integration results](RESULTS_BLAS.md) for dispatch boundaries,
+accuracy checks, and consumer measurements. On AMD64, `current` below means
+assembly; on ARM64 it means the currently selected production implementation.
 
 With Go 1.27.1 or newer, run the same-binary equivalence tests and benchmarks
 with:
@@ -56,6 +59,10 @@ the optimization follow-up. See [native AMD64 tuning results](RESULTS_AMD64.md) 
 comparison against assembly on an AVX512 host. See the
 [integration review and ARM64 measurements](RESULTS_IMPORT.md) for subsequent
 correctness repairs, portable fallback validation, and remaining regressions.
+The [production BLAS follow-up](RESULTS_BLAS.md) resolves the prefix-scan
+regression and measures actual BLAS and SVD calls. The
+[Go development notes](UPSTREAM.md) record compiler experiments and changes to
+recheck with future releases.
 
 The [initial AMD64 results](https://github.com/jamestjsp/gonum/issues/6#issuecomment-5541048813)
 identified oversized scratch buffers, unnecessary staging for contiguous
@@ -64,8 +71,10 @@ Go 1.27 specializes the width before escape analysis, producing stack storage
 for the selected vector size. This also avoids imposing a fixed future vector
 width ceiling. The allocation regression test must stay green on each target.
 The initial scratch-only change did not improve robust L2 norms. The subsequent
-tuning uses direct sums of squares for ordinary magnitudes and retries the
-scaled recurrence for extreme or non-finite results.
+tuning uses sums of squares for ordinary magnitudes and retries the scaled
+recurrence for extreme or non-finite results. Float64 norms now compensate
+summation error and, on fused backends, product error: the uncompensated
+candidate failed an existing SVD tolerance when combined with GEMV promotion.
 
 Real contiguous increment operations use their unitary candidates. Dot and
 sum candidates use four independent accumulators; explicit load spans reduce
@@ -106,7 +115,7 @@ vector-width contract, generated code, and benchmark crossovers before changing
 dispatch. Removing `goexperiment.simd` is intentionally a small boundary
 change; it is not assumed to be the only migration Go will require.
 
-The native AMD64 follow-up keeps production dispatch unchanged. Contiguous
+The native AMD64 follow-up keeps AMD64 production dispatch unchanged. Contiguous
 complex kernels use interleaved vectors, matrix kernels share loads across rows,
 and ordinary L2 norms use vector sums of squares with a scaled fallback for
 extreme magnitudes. The widening and complex-shuffle AMD64 leaves avoid Go
