@@ -206,6 +206,9 @@ schedule or proof that the compiler will choose every profitable algorithm.
 
 ## Remaining SVD bottleneck
 
+The [subsequent SVD follow-up](RESULTS_SVD.md) repairs the Dlasr defects noted
+below and measures a shared row-blocked rotation implementation.
+
 A separate baseline CPU profile of 256-by-256 SVD with thin vectors attributed
 about 71% of flat samples to Dlasr and 76% cumulative samples to Dbdsqr; Dgemv
 and Dgemm accounted for about 12% and 9% cumulative respectively. These are

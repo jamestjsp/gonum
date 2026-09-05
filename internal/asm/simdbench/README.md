@@ -64,6 +64,8 @@ regression and measures actual BLAS and SVD calls. The
 [Go development notes](UPSTREAM.md) record compiler experiments and changes to
 recheck with future releases. See the [tail and stride follow-up](RESULTS_TAIL_STRIDE.md)
 for subsequent AMD64 candidate tuning and compatibility repairs.
+The [native SVD rotation follow-up](RESULTS_SVD.md) adds independent Netlib
+comparisons and measures shared LAPACK cache-blocking improvements.
 
 The [initial AMD64 results](https://github.com/jamestjsp/gonum/issues/6#issuecomment-5541048813)
 identified oversized scratch buffers, unnecessary staging for contiguous

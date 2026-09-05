@@ -19,7 +19,7 @@ import (
 // rotation matrix k are defined by s[k] and c[k]
 //
 //	R(k) = [ c[k] s[k]]
-//	       [-s[k] s[k]]
+//	       [-s[k] c[k]]
 //
 // If direct == lapack.Forward, the rotation matrices are applied as
 // P = P(z-1) * ... * P(2) * P(1), while if direct == lapack.Backward they are
@@ -153,16 +153,10 @@ func (impl Implementation) Dlasr(side blas.Side, pivot lapack.Pivot, direct lapa
 				stmp := s[j-1]
 				if ctmp != 1 || stmp != 0 {
 					for i := 0; i < n; i++ {
-						ctmp := c[j-1]
-						stmp := s[j-1]
-						if ctmp != 1 || stmp != 0 {
-							for i := 0; i < n; i++ {
-								tmp := a[j*lda+i]
-								tmp2 := a[i]
-								a[j*lda+i] = ctmp*tmp - stmp*tmp2
-								a[i] = stmp*tmp + ctmp*tmp2
-							}
-						}
+						tmp := a[j*lda+i]
+						tmp2 := a[i]
+						a[j*lda+i] = ctmp*tmp - stmp*tmp2
+						a[i] = stmp*tmp + ctmp*tmp2
 					}
 				}
 			}
@@ -198,6 +192,12 @@ func (impl Implementation) Dlasr(side blas.Side, pivot lapack.Pivot, direct lapa
 		return
 	}
 	if pivot == lapack.Variable {
+		if n == 1 {
+			return
+		}
+		if m >= 64 && n >= 64 && dlasrRightVariableBlocked(direct, m, n, c, s, a, lda) {
+			return
+		}
 		if direct == lapack.Forward {
 			for j := 0; j < n-1; j++ {
 				ctmp := c[j]
@@ -284,4 +284,54 @@ func (impl Implementation) Dlasr(side blas.Side, pivot lapack.Pivot, direct lapa
 			}
 		}
 	}
+}
+
+func dlasrRightVariableBlocked(direct lapack.Direct, m, n int, c, s, a []float64, lda int) bool {
+	for j := 0; j < n-1; j++ {
+		if c[j] == 1 && s[j] == 0 {
+			return false
+		}
+	}
+	if direct == lapack.Forward {
+		for ib := 0; ib < m; {
+			iend := min(ib+32, m)
+			if m-iend < 16 {
+				iend = m
+			}
+			for j := 0; j < n-1; j++ {
+				ctmp := c[j]
+				stmp := s[j]
+				k := ib*lda + j
+				for i := ib; i < iend; i++ {
+					tmp := a[k+1]
+					tmp2 := a[k]
+					a[k+1] = ctmp*tmp - stmp*tmp2
+					a[k] = stmp*tmp + ctmp*tmp2
+					k += lda
+				}
+			}
+			ib = iend
+		}
+		return true
+	}
+	for ib := 0; ib < m; {
+		iend := min(ib+32, m)
+		if m-iend < 16 {
+			iend = m
+		}
+		for j := n - 2; j >= 0; j-- {
+			ctmp := c[j]
+			stmp := s[j]
+			k := ib*lda + j
+			for i := ib; i < iend; i++ {
+				tmp := a[k+1]
+				tmp2 := a[k]
+				a[k+1] = ctmp*tmp - stmp*tmp2
+				a[k] = stmp*tmp + ctmp*tmp2
+				k += lda
+			}
+		}
+		ib = iend
+	}
+	return true
 }
