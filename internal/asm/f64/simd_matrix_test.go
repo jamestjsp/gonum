@@ -186,7 +186,7 @@ func BenchmarkSIMDMatrixShapes(b *testing.B) {
 		m, n := shape[0], shape[1]
 		lda := n + 3
 		for _, kernel := range []string{"Ger", "GemvN", "GemvT"} {
-			for _, impl := range []string{"asm", "simd"} {
+			for _, impl := range []string{"current", "simd"} {
 				b.Run(fmt.Sprintf("%s/%dx%d/implementation=%s", kernel, m, n, impl), func(b *testing.B) {
 					a, _ := matrixVector(m*lda, 1)
 					x, _ := matrixVector(max(m, n), 1)

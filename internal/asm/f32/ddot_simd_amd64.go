@@ -11,6 +11,8 @@ import (
 	"simd/archsimd"
 )
 
+const hardwareWidenSIMD = true
+
 // loadWidenSIMD uses vector conversion where the portable API currently lacks
 // widening. The compiler specializes this type switch for the selected width;
 // no interface dispatch or scalar conversion remains in AVX hot loops.

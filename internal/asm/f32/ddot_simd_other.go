@@ -8,6 +8,8 @@ package f32
 
 import "simd"
 
+const hardwareWidenSIMD = false
+
 func loadWidenSIMD(x []float32) simd.Float64s {
 	return loadWidenPortableSIMD(x)
 }

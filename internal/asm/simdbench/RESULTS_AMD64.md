@@ -1,5 +1,12 @@
 Native SIMD tuning against AMD64 assembly, 2026-09-04 US/Central.
 
+This is the report supplied with the AMD64 patch bundle, not a rerun on the
+integration host. Raw samples and the runner remain on the source AMD64 machine
+and were not included in the bundle. Integration subsequently added a
+non-finite complex-dot retry and retained faster portable fallbacks; remeasure
+the integrated revision on AMD64 before treating these timings as current.
+See [ARM64 integration validation](RESULTS_IMPORT.md).
+
 SIMD now beats ASM in 34 of 114 kernel/size cases, loses 68, and is statistically inconclusive in 12. At the larger sizes it wins 30 of 57 cases, loses 23, and is inconclusive in 4. These counts use per-case benchstat tests at alpha=0.05 without a multiple-comparison correction. The preceding branch benchmark had 16 wins overall. This is a substantial improvement in the candidate kernels; production AMD64 BLAS dispatch remains assembly.
 
 Base: e925697fb16c99cbbe52cf4a489f1e6f503923db on codex/arm64-simd-blas. Tuning branch: codex/simd-beat-asm. Compared with base SIMD, 42 cases improved significantly, 68 were inconclusive, and 4 regressed. The equally weighted geometric mean of kernel times fell 44.15%; this is not an application speedup.
@@ -43,4 +50,4 @@ Validation completed after the corrections:
 
 The SIMD API and compiler are experimental. Toolchain release status was checked against the [Go release history](https://go.dev/doc/devel/release); the implementation uses the installed Go1.27.1 source as the API authority. Recheck missing operations and generated code before retaining architecture-specific workarounds on a future Go version.
 
-Raw local evidence is retained in `benchmark-results/simd-tuned/final/` with the repeated-sample runner and machine metadata. See the [comparison instructions](README.md) to build the same candidate/assembly harness.
+Raw evidence is retained on the source AMD64 machine in `benchmark-results/simd-tuned/final/` with the repeated-sample runner and machine metadata. It is not part of this repository or the imported bundle. See the [comparison instructions](README.md) to build the same candidate/assembly harness.

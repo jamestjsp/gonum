@@ -7,6 +7,7 @@
 package c128
 
 import (
+	"math"
 	"simd"
 	"unsafe"
 )
@@ -110,6 +111,22 @@ func DotuUnitarySIMD(x, y []complex128) complex128 {
 }
 
 func portableDotUnitarySIMD(x, y []complex128, conjugate bool) complex128 {
+	sum := interleavedDotUnitarySIMD(x, y, conjugate)
+	if !math.IsNaN(real(sum)) && !math.IsNaN(imag(sum)) && !math.IsInf(real(sum), 0) && !math.IsInf(imag(sum), 0) {
+		return sum
+	}
+	// Separate component sums can overflow before per-element cancellation.
+	sum = 0
+	for i, v := range x {
+		if conjugate {
+			v = conj128(v)
+		}
+		sum += v * y[i]
+	}
+	return sum
+}
+
+func interleavedDotUnitarySIMD(x, y []complex128, conjugate bool) complex128 {
 	if len(x) < 4 {
 		var sum complex128
 		for i, value := range x {
@@ -131,54 +148,7 @@ func portableDotUnitarySIMD(x, y []complex128, conjugate bool) complex128 {
 		}
 		return sum
 	}
-	width := simd.BroadcastFloat64s(0).Len()
-	r0, r1 := simd.BroadcastFloat64s(0), simd.BroadcastFloat64s(0)
-	r2, r3 := simd.BroadcastFloat64s(0), simd.BroadcastFloat64s(0)
-	i0, i1 := simd.BroadcastFloat64s(0), simd.BroadcastFloat64s(0)
-	i2, i3 := simd.BroadcastFloat64s(0), simd.BroadcastFloat64s(0)
-	i := 0
-	for ; i+4*width <= len(xf); i += 4 * width {
-		xv0, yv0 := simd.LoadFloat64s(xf[i:i+width]), simd.LoadFloat64s(yf[i:i+width])
-		xv1, yv1 := simd.LoadFloat64s(xf[i+width:i+2*width]), simd.LoadFloat64s(yf[i+width:i+2*width])
-		xv2, yv2 := simd.LoadFloat64s(xf[i+2*width:i+3*width]), simd.LoadFloat64s(yf[i+2*width:i+3*width])
-		xv3, yv3 := simd.LoadFloat64s(xf[i+3*width:i+4*width]), simd.LoadFloat64s(yf[i+3*width:i+4*width])
-		r0 = r0.Add(xv0.Mul(yv0))
-		i0 = i0.Add(xv0.Mul(complexSwapSIMD(yv0)))
-		r1 = r1.Add(xv1.Mul(yv1))
-		i1 = i1.Add(xv1.Mul(complexSwapSIMD(yv1)))
-		r2 = r2.Add(xv2.Mul(yv2))
-		i2 = i2.Add(xv2.Mul(complexSwapSIMD(yv2)))
-		r3 = r3.Add(xv3.Mul(yv3))
-		i3 = i3.Add(xv3.Mul(complexSwapSIMD(yv3)))
-	}
-	r0, i0 = r0.Add(r1).Add(r2).Add(r3), i0.Add(i1).Add(i2).Add(i3)
-	for ; i+width <= len(xf); i += width {
-		xv, yv := simd.LoadFloat64s(xf[i:i+width]), simd.LoadFloat64s(yf[i:i+width])
-		r0 = r0.Add(xv.Mul(yv))
-		i0 = i0.Add(xv.Mul(complexSwapSIMD(yv)))
-	}
-	r, im := make([]float64, width), make([]float64, width)
-	r0.Store(r)
-	i0.Store(im)
-	var realSum, imagSum float64
-	for lane := 0; lane < width; lane += 2 {
-		if conjugate {
-			realSum += r[lane] + r[lane+1]
-			imagSum += im[lane] - im[lane+1]
-		} else {
-			realSum += r[lane] - r[lane+1]
-			imagSum += im[lane] + im[lane+1]
-		}
-	}
-	sum := complex(realSum, imagSum)
-	for i /= 2; i < len(x); i++ {
-		value := x[i]
-		if conjugate {
-			value = conj128(value)
-		}
-		sum += value * y[i]
-	}
-	return sum
+	return portableDotIncSIMD(x, y, uintptr(len(x)), 1, 1, 0, 0, conjugate)
 }
 
 func DotcIncSIMD(x, y []complex128, n, incX, incY, ix, iy uintptr) complex128 {
@@ -296,17 +266,7 @@ func ScalUnitarySIMD(alpha complex128, x []complex128) {
 		}
 		return
 	}
-	ar := simd.BroadcastFloat64s(real(alpha))
-	ai := simd.BroadcastFloat64s(imag(alpha)).ToBits().Xor(complexEvenSignSIMD()).BitsToFloat64()
-	width := ar.Len()
-	i := 0
-	for ; i+width <= len(xf); i += width {
-		xv := simd.LoadFloat64s(xf[i : i+width])
-		xv.Mul(ar).Add(complexSwapSIMD(xv).Mul(ai)).Store(xf[i : i+width])
-	}
-	for i /= 2; i < len(x); i++ {
-		x[i] *= alpha
-	}
+	portableScaleSIMD(alpha, x, uintptr(len(x)), 1)
 }
 
 func ScalIncSIMD(alpha complex128, x []complex128, n, inc uintptr) {

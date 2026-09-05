@@ -53,7 +53,9 @@ supported wider vectors at runtime.
 
 See [measured ARM64 results and AMD64 instruction findings](RESULTS.md) for
 the optimization follow-up. See [native AMD64 tuning results](RESULTS_AMD64.md) for the subsequent
-comparison against assembly on an AVX512 host.
+comparison against assembly on an AVX512 host. See the
+[integration review and ARM64 measurements](RESULTS_IMPORT.md) for subsequent
+correctness repairs, portable fallback validation, and remaining regressions.
 
 The [initial AMD64 results](https://github.com/jamestjsp/gonum/issues/6#issuecomment-5541048813)
 identified oversized scratch buffers, unnecessary staging for contiguous
@@ -61,8 +63,9 @@ matrix rows, and decaying benchmark inputs. Most scratch now uses `make([]T, wid
 Go 1.27 specializes the width before escape analysis, producing stack storage
 for the selected vector size. This also avoids imposing a fixed future vector
 width ceiling. The allocation regression test must stay green on each target.
-The robust L2 norm kernels retain their prior implementation: this scratch
-change regressed short calls on ARM64 and did not improve long calls.
+The initial scratch-only change did not improve robust L2 norms. The subsequent
+tuning uses direct sums of squares for ordinary magnitudes and retries the
+scaled recurrence for extreme or non-finite results.
 
 Real contiguous increment operations use their unitary candidates. Dot and
 sum candidates use four independent accumulators; explicit load spans reduce
@@ -80,10 +83,11 @@ Complex alpha broadcasts are hoisted outside the vector loop as well.
 Removing these instructions is verified in Windows/AMD64 compiler output;
 their contribution to the office timings still needs native measurement.
 
-Mixed-precision `Ddot`, prefix scans, and robust norm recurrences still mix
-scalar arithmetic with vectors. Efficient widening/reduction/scan operations
-or compiler improvements are the next opportunities. Recheck generated
-instructions with future Go releases before retaining a source workaround.
+Portable mixed-precision fallbacks and prefix scans still mix scalar arithmetic
+with vectors. The AMD64 Ddot leaf avoids scalar widening, and ordinary norms
+avoid the scaled recurrence. Efficient portable widening/reduction/scan
+operations remain opportunities. Recheck generated instructions with future Go
+releases before retaining a source workaround.
 
 In-place scaling and division benchmarks use unit-magnitude factors to avoid
 subnormal decay. Numerical equivalence tests retain the original factors.

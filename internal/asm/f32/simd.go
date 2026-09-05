@@ -208,24 +208,44 @@ func DdotUnitarySIMD(x, y []float32) float64 {
 
 func ddotUnitaryPortableSIMD(x, y []float32) float64 {
 	acc := simd.BroadcastFloat64s(0)
-	acc1, acc2, acc3 := acc, acc, acc
 	width := acc.Len()
+	xb, yb := make([]float64, width), make([]float64, width)
 	y = y[:len(x):len(x)]
-	for len(x) >= 4*width {
-		acc = loadWidenSIMD(x[:width]).Mul(loadWidenSIMD(y[:width])).Add(acc)
-		acc1 = loadWidenSIMD(x[width : 2*width]).Mul(loadWidenSIMD(y[width : 2*width])).Add(acc1)
-		acc2 = loadWidenSIMD(x[2*width : 3*width]).Mul(loadWidenSIMD(y[2*width : 3*width])).Add(acc2)
-		acc3 = loadWidenSIMD(x[3*width : 4*width]).Mul(loadWidenSIMD(y[3*width : 4*width])).Add(acc3)
-		x, y = x[4*width:], y[4*width:]
-	}
-	acc = acc.Add(acc1).Add(acc2.Add(acc3))
 	for len(x) >= width {
-		acc = loadWidenSIMD(x[:width]).Mul(loadWidenSIMD(y[:width])).Add(acc)
+		for lane, value := range x[:width] {
+			xb[lane] = float64(value)
+			yb[lane] = float64(y[:width][lane])
+		}
+		acc = simd.LoadFloat64s(xb[:]).Mul(simd.LoadFloat64s(yb[:])).Add(acc)
 		x, y = x[width:], y[width:]
 	}
 	sum := reduceF64(acc)
 	for i, value := range x {
 		sum += float64(value) * float64(y[i])
+	}
+	return sum
+}
+
+func ddotIncPortableSIMD(x, y []float32, n, incX, incY, ix, iy uintptr) float64 {
+	acc := simd.BroadcastFloat64s(0)
+	width := acc.Len()
+	xb, yb := make([]float64, width), make([]float64, width)
+	remaining := int(n)
+	for remaining >= width {
+		for lane := 0; lane < width; lane++ {
+			xb[lane] = float64(x[ix])
+			yb[lane] = float64(y[iy])
+			ix += incX
+			iy += incY
+		}
+		acc = simd.LoadFloat64s(xb[:]).Mul(simd.LoadFloat64s(yb[:])).Add(acc)
+		remaining -= width
+	}
+	sum := reduceF64(acc)
+	for ; remaining > 0; remaining-- {
+		sum += float64(x[ix]) * float64(y[iy])
+		ix += incX
+		iy += incY
 	}
 	return sum
 }
@@ -236,6 +256,9 @@ func DdotIncSIMD(x, y []float32, n, incX, incY, ix, iy uintptr) float64 {
 	}
 	if incX == 1 && incY == 1 {
 		return DdotUnitarySIMD(x[ix:ix+n], y[iy:iy+n])
+	}
+	if !hardwareWidenSIMD {
+		return ddotIncPortableSIMD(x, y, n, incX, incY, ix, iy)
 	}
 	acc := simd.BroadcastFloat64s(0)
 	width := acc.Len()

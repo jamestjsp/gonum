@@ -7,6 +7,7 @@
 package c64
 
 import (
+	"math"
 	"simd"
 	"unsafe"
 )
@@ -104,6 +105,22 @@ func DotuUnitarySIMD(x, y []complex64) complex64 {
 }
 
 func portableDotUnitarySIMD(x, y []complex64, conjugate bool) complex64 {
+	sum := interleavedDotUnitarySIMD(x, y, conjugate)
+	if !math.IsNaN(float64(real(sum))) && !math.IsNaN(float64(imag(sum))) && !math.IsInf(float64(real(sum)), 0) && !math.IsInf(float64(imag(sum)), 0) {
+		return sum
+	}
+	// Separate component sums can overflow before per-element cancellation.
+	sum = 0
+	for i, v := range x {
+		if conjugate {
+			v = conj64(v)
+		}
+		sum += v * y[i]
+	}
+	return sum
+}
+
+func interleavedDotUnitarySIMD(x, y []complex64, conjugate bool) complex64 {
 	if len(x) < 4 {
 		var sum complex64
 		for i, value := range x {
