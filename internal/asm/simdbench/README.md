@@ -62,7 +62,8 @@ correctness repairs, portable fallback validation, and remaining regressions.
 The [production BLAS follow-up](RESULTS_BLAS.md) resolves the prefix-scan
 regression and measures actual BLAS and SVD calls. The
 [Go development notes](UPSTREAM.md) record compiler experiments and changes to
-recheck with future releases.
+recheck with future releases. See the [tail and stride follow-up](RESULTS_TAIL_STRIDE.md)
+for subsequent AMD64 candidate tuning and compatibility repairs.
 
 The [initial AMD64 results](https://github.com/jamestjsp/gonum/issues/6#issuecomment-5541048813)
 identified oversized scratch buffers, unnecessary staging for contiguous
@@ -78,9 +79,12 @@ candidate failed an existing SVD tolerance when combined with GEMV promotion.
 
 Real contiguous increment operations use their unitary candidates. Dot and
 sum candidates use four independent accumulators; explicit load spans reduce
-redundant bounds checks. General strides, mixed-precision conversion, complex
-deinterleaving, and prefix scans still need staging with the current portable
-API. These remain candidates for further algorithm or compiler improvements.
+redundant bounds checks. On AMD64, native leaves now avoid component scratch
+arrays for several strided float32 and complex operations; float64 sparse
+updates use scalar unrolling where it wins. Fixed scalar prefix blocks retain
+the existing arithmetic order while avoiding intermediate staging. Other
+architectures keep their established portable paths. These are comparison
+candidates, and memory/address overhead remains significant against assembly.
 
 AMD64 code inspection also found legacy SSE scalar moves alternating with AVX
 vector operations inside staging loops. Integer memory views now move lane
@@ -92,7 +96,7 @@ Complex alpha broadcasts are hoisted outside the vector loop as well.
 Removing these instructions is verified in Windows/AMD64 compiler output;
 their contribution to the office timings still needs native measurement.
 
-Portable mixed-precision fallbacks and prefix scans still mix scalar arithmetic
+Portable mixed-precision and prefix fallbacks still mix scalar arithmetic
 with vectors. The AMD64 Ddot leaf avoids scalar widening, and ordinary norms
 avoid the scaled recurrence. Efficient portable widening/reduction/scan
 operations remain opportunities. Recheck generated instructions with future Go
@@ -123,3 +127,8 @@ extreme magnitudes. The widening and complex-shuffle AMD64 leaves avoid Go
 compiler or portable API changes. Small calls, arbitrary strides, and matrix
 shapes still have different crossovers; native timing is required before changing
 production dispatch.
+
+The `BenchmarkSIMDBoundaries` and `BenchmarkSIMDStrides` sweeps cover uneven
+lengths and increments 1, 2, 3, 7, 16 and 63. Cumulative-product timing uses
+bounded alternating reciprocal factors so prefixes remain normal and finite.
+Apply the same benchmark harness to both source revisions before comparison.

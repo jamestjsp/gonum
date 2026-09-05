@@ -133,6 +133,13 @@ not allocate.
 
 ## Candidate and cutoff checks
 
+Correction, 2026-09-05: the historical CumProd timings in the paragraph below
+used inputs that overflowed. They are not valid ordinary-data performance
+evidence. The [tail/stride follow-up](RESULTS_TAIL_STRIDE.md) replaces the
+benchmark inputs with finite reciprocal factors and reruns both revisions with
+the same corrected harness. Its AMD64 results do not replace native ARM64
+measurements. The CumSum results are unaffected by this input correction.
+
 The final prefix comparison uses a fresh baseline build at the same base commit,
 75 ms samples, and the unchanged candidate harness. CumSum takes 40.3% less
 time at n=31 and 42.8% less at n=4096 (4.463 → 2.554 µs); CumProd takes 16.2%

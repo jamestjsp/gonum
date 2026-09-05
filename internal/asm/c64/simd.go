@@ -34,7 +34,12 @@ func AxpyUnitaryToSIMD(dst []complex64, alpha complex64, x, y []complex64) {
 		xv, yv := simd.LoadFloat32s(xf[i:i+width]), simd.LoadFloat32s(yf[i:i+width])
 		xv.Mul(ar).Add(complexSwapSIMD(xv).Mul(ai)).Add(yv).Store(df[i : i+width])
 	}
-	for i /= 2; i < n; i++ {
+	i /= 2
+	if width >= 16 && n-i >= 4 && complexNativeSIMD() {
+		i += complexAxpyTailNativeSIMD(dst[i:n], alpha, x[i:], y[i:n])
+	}
+
+	for ; i < n; i++ {
 		dst[i] = alpha*x[i] + y[i]
 	}
 }
@@ -58,6 +63,11 @@ func AxpyIncToSIMD(dst []complex64, incDst, idst uintptr, alpha complex64, x, y 
 			iy += incY
 			idst += incDst
 		}
+		return
+	}
+
+	if complexNativeSIMD() {
+		complexAxpyIncNativeSIMD(dst, incDst, idst, alpha, x, y, n, incX, incY, ix, iy)
 		return
 	}
 
@@ -131,6 +141,21 @@ func interleavedDotUnitarySIMD(x, y []complex64, conjugate bool) complex64 {
 		}
 		return sum
 	}
+	// At 256 bits, use the wide loop from 32 elements to avoid short-kernel
+	// setup overhead. Preserve the wider cutoff at the other native widths.
+	shortLimit := 64
+	if simd.BroadcastFloat32s(0).Len() == 8 {
+		shortLimit = 32
+	}
+	if len(x) < shortLimit && complexNativeSIMD() {
+		sum := complexDotShortNativeSIMD(x, y, conjugate)
+		if !math.IsNaN(float64(real(sum))) && !math.IsNaN(float64(imag(sum))) && !math.IsInf(float64(real(sum)), 0) && !math.IsInf(float64(imag(sum)), 0) {
+			return sum
+		}
+		// A different grouping may avoid intermediate overflow. Retry the
+		// established vector algorithm before the wrapper recovers sequentially.
+	}
+
 	xf, yf := complexFloatsSIMD(x), complexFloatsSIMD(y[:len(x)])
 	width := simd.BroadcastFloat32s(0).Len()
 	r0, r1 := simd.BroadcastFloat32s(0), simd.BroadcastFloat32s(0)
@@ -189,6 +214,9 @@ func DotcIncSIMD(x, y []complex64, n, incX, incY, ix, iy uintptr) complex64 {
 	if incX == 1 && incY == 1 {
 		return portableDotUnitarySIMD(x[ix:ix+n], y[iy:iy+n], true)
 	}
+	if complexNativeSIMD() {
+		return complexDotIncNativeSIMD(x, y, n, incX, incY, ix, iy, true)
+	}
 	return portableDotIncSIMD(x, y, n, incX, incY, ix, iy, true)
 }
 
@@ -198,6 +226,9 @@ func DotuIncSIMD(x, y []complex64, n, incX, incY, ix, iy uintptr) complex64 {
 	}
 	if incX == 1 && incY == 1 {
 		return portableDotUnitarySIMD(x[ix:ix+n], y[iy:iy+n], false)
+	}
+	if complexNativeSIMD() {
+		return complexDotIncNativeSIMD(x, y, n, incX, incY, ix, iy, false)
 	}
 	return portableDotIncSIMD(x, y, n, incX, incY, ix, iy, false)
 }

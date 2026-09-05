@@ -223,3 +223,45 @@ func TestSIMDCandidateComplexStrideOverlap(t *testing.T) {
 		}
 	}
 }
+
+func TestSIMDCandidateComplexMixedStrides(t *testing.T) {
+	for _, n := range []uintptr{1, 2, 3, 4, 7, 8, 9, 31, 32, 33, 63} {
+		for _, increments := range [][3]int{{3, 7, 5}, {-3, 2, 7}, {0, 7, 3}, {7, -3, 2}} {
+			x, y, dst := make([]complex128, 512), make([]complex128, 512), make([]complex128, 512)
+			for i := range x {
+				x[i] = complex(float64(i%13-6)/4, float64(i%7-3)/8)
+				y[i] = complex(float64(i%11-5)/8, float64(i%17-8)/4)
+				dst[i] = 17 + 19i
+			}
+			startX, startY := uintptr(3), uintptr(5)
+			if increments[0] < 0 {
+				startX += uintptr(-increments[0]) * (n - 1)
+			}
+			if increments[1] < 0 {
+				startY += uintptr(-increments[1]) * (n - 1)
+			}
+			incX, incY, incDst := uintptr(increments[0]), uintptr(increments[1]), uintptr(increments[2])
+			ix, iy, idst := startX, startY, uintptr(2)
+			want := slices.Clone(dst)
+			var wantc, wantu complex128
+			for i := uintptr(0); i < n; i++ {
+				want[idst] = (0.75-0.25i)*x[ix] + y[iy]
+				wantc += conj128(x[ix]) * y[iy]
+				wantu += x[ix] * y[iy]
+				ix += incX
+				iy += incY
+				idst += incDst
+			}
+			AxpyIncToSIMD(dst, incDst, 2, 0.75-0.25i, x, y, n, incX, incY, startX, startY)
+			if !slices.Equal(dst, want) {
+				t.Fatalf("Axpy mixed strides n=%d increments=%v", n, increments)
+			}
+			if got := DotcIncSIMD(x, y, n, incX, incY, startX, startY); got != wantc {
+				t.Fatalf("Dotc mixed strides n=%d increments=%v: got %v want %v", n, increments, got, wantc)
+			}
+			if got := DotuIncSIMD(x, y, n, incX, incY, startX, startY); got != wantu {
+				t.Fatalf("Dotu mixed strides n=%d increments=%v: got %v want %v", n, increments, got, wantu)
+			}
+		}
+	}
+}

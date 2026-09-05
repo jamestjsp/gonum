@@ -44,6 +44,19 @@ func TestBenchmarkInputsStayNormal(t *testing.T) {
 	}
 }
 
+func TestBenchmarkCumulativeProductsStayNormal(t *testing.T) {
+	entry := Entry{Package: "f64", Symbol: "CumProd"}
+	for _, n := range []int{33, 4095, 4096, 4097} {
+		for _, useSIMD := range []bool{false, true} {
+			t.Run(fmt.Sprintf("n=%d/simd=%t", n, useSIMD), func(t *testing.T) {
+				runner := newKernelRun(entry, n, useSIMD, true)
+				runner.run()
+				checkNormalBenchmarkResult(t, runner.result())
+			})
+		}
+	}
+}
+
 func checkNormalBenchmarkResult(t *testing.T, result any) {
 	t.Helper()
 	check := func(i int, x float64) {

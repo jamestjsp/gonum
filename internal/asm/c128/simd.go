@@ -67,6 +67,11 @@ func AxpyIncToSIMD(dst []complex128, incDst, idst uintptr, alpha complex128, x, 
 		return
 	}
 
+	if complexNativeSIMD() {
+		complexAxpyIncNativeSIMD(dst, incDst, idst, alpha, x, y, n, incX, incY, ix, iy)
+		return
+	}
+
 	width := simd.BroadcastFloat64s(0).Len()
 	ar := simd.BroadcastFloat64s(real(alpha))
 	ai := simd.BroadcastFloat64s(imag(alpha))
@@ -158,6 +163,9 @@ func DotcIncSIMD(x, y []complex128, n, incX, incY, ix, iy uintptr) complex128 {
 	if incX == 1 && incY == 1 {
 		return portableDotUnitarySIMD(x[ix:ix+n], y[iy:iy+n], true)
 	}
+	if complexNativeSIMD() {
+		return complexDotIncNativeSIMD(x, y, n, incX, incY, ix, iy, true)
+	}
 	return portableDotIncSIMD(x, y, n, incX, incY, ix, iy, true)
 }
 
@@ -167,6 +175,9 @@ func DotuIncSIMD(x, y []complex128, n, incX, incY, ix, iy uintptr) complex128 {
 	}
 	if incX == 1 && incY == 1 {
 		return portableDotUnitarySIMD(x[ix:ix+n], y[iy:iy+n], false)
+	}
+	if complexNativeSIMD() {
+		return complexDotIncNativeSIMD(x, y, n, incX, incY, ix, iy, false)
 	}
 	return portableDotIncSIMD(x, y, n, incX, incY, ix, iy, false)
 }
@@ -249,6 +260,10 @@ func DscalIncSIMD(alpha float64, x []complex128, n, inc uintptr) {
 		}
 		return
 	}
+	if complexNativeSIMD() {
+		complexDscalIncNativeSIMD(alpha, x, n, inc)
+		return
+	}
 	portableDscaleSIMD(alpha, x, n, inc)
 }
 
@@ -281,6 +296,10 @@ func ScalIncSIMD(alpha complex128, x []complex128, n, inc uintptr) {
 		for ; n > 0; n-- {
 			x[0] *= alpha
 		}
+		return
+	}
+	if complexNativeSIMD() {
+		complexScalIncNativeSIMD(alpha, x, n, inc)
 		return
 	}
 	portableScaleSIMD(alpha, x, n, inc)

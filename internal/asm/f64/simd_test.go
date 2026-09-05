@@ -33,6 +33,24 @@ func TestPortableSIMDZeroLength(t *testing.T) {
 	}
 }
 
+func TestSIMDReductionOverflowTail(t *testing.T) {
+	width := simd.BroadcastFloat64s(0).Len()
+	m := 0.75 * math.MaxFloat64
+	x, ones := make([]float64, width+1), make([]float64, width+1)
+	x[0], x[1], x[width] = m, -m, m
+	for i := range ones {
+		ones[i] = 1
+	}
+	// Reduce the full vectors before adding the tail. Folding the last m
+	// into vector lane zero first would overflow despite a finite result.
+	if got := SumSIMD(x); got != m {
+		t.Fatalf("Sum: got %g want %g", got, m)
+	}
+	if got := DotUnitarySIMD(x, ones); got != m {
+		t.Fatalf("DotUnitary: got %g want %g", got, m)
+	}
+}
+
 func TestPortableSIMDIncrements(t *testing.T) {
 	for _, n := range []int{0, 1, 2, 3, 4, 7, 8, 15, 16, 17, 31, 32, 33, 65, 257} {
 		for _, inc := range []int{1, 2, -1} {
@@ -206,7 +224,7 @@ func TestPortableSIMDPrefix(t *testing.T) {
 
 func TestPortableSIMDPrefixCarry(t *testing.T) {
 	width := simd.BroadcastFloat64s(0).Len()
-	for _, n := range []int{width - 1, width, width + 1, 2*width - 1, 2 * width, 2*width + 1, 3*width + 1} {
+	for _, n := range []int{width - 1, width, width + 1, 2*width - 1, 2 * width, 2*width + 1, 3*width + 1, 129, 257, 1025} {
 		for _, product := range []bool{false, true} {
 			for _, layout := range []struct {
 				name     string

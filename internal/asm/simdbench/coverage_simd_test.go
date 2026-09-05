@@ -92,6 +92,12 @@ func choose[T any](useSIMD bool, candidate, assembly T) T {
 }
 
 func newKernelRun(entry Entry, n int, useSIMD, stableInputs bool) kernelRun {
+	return newKernelRunStride(entry, n, 2, useSIMD, stableInputs)
+}
+
+// newKernelRunStride keeps the timed call identical across stride experiments.
+// Strides are positive; dependency and negative-stride tests live with the kernels.
+func newKernelRunStride(entry Entry, n, stride int, useSIMD, stableInputs bool) kernelRun {
 	realScale := 0.75
 	complexScale := complex(0.75, -0.25)
 	if stableInputs {
@@ -118,19 +124,32 @@ func newKernelRun(entry Entry, n int, useSIMD, stableInputs bool) kernelRun {
 		fn := choose(useSIMD, asmf64.AxpyUnitaryToSIMD, asmf64.AxpyUnitaryTo)
 		return sliceRun(func() { fn(dst, 0.75, x, y) }, dst)
 	case "f64.AxpyInc":
-		x, y := f64Values(2*n, 0.2), f64Values(2*n, 0.7)
+		x, y := f64Values(stride*n, 0.2), f64Values(stride*n, 0.7)
 		fn := choose(useSIMD, asmf64.AxpyIncSIMD, asmf64.AxpyInc)
-		return sliceRun(func() { fn(0.75, x, y, uintptr(n), 2, 2, 0, 0) }, y)
+		return sliceRun(func() { fn(0.75, x, y, uintptr(n), uintptr(stride), uintptr(stride), 0, 0) }, y)
 	case "f64.AxpyIncTo":
-		x, y, dst := f64Values(2*n, 0.2), f64Values(2*n, 0.7), make([]float64, 2*n)
+		x, y, dst := f64Values(stride*n, 0.2), f64Values(stride*n, 0.7), make([]float64, stride*n)
 		fn := choose(useSIMD, asmf64.AxpyIncToSIMD, asmf64.AxpyIncTo)
-		return sliceRun(func() { fn(dst, 2, 0, 0.75, x, y, uintptr(n), 2, 2, 0, 0) }, dst)
+		return sliceRun(func() { fn(dst, uintptr(stride), 0, 0.75, x, y, uintptr(n), uintptr(stride), uintptr(stride), 0, 0) }, dst)
 	case "f64.CumSum":
 		x, dst := f64Values(n, 0.2), make([]float64, n)
 		fn := choose(useSIMD, asmf64.CumSumSIMD, asmf64.CumSum)
 		return sliceRun(func() { fn(dst, x) }, dst)
 	case "f64.CumProd":
 		x, dst := f64Values(n, 0.98), make([]float64, n)
+		if stableInputs {
+			// Reciprocal pairs keep every prefix normal. The previous values
+			// exceeded one in magnitude and overflowed on long inputs.
+			for i := range x {
+				x[i] = 1.25
+				if i%2 != 0 {
+					x[i] = 0.8
+				}
+				if i%3 == 0 {
+					x[i] = -x[i]
+				}
+			}
+		}
 		fn := choose(useSIMD, asmf64.CumProdSIMD, asmf64.CumProd)
 		return sliceRun(func() { fn(dst, x) }, dst)
 	case "f64.Div":
@@ -152,20 +171,20 @@ func newKernelRun(entry Entry, n int, useSIMD, stableInputs bool) kernelRun {
 		var result float64
 		return scalarRun(func() { result = fn(x, y) }, &result)
 	case "f64.DotInc":
-		x, y := f64Values(2*n, 0.2), f64Values(2*n, 0.7)
+		x, y := f64Values(stride*n, 0.2), f64Values(stride*n, 0.7)
 		fn := choose(useSIMD, asmf64.DotIncSIMD, asmf64.DotInc)
 		var result float64
-		return scalarRun(func() { result = fn(x, y, uintptr(n), 2, 2, 0, 0) }, &result)
+		return scalarRun(func() { result = fn(x, y, uintptr(n), uintptr(stride), uintptr(stride), 0, 0) }, &result)
 	case "f64.L1Norm":
 		x := f64Values(n, -0.5)
 		fn := choose(useSIMD, asmf64.L1NormSIMD, asmf64.L1Norm)
 		var result float64
 		return scalarRun(func() { result = fn(x) }, &result)
 	case "f64.L1NormInc":
-		x := f64Values(2*n, -0.5)
+		x := f64Values(stride*n, -0.5)
 		fn := choose(useSIMD, asmf64.L1NormIncSIMD, asmf64.L1NormInc)
 		var result float64
-		return scalarRun(func() { result = fn(x, n, 2) }, &result)
+		return scalarRun(func() { result = fn(x, n, stride) }, &result)
 	case "f64.L1Dist":
 		x, y := f64Values(n, -0.5), f64Values(n, 0.9)
 		fn := choose(useSIMD, asmf64.L1DistSIMD, asmf64.L1Dist)
@@ -182,10 +201,10 @@ func newKernelRun(entry Entry, n int, useSIMD, stableInputs bool) kernelRun {
 		var result float64
 		return scalarRun(func() { result = fn(x) }, &result)
 	case "f64.L2NormInc":
-		x := f64Values(2*n, -0.5)
+		x := f64Values(stride*n, -0.5)
 		fn := choose(useSIMD, asmf64.L2NormIncSIMD, asmf64.L2NormInc)
 		var result float64
-		return scalarRun(func() { result = fn(x, uintptr(n), 2) }, &result)
+		return scalarRun(func() { result = fn(x, uintptr(n), uintptr(stride)) }, &result)
 	case "f64.L2DistanceUnitary":
 		x, y := f64Values(n, -0.5), f64Values(n, 0.9)
 		fn := choose(useSIMD, asmf64.L2DistanceUnitarySIMD, asmf64.L2DistanceUnitary)
@@ -200,13 +219,13 @@ func newKernelRun(entry Entry, n int, useSIMD, stableInputs bool) kernelRun {
 		fn := choose(useSIMD, asmf64.ScalUnitaryToSIMD, asmf64.ScalUnitaryTo)
 		return sliceRun(func() { fn(dst, 0.75, x) }, dst)
 	case "f64.ScalInc":
-		x := f64Values(2*n, 0.2)
+		x := f64Values(stride*n, 0.2)
 		fn := choose(useSIMD, asmf64.ScalIncSIMD, asmf64.ScalInc)
-		return sliceRun(func() { fn(realScale, x, uintptr(n), 2) }, x)
+		return sliceRun(func() { fn(realScale, x, uintptr(n), uintptr(stride)) }, x)
 	case "f64.ScalIncTo":
-		x, dst := f64Values(2*n, 0.2), make([]float64, 2*n)
+		x, dst := f64Values(stride*n, 0.2), make([]float64, stride*n)
 		fn := choose(useSIMD, asmf64.ScalIncToSIMD, asmf64.ScalIncTo)
-		return sliceRun(func() { fn(dst, 2, 0.75, x, uintptr(n), 2) }, dst)
+		return sliceRun(func() { fn(dst, uintptr(stride), 0.75, x, uintptr(n), uintptr(stride)) }, dst)
 	case "f64.Sum":
 		x := f64Values(n, 0.2)
 		fn := choose(useSIMD, asmf64.SumSIMD, asmf64.Sum)
@@ -234,33 +253,33 @@ func newKernelRun(entry Entry, n int, useSIMD, stableInputs bool) kernelRun {
 		fn := choose(useSIMD, asmf32.AxpyUnitaryToSIMD, asmf32.AxpyUnitaryTo)
 		return sliceRun(func() { fn(dst, 0.75, x, y) }, dst)
 	case "f32.AxpyInc":
-		x, y := f32Values(2*n, 0.2), f32Values(2*n, 0.7)
+		x, y := f32Values(stride*n, 0.2), f32Values(stride*n, 0.7)
 		fn := choose(useSIMD, asmf32.AxpyIncSIMD, asmf32.AxpyInc)
-		return sliceRun(func() { fn(0.75, x, y, uintptr(n), 2, 2, 0, 0) }, y)
+		return sliceRun(func() { fn(0.75, x, y, uintptr(n), uintptr(stride), uintptr(stride), 0, 0) }, y)
 	case "f32.AxpyIncTo":
-		x, y, dst := f32Values(2*n, 0.2), f32Values(2*n, 0.7), make([]float32, 2*n)
+		x, y, dst := f32Values(stride*n, 0.2), f32Values(stride*n, 0.7), make([]float32, stride*n)
 		fn := choose(useSIMD, asmf32.AxpyIncToSIMD, asmf32.AxpyIncTo)
-		return sliceRun(func() { fn(dst, 2, 0, 0.75, x, y, uintptr(n), 2, 2, 0, 0) }, dst)
+		return sliceRun(func() { fn(dst, uintptr(stride), 0, 0.75, x, y, uintptr(n), uintptr(stride), uintptr(stride), 0, 0) }, dst)
 	case "f32.DotUnitary":
 		x, y := f32Values(n, 0.2), f32Values(n, 0.7)
 		fn := choose(useSIMD, asmf32.DotUnitarySIMD, asmf32.DotUnitary)
 		var result float32
 		return scalarRun(func() { result = fn(x, y) }, &result)
 	case "f32.DotInc":
-		x, y := f32Values(2*n, 0.2), f32Values(2*n, 0.7)
+		x, y := f32Values(stride*n, 0.2), f32Values(stride*n, 0.7)
 		fn := choose(useSIMD, asmf32.DotIncSIMD, asmf32.DotInc)
 		var result float32
-		return scalarRun(func() { result = fn(x, y, uintptr(n), 2, 2, 0, 0) }, &result)
+		return scalarRun(func() { result = fn(x, y, uintptr(n), uintptr(stride), uintptr(stride), 0, 0) }, &result)
 	case "f32.DdotUnitary":
 		x, y := f32Values(n, 0.2), f32Values(n, 0.7)
 		fn := choose(useSIMD, asmf32.DdotUnitarySIMD, asmf32.DdotUnitary)
 		var result float64
 		return scalarRun(func() { result = fn(x, y) }, &result)
 	case "f32.DdotInc":
-		x, y := f32Values(2*n, 0.2), f32Values(2*n, 0.7)
+		x, y := f32Values(stride*n, 0.2), f32Values(stride*n, 0.7)
 		fn := choose(useSIMD, asmf32.DdotIncSIMD, asmf32.DdotInc)
 		var result float64
-		return scalarRun(func() { result = fn(x, y, uintptr(n), 2, 2, 0, 0) }, &result)
+		return scalarRun(func() { result = fn(x, y, uintptr(n), uintptr(stride), uintptr(stride), 0, 0) }, &result)
 	case "f32.Sum":
 		x := f32Values(n, 0.2)
 		fn := choose(useSIMD, asmf32.SumSIMD, asmf32.Sum)
@@ -280,13 +299,15 @@ func newKernelRun(entry Entry, n int, useSIMD, stableInputs bool) kernelRun {
 		fn := choose(useSIMD, asmc64.AxpyUnitaryToSIMD, asmc64.AxpyUnitaryTo)
 		return sliceRun(func() { fn(dst, complex(0.75, -0.25), x, y) }, dst)
 	case "c64.AxpyInc":
-		x, y := c64Values(2*n, 0.2), c64Values(2*n, 0.7)
+		x, y := c64Values(stride*n, 0.2), c64Values(stride*n, 0.7)
 		fn := choose(useSIMD, asmc64.AxpyIncSIMD, asmc64.AxpyInc)
-		return sliceRun(func() { fn(complex(0.75, -0.25), x, y, uintptr(n), 2, 2, 0, 0) }, y)
+		return sliceRun(func() { fn(complex(0.75, -0.25), x, y, uintptr(n), uintptr(stride), uintptr(stride), 0, 0) }, y)
 	case "c64.AxpyIncTo":
-		x, y, dst := c64Values(2*n, 0.2), c64Values(2*n, 0.7), make([]complex64, 2*n)
+		x, y, dst := c64Values(stride*n, 0.2), c64Values(stride*n, 0.7), make([]complex64, stride*n)
 		fn := choose(useSIMD, asmc64.AxpyIncToSIMD, asmc64.AxpyIncTo)
-		return sliceRun(func() { fn(dst, 2, 0, complex(0.75, -0.25), x, y, uintptr(n), 2, 2, 0, 0) }, dst)
+		return sliceRun(func() {
+			fn(dst, uintptr(stride), 0, complex(0.75, -0.25), x, y, uintptr(n), uintptr(stride), uintptr(stride), 0, 0)
+		}, dst)
 	case "c64.DotcUnitary":
 		x, y := c64Values(n, 0.2), c64Values(n, 0.7)
 		fn := choose(useSIMD, asmc64.DotcUnitarySIMD, asmc64.DotcUnitary)
@@ -298,15 +319,15 @@ func newKernelRun(entry Entry, n int, useSIMD, stableInputs bool) kernelRun {
 		var result complex64
 		return scalarRun(func() { result = fn(x, y) }, &result)
 	case "c64.DotcInc":
-		x, y := c64Values(2*n, 0.2), c64Values(2*n, 0.7)
+		x, y := c64Values(stride*n, 0.2), c64Values(stride*n, 0.7)
 		fn := choose(useSIMD, asmc64.DotcIncSIMD, asmc64.DotcInc)
 		var result complex64
-		return scalarRun(func() { result = fn(x, y, uintptr(n), 2, 2, 0, 0) }, &result)
+		return scalarRun(func() { result = fn(x, y, uintptr(n), uintptr(stride), uintptr(stride), 0, 0) }, &result)
 	case "c64.DotuInc":
-		x, y := c64Values(2*n, 0.2), c64Values(2*n, 0.7)
+		x, y := c64Values(stride*n, 0.2), c64Values(stride*n, 0.7)
 		fn := choose(useSIMD, asmc64.DotuIncSIMD, asmc64.DotuInc)
 		var result complex64
-		return scalarRun(func() { result = fn(x, y, uintptr(n), 2, 2, 0, 0) }, &result)
+		return scalarRun(func() { result = fn(x, y, uintptr(n), uintptr(stride), uintptr(stride), 0, 0) }, &result)
 	case "c128.AxpyUnitary":
 		x, y := c128Values(n, 0.2), c128Values(n, 0.7)
 		fn := choose(useSIMD, asmc128.AxpyUnitarySIMD, asmc128.AxpyUnitary)
@@ -316,29 +337,31 @@ func newKernelRun(entry Entry, n int, useSIMD, stableInputs bool) kernelRun {
 		fn := choose(useSIMD, asmc128.AxpyUnitaryToSIMD, asmc128.AxpyUnitaryTo)
 		return sliceRun(func() { fn(dst, complex(0.75, -0.25), x, y) }, dst)
 	case "c128.AxpyInc":
-		x, y := c128Values(2*n, 0.2), c128Values(2*n, 0.7)
+		x, y := c128Values(stride*n, 0.2), c128Values(stride*n, 0.7)
 		fn := choose(useSIMD, asmc128.AxpyIncSIMD, asmc128.AxpyInc)
-		return sliceRun(func() { fn(complex(0.75, -0.25), x, y, uintptr(n), 2, 2, 0, 0) }, y)
+		return sliceRun(func() { fn(complex(0.75, -0.25), x, y, uintptr(n), uintptr(stride), uintptr(stride), 0, 0) }, y)
 	case "c128.AxpyIncTo":
-		x, y, dst := c128Values(2*n, 0.2), c128Values(2*n, 0.7), make([]complex128, 2*n)
+		x, y, dst := c128Values(stride*n, 0.2), c128Values(stride*n, 0.7), make([]complex128, stride*n)
 		fn := choose(useSIMD, asmc128.AxpyIncToSIMD, asmc128.AxpyIncTo)
-		return sliceRun(func() { fn(dst, 2, 0, complex(0.75, -0.25), x, y, uintptr(n), 2, 2, 0, 0) }, dst)
+		return sliceRun(func() {
+			fn(dst, uintptr(stride), 0, complex(0.75, -0.25), x, y, uintptr(n), uintptr(stride), uintptr(stride), 0, 0)
+		}, dst)
 	case "c128.DscalUnitary":
 		x := c128Values(n, 0.2)
 		fn := choose(useSIMD, asmc128.DscalUnitarySIMD, asmc128.DscalUnitary)
 		return sliceRun(func() { fn(realScale, x) }, x)
 	case "c128.DscalInc":
-		x := c128Values(2*n, 0.2)
+		x := c128Values(stride*n, 0.2)
 		fn := choose(useSIMD, asmc128.DscalIncSIMD, asmc128.DscalInc)
-		return sliceRun(func() { fn(realScale, x, uintptr(n), 2) }, x)
+		return sliceRun(func() { fn(realScale, x, uintptr(n), uintptr(stride)) }, x)
 	case "c128.ScalUnitary":
 		x := c128Values(n, 0.2)
 		fn := choose(useSIMD, asmc128.ScalUnitarySIMD, asmc128.ScalUnitary)
 		return sliceRun(func() { fn(complexScale, x) }, x)
 	case "c128.ScalInc":
-		x := c128Values(2*n, 0.2)
+		x := c128Values(stride*n, 0.2)
 		fn := choose(useSIMD, asmc128.ScalIncSIMD, asmc128.ScalInc)
-		return sliceRun(func() { fn(complexScale, x, uintptr(n), 2) }, x)
+		return sliceRun(func() { fn(complexScale, x, uintptr(n), uintptr(stride)) }, x)
 	case "c128.DotcUnitary":
 		x, y := c128Values(n, 0.2), c128Values(n, 0.7)
 		fn := choose(useSIMD, asmc128.DotcUnitarySIMD, asmc128.DotcUnitary)
@@ -350,15 +373,15 @@ func newKernelRun(entry Entry, n int, useSIMD, stableInputs bool) kernelRun {
 		var result complex128
 		return scalarRun(func() { result = fn(x, y) }, &result)
 	case "c128.DotcInc":
-		x, y := c128Values(2*n, 0.2), c128Values(2*n, 0.7)
+		x, y := c128Values(stride*n, 0.2), c128Values(stride*n, 0.7)
 		fn := choose(useSIMD, asmc128.DotcIncSIMD, asmc128.DotcInc)
 		var result complex128
-		return scalarRun(func() { result = fn(x, y, uintptr(n), 2, 2, 0, 0) }, &result)
+		return scalarRun(func() { result = fn(x, y, uintptr(n), uintptr(stride), uintptr(stride), 0, 0) }, &result)
 	case "c128.DotuInc":
-		x, y := c128Values(2*n, 0.2), c128Values(2*n, 0.7)
+		x, y := c128Values(stride*n, 0.2), c128Values(stride*n, 0.7)
 		fn := choose(useSIMD, asmc128.DotuIncSIMD, asmc128.DotuInc)
 		var result complex128
-		return scalarRun(func() { result = fn(x, y, uintptr(n), 2, 2, 0, 0) }, &result)
+		return scalarRun(func() { result = fn(x, y, uintptr(n), uintptr(stride), uintptr(stride), 0, 0) }, &result)
 	default:
 		panic("missing benchmark and equivalence runner for " + key)
 	}
