@@ -37,7 +37,7 @@ func DgemvBenchmark(b *testing.B, impl Dgemver, tA blas.Transpose, m, n, incX, i
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		impl.Dgemv(tA, m, n, 2, a, n, x, incX, 3, y, incY)
+		impl.Dgemv(tA, m, n, 2, a, n, x, incX, 1, y, incY)
 	}
 }
 

@@ -96,7 +96,8 @@ func AxpyIncSIMD(alpha float64, x, y []float64, n, incX, incY, ix, iy uintptr) {
 		return
 	}
 
-	width := simd.BroadcastFloat64s(0).Len()
+	a := simd.BroadcastFloat64s(alpha)
+	width := a.Len()
 	// Integer staging avoids legacy SSE loads between AVX operations on amd64.
 	xb := make([]uint64, width)
 	yb := make([]uint64, width)
@@ -108,7 +109,7 @@ func AxpyIncSIMD(alpha float64, x, y []float64, n, incX, incY, ix, iy uintptr) {
 			ix += incX
 			iy += incY
 		}
-		simd.LoadUint64s(xb).BitsToFloat64().Mul(simd.BroadcastFloat64s(alpha)).Add(simd.LoadUint64s(yb).BitsToFloat64()).ToBits().Store(yb)
+		simd.LoadUint64s(xb).BitsToFloat64().Mul(a).Add(simd.LoadUint64s(yb).BitsToFloat64()).ToBits().Store(yb)
 		write := iy - uintptr(width)*incY
 		for lane := 0; lane < width; lane++ {
 			*(*uint64)(unsafe.Pointer(&y[write])) = yb[lane]
@@ -141,7 +142,8 @@ func AxpyIncToSIMD(dst []float64, incDst, idst uintptr, alpha float64, x, y []fl
 		return
 	}
 
-	width := simd.BroadcastFloat64s(0).Len()
+	a := simd.BroadcastFloat64s(alpha)
+	width := a.Len()
 	xb := make([]uint64, width)
 	yb := make([]uint64, width)
 	out := make([]uint64, width)
@@ -153,7 +155,7 @@ func AxpyIncToSIMD(dst []float64, incDst, idst uintptr, alpha float64, x, y []fl
 			ix += incX
 			iy += incY
 		}
-		simd.LoadUint64s(xb).BitsToFloat64().Mul(simd.BroadcastFloat64s(alpha)).Add(simd.LoadUint64s(yb).BitsToFloat64()).ToBits().Store(out)
+		simd.LoadUint64s(xb).BitsToFloat64().Mul(a).Add(simd.LoadUint64s(yb).BitsToFloat64()).ToBits().Store(out)
 		for lane := 0; lane < width; lane++ {
 			*(*uint64)(unsafe.Pointer(&dst[idst])) = out[lane]
 			idst += incDst
@@ -183,7 +185,11 @@ func CumSumSIMD(dst, src []float64) []float64 {
 	var i int
 	for ; i+width <= len(src); i += width {
 		simd.LoadFloat64s(src[i : i+width]).Store(lanes[:])
-		for lane := 1; lane < width; lane++ {
+		// Peel the first step so two-lane vectors have no inner loop.
+		if width > 1 {
+			lanes[1] += lanes[0]
+		}
+		for lane := 2; lane < width; lane++ {
 			lanes[lane] += lanes[lane-1]
 		}
 		result := simd.LoadFloat64s(lanes).Add(simd.BroadcastFloat64s(sum))
@@ -212,7 +218,10 @@ func CumProdSIMD(dst, src []float64) []float64 {
 	var i int
 	for ; i+width <= len(src); i += width {
 		simd.LoadFloat64s(src[i : i+width]).Store(lanes[:])
-		for lane := 1; lane < width; lane++ {
+		if width > 1 {
+			lanes[1] *= lanes[0]
+		}
+		for lane := 2; lane < width; lane++ {
 			lanes[lane] *= lanes[lane-1]
 		}
 		result := simd.LoadFloat64s(lanes).Mul(simd.BroadcastFloat64s(product))
@@ -414,6 +423,7 @@ func normSumUsable(sum float64, n int) bool {
 func L2NormUnitarySIMD(x []float64) float64 {
 	acc := simd.BroadcastFloat64s(0)
 	acc1, acc2, acc3 := acc, acc, acc
+	corr, corr1, corr2, corr3 := acc, acc, acc, acc
 	width := acc.Len()
 	i := 0
 	for ; i+4*width <= len(x); i += 4 * width {
@@ -421,28 +431,27 @@ func L2NormUnitarySIMD(x []float64) float64 {
 		v1 := simd.LoadFloat64s(x[i+width : i+2*width])
 		v2 := simd.LoadFloat64s(x[i+2*width : i+3*width])
 		v3 := simd.LoadFloat64s(x[i+3*width : i+4*width])
-		acc = v0.Mul(v0).Add(acc)
-		acc1 = v1.Mul(v1).Add(acc1)
-		acc2 = v2.Mul(v2).Add(acc2)
-		acc3 = v3.Mul(v3).Add(acc3)
+		acc, corr = normSquareSIMD(v0, acc, corr)
+		acc1, corr1 = normSquareSIMD(v1, acc1, corr1)
+		acc2, corr2 = normSquareSIMD(v2, acc2, corr2)
+		acc3, corr3 = normSquareSIMD(v3, acc3, corr3)
 	}
-	acc = acc.Add(acc1).Add(acc2.Add(acc3))
+	acc, corr = normMergeSIMD(acc, corr, acc1, corr1)
+	acc, corr = normMergeSIMD(acc, corr, acc2, corr2)
+	acc, corr = normMergeSIMD(acc, corr, acc3, corr3)
 	for ; i+width <= len(x); i += width {
 		v := simd.LoadFloat64s(x[i : i+width])
-		acc = v.Mul(v).Add(acc)
+		acc, corr = normSquareSIMD(v, acc, corr)
 	}
-	sum := reduceF64(acc)
+	sum, correction := normReduceSIMD(acc, corr)
 	for ; i < len(x); i++ {
-		sum += x[i] * x[i]
+		sum, correction = normSquareScalar(x[i], sum, correction)
 	}
+	sum += correction
 	if normSumUsable(sum, len(x)) {
 		return math.Sqrt(sum)
 	}
-	var state f64NormState
-	for _, v := range x {
-		state.add(math.Abs(v))
-	}
-	return state.norm()
+	return l2NormUnitaryScalar(x)
 }
 
 func L2NormIncSIMD(x []float64, n, incX uintptr) float64 {
@@ -453,6 +462,7 @@ func L2NormIncSIMD(x []float64, n, incX uintptr) float64 {
 		return L2NormUnitarySIMD(x[:n])
 	}
 	acc := simd.BroadcastFloat64s(0)
+	corr := acc
 	width := acc.Len()
 	lanes := make([]uint64, width)
 	index := uintptr(0)
@@ -463,30 +473,26 @@ func L2NormIncSIMD(x []float64, n, incX uintptr) float64 {
 			index += incX
 		}
 		v := simd.LoadUint64s(lanes).BitsToFloat64()
-		acc = v.Mul(v).Add(acc)
+		acc, corr = normSquareSIMD(v, acc, corr)
 		remaining -= width
 	}
-	sum := reduceF64(acc)
+	sum, correction := normReduceSIMD(acc, corr)
 	for ; remaining > 0; remaining-- {
-		sum += x[index] * x[index]
+		sum, correction = normSquareScalar(x[index], sum, correction)
 		index += incX
 	}
+	sum += correction
 	if normSumUsable(sum, int(n)) {
 		return math.Sqrt(sum)
 	}
-	var state f64NormState
-	index = 0
-	for ; n > 0; n-- {
-		state.add(math.Abs(x[index]))
-		index += incX
-	}
-	return state.norm()
+	return l2NormIncScalar(x, n, incX)
 }
 
 func L2DistanceUnitarySIMD(x, y []float64) float64 {
 	y = y[:len(x):len(x)]
 	acc := simd.BroadcastFloat64s(0)
 	acc1, acc2, acc3 := acc, acc, acc
+	corr, corr1, corr2, corr3 := acc, acc, acc, acc
 	width := acc.Len()
 	i := 0
 	for ; i+4*width <= len(x); i += 4 * width {
@@ -494,65 +500,75 @@ func L2DistanceUnitarySIMD(x, y []float64) float64 {
 		v1 := simd.LoadFloat64s(x[i+width : i+2*width]).Sub(simd.LoadFloat64s(y[i+width : i+2*width]))
 		v2 := simd.LoadFloat64s(x[i+2*width : i+3*width]).Sub(simd.LoadFloat64s(y[i+2*width : i+3*width]))
 		v3 := simd.LoadFloat64s(x[i+3*width : i+4*width]).Sub(simd.LoadFloat64s(y[i+3*width : i+4*width]))
-		acc = v0.Mul(v0).Add(acc)
-		acc1 = v1.Mul(v1).Add(acc1)
-		acc2 = v2.Mul(v2).Add(acc2)
-		acc3 = v3.Mul(v3).Add(acc3)
+		acc, corr = normSquareSIMD(v0, acc, corr)
+		acc1, corr1 = normSquareSIMD(v1, acc1, corr1)
+		acc2, corr2 = normSquareSIMD(v2, acc2, corr2)
+		acc3, corr3 = normSquareSIMD(v3, acc3, corr3)
 	}
-	acc = acc.Add(acc1).Add(acc2.Add(acc3))
+	acc, corr = normMergeSIMD(acc, corr, acc1, corr1)
+	acc, corr = normMergeSIMD(acc, corr, acc2, corr2)
+	acc, corr = normMergeSIMD(acc, corr, acc3, corr3)
 	for ; i+width <= len(x); i += width {
 		v := simd.LoadFloat64s(x[i : i+width]).Sub(simd.LoadFloat64s(y[i : i+width]))
-		acc = v.Mul(v).Add(acc)
+		acc, corr = normSquareSIMD(v, acc, corr)
 	}
-	sum := reduceF64(acc)
+	sum, correction := normReduceSIMD(acc, corr)
 	for ; i < len(x); i++ {
-		d := x[i] - y[i]
-		sum += d * d
+		sum, correction = normSquareScalar(x[i]-y[i], sum, correction)
 	}
+	sum += correction
 	if normSumUsable(sum, len(x)) {
 		return math.Sqrt(sum)
 	}
-	var state f64NormState
-	for i, v := range x {
-		state.add(math.Abs(v - y[i]))
-	}
-	return state.norm()
+	return l2DistanceUnitaryScalar(x, y)
 }
 
-type f64NormState struct {
-	scale      float64
-	sumSquares float64
+// The sum-of-squares fast path compensates summation error. On fused MulAdd
+// backends it also recovers product error, following TwoProductFMA and Dot2
+// from Ogita, Rump and Oishi (2005):
+// https://www.tuhh.de/ti3/paper/rump/OgRuOi05.pdf
+func normSquareSIMD(v, sum, correction simd.Float64s) (simd.Float64s, simd.Float64s) {
+	product := v.Mul(v)
+	productError := v.MulAdd(v, product.Neg())
+	next, sumError := normTwoSumSIMD(sum, product)
+	return next, correction.Add(sumError.Add(productError))
 }
 
-func (s *f64NormState) add(abs float64) {
-	if abs == 0 || math.IsNaN(s.scale) {
-		return
-	}
-	if math.IsNaN(abs) {
-		s.scale = math.NaN()
-		return
-	}
-	if s.sumSquares == 0 {
-		s.sumSquares = 1
-	}
-	if s.scale < abs {
-		ratio := s.scale / abs
-		s.sumSquares = 1 + s.sumSquares*ratio*ratio
-		s.scale = abs
-		return
-	}
-	ratio := abs / s.scale
-	s.sumSquares += ratio * ratio
+func normTwoSumSIMD(a, b simd.Float64s) (simd.Float64s, simd.Float64s) {
+	sum := a.Add(b)
+	bVirtual := sum.Sub(a)
+	return sum, a.Sub(sum.Sub(bVirtual)).Add(b.Sub(bVirtual))
 }
 
-func (s f64NormState) norm() float64 {
-	if math.IsNaN(s.scale) {
-		return math.NaN()
+func normMergeSIMD(sum, correction, other, otherCorrection simd.Float64s) (simd.Float64s, simd.Float64s) {
+	next, sumError := normTwoSumSIMD(sum, other)
+	return next, correction.Add(otherCorrection.Add(sumError))
+}
+
+func normReduceSIMD(sumVector, correctionVector simd.Float64s) (sum, correction float64) {
+	width := sumVector.Len()
+	sums, corrections := make([]float64, width), make([]float64, width)
+	sumVector.Store(sums)
+	correctionVector.Store(corrections)
+	for i, v := range sums {
+		var sumError float64
+		sum, sumError = normTwoSumScalar(sum, v)
+		correction += sumError + corrections[i]
 	}
-	if math.IsInf(s.scale, 1) {
-		return math.Inf(1)
-	}
-	return s.scale * math.Sqrt(s.sumSquares)
+	return sum, correction
+}
+
+func normSquareScalar(v, sum, correction float64) (float64, float64) {
+	product := float64(v * v)
+	productError := math.FMA(v, v, -product)
+	next, sumError := normTwoSumScalar(sum, product)
+	return next, correction + (sumError + productError)
+}
+
+func normTwoSumScalar(a, b float64) (float64, float64) {
+	sum := a + b
+	bVirtual := sum - a
+	return sum, (a - (sum - bVirtual)) + (b - bVirtual)
 }
 
 func ScalUnitarySIMD(alpha float64, x []float64) {
@@ -901,6 +917,22 @@ func GemvTSIMD(m, n uintptr, alpha float64, a []float64, lda uintptr, x []float6
 			yv := y[:cols:cols]
 			scale := alpha * x[ix]
 			xv := simd.BroadcastFloat64s(scale)
+			for len(yv) >= 4*width {
+				av4 := av[:4*width]
+				a0 := simd.LoadFloat64s(av4[:width])
+				a1 := simd.LoadFloat64s(av4[width : 2*width])
+				a2 := simd.LoadFloat64s(av4[2*width : 3*width])
+				a3 := simd.LoadFloat64s(av4[3*width:])
+				y0 := simd.LoadFloat64s(yv[:width])
+				y1 := simd.LoadFloat64s(yv[width : 2*width])
+				y2 := simd.LoadFloat64s(yv[2*width : 3*width])
+				y3 := simd.LoadFloat64s(yv[3*width : 4*width])
+				a0.Mul(xv).Add(y0).Store(yv[:width])
+				a1.Mul(xv).Add(y1).Store(yv[width : 2*width])
+				a2.Mul(xv).Add(y2).Store(yv[2*width : 3*width])
+				a3.Mul(xv).Add(y3).Store(yv[3*width : 4*width])
+				yv, av = yv[4*width:], av[4*width:]
+			}
 			for len(yv) >= width {
 				simd.LoadFloat64s(av).Mul(xv).Add(simd.LoadFloat64s(yv)).Store(yv)
 				yv, av = yv[width:], av[width:]

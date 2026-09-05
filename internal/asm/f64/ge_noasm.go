@@ -37,12 +37,12 @@ func Ger(m, n uintptr, alpha float64, x []float64, incX uintptr, y []float64, in
 	}
 }
 
-// GemvN computes
+// gemvN computes
 //
 //	y = alpha * A * x + beta * y
 //
 // where A is an m×n dense matrix, x and y are vectors, and alpha and beta are scalars.
-func GemvN(m, n uintptr, alpha float64, a []float64, lda uintptr, x []float64, incX uintptr, beta float64, y []float64, incY uintptr) {
+func gemvN(m, n uintptr, alpha float64, a []float64, lda uintptr, x []float64, incX uintptr, beta float64, y []float64, incY uintptr) {
 	var kx, ky, i uintptr
 	if int(incX) < 0 {
 		kx = uintptr(-int(n-1) * int(incX))
@@ -77,12 +77,12 @@ func GemvN(m, n uintptr, alpha float64, a []float64, lda uintptr, x []float64, i
 	}
 }
 
-// GemvT computes
+// gemvT computes
 //
 //	y = alpha * Aᵀ * x + beta * y
 //
 // where A is an m×n dense matrix, x and y are vectors, and alpha and beta are scalars.
-func GemvT(m, n uintptr, alpha float64, a []float64, lda uintptr, x []float64, incX uintptr, beta float64, y []float64, incY uintptr) {
+func gemvT(m, n uintptr, alpha float64, a []float64, lda uintptr, x []float64, incX uintptr, beta float64, y []float64, incY uintptr) {
 	var kx, ky, i uintptr
 	if int(incX) < 0 {
 		kx = uintptr(-int(m-1) * int(incX))
@@ -93,7 +93,7 @@ func GemvT(m, n uintptr, alpha float64, a []float64, lda uintptr, x []float64, i
 	switch {
 	case beta == 0: // beta == 0 is special-cased to memclear
 		if incY == 1 {
-			for i := range y {
+			for i := range y[:n] {
 				y[i] = 0
 			}
 		} else {
@@ -117,9 +117,25 @@ func GemvT(m, n uintptr, alpha float64, a []float64, lda uintptr, x []float64, i
 		}
 		return
 	}
-	ix := kx
+	// The AXPY loop is faster for short rows despite its redundant bounds check.
+	if n < 32 {
+		ix := kx
+		for i = 0; i < m; i++ {
+			AxpyInc(alpha*x[ix], a[lda*i:lda*i+n], y, n, 1, incY, 0, ky)
+			ix += incX
+		}
+		return
+	}
+	ix, row := kx, uintptr(0)
 	for i = 0; i < m; i++ {
-		AxpyInc(alpha*x[ix], a[lda*i:lda*i+n], y, n, 1, incY, 0, ky)
+		scale := alpha * x[ix]
+		iy := ky
+		rowA := a[row : row+n]
+		for j := range rowA {
+			y[iy] += scale * rowA[j]
+			iy += incY
+		}
 		ix += incX
+		row += lda
 	}
 }

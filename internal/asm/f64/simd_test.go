@@ -204,6 +204,66 @@ func TestPortableSIMDPrefix(t *testing.T) {
 	}
 }
 
+func TestPortableSIMDPrefixCarry(t *testing.T) {
+	width := simd.BroadcastFloat64s(0).Len()
+	for _, n := range []int{width - 1, width, width + 1, 2*width - 1, 2 * width, 2*width + 1, 3*width + 1} {
+		for _, product := range []bool{false, true} {
+			for _, layout := range []struct {
+				name     string
+				src, dst int
+				overlap  bool
+			}{
+				{"separate", 2, n + 5, false},
+				{"in-place", 2, 2, false},
+				{"destination ahead", 2, 3, true},
+				{"destination behind", 3, 2, true},
+			} {
+				t.Run(fmt.Sprintf("n=%d/product=%t/%s", n, product, layout.name), func(t *testing.T) {
+					got := make([]float64, 2*n+8)
+					for i := range got {
+						got[i] = -12345
+					}
+					for i := range n {
+						value := float64(i%11-5) / 7
+						if product {
+							value = 1 + float64(i%11-5)/100
+						}
+						got[layout.src+i] = value
+					}
+					want := slices.Clone(got)
+					carry, fn := 0.0, CumSumSIMD
+					combine := func(x, y float64) float64 { return x + y }
+					if product {
+						carry, fn = 1, CumProdSIMD
+						combine = func(x, y float64) float64 { return x * y }
+					}
+					var i int
+					if !layout.overlap {
+						// The vector path scans each block before adding the preceding carry.
+						block := make([]float64, width)
+						for ; i+width <= n; i += width {
+							copy(block, want[layout.src+i:layout.src+i+width])
+							for lane := 1; lane < width; lane++ {
+								block[lane] = combine(block[lane], block[lane-1])
+							}
+							for lane, value := range block {
+								want[layout.dst+i+lane] = combine(value, carry)
+							}
+							carry = combine(block[width-1], carry)
+						}
+					}
+					for ; i < n; i++ {
+						carry = combine(carry, want[layout.src+i])
+						want[layout.dst+i] = carry
+					}
+					fn(got[layout.dst:layout.dst+n], got[layout.src:layout.src+n])
+					portableSIMDCheckBits(t, "prefix backing slice", got, want)
+				})
+			}
+		}
+	}
+}
+
 func TestPortableSIMDMatrix(t *testing.T) {
 	for _, shape := range [][2]int{{1, 1}, {3, 17}, {17, 3}, {8, 8}, {33, 65}} {
 		m, n := shape[0], shape[1]

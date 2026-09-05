@@ -11,6 +11,8 @@ import (
 )
 
 func BenchmarkDgeev(b *testing.B)         { testlapack.DgeevBenchmark(b, impl) }
+func BenchmarkDgebrd(b *testing.B)        { testlapack.DgebrdBenchmark(b, impl) }
+func BenchmarkDgesvd(b *testing.B)        { testlapack.DgesvdBenchmark(b, impl) }
 func BenchmarkDggev(b *testing.B)         { testlapack.DggevBenchmark(b, impl) }
 func BenchmarkDggevRightEV(b *testing.B)  { testlapack.DggevRightEVBenchmark(b, impl) }
 func BenchmarkDggevSingular(b *testing.B) { testlapack.DggevSingularBenchmark(b, impl) }
