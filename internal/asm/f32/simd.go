@@ -190,17 +190,37 @@ func DotIncSIMD(x, y []float32, n, incX, incY, ix, iy uintptr) float32 {
 	return sum
 }
 
+func loadWidenPortableSIMD(x []float32) simd.Float64s {
+	width := simd.BroadcastFloat64s(0).Len()
+	lanes := make([]float64, width)
+	for i, v := range x[:width] {
+		lanes[i] = float64(v)
+	}
+	return simd.LoadFloat64s(lanes)
+}
+
 func DdotUnitarySIMD(x, y []float32) float64 {
+	if simd.Emulated() {
+		return ddotUnitaryPortableSIMD(x, y)
+	}
+	return ddotUnitaryHardwareSIMD(x, y)
+}
+
+func ddotUnitaryPortableSIMD(x, y []float32) float64 {
 	acc := simd.BroadcastFloat64s(0)
+	acc1, acc2, acc3 := acc, acc, acc
 	width := acc.Len()
-	xb, yb := make([]float64, width), make([]float64, width)
 	y = y[:len(x):len(x)]
+	for len(x) >= 4*width {
+		acc = loadWidenSIMD(x[:width]).Mul(loadWidenSIMD(y[:width])).Add(acc)
+		acc1 = loadWidenSIMD(x[width : 2*width]).Mul(loadWidenSIMD(y[width : 2*width])).Add(acc1)
+		acc2 = loadWidenSIMD(x[2*width : 3*width]).Mul(loadWidenSIMD(y[2*width : 3*width])).Add(acc2)
+		acc3 = loadWidenSIMD(x[3*width : 4*width]).Mul(loadWidenSIMD(y[3*width : 4*width])).Add(acc3)
+		x, y = x[4*width:], y[4*width:]
+	}
+	acc = acc.Add(acc1).Add(acc2.Add(acc3))
 	for len(x) >= width {
-		for lane, value := range x[:width] {
-			xb[lane] = float64(value)
-			yb[lane] = float64(y[:width][lane])
-		}
-		acc = simd.LoadFloat64s(xb[:]).Mul(simd.LoadFloat64s(yb[:])).Add(acc)
+		acc = loadWidenSIMD(x[:width]).Mul(loadWidenSIMD(y[:width])).Add(acc)
 		x, y = x[width:], y[width:]
 	}
 	sum := reduceF64(acc)
@@ -219,16 +239,16 @@ func DdotIncSIMD(x, y []float32, n, incX, incY, ix, iy uintptr) float64 {
 	}
 	acc := simd.BroadcastFloat64s(0)
 	width := acc.Len()
-	xb, yb := make([]float64, width), make([]float64, width)
+	xb, yb := make([]uint32, width), make([]uint32, width)
 	remaining := int(n)
 	for remaining >= width {
 		for lane := 0; lane < width; lane++ {
-			xb[lane] = float64(x[ix])
-			yb[lane] = float64(y[iy])
+			xb[lane] = *(*uint32)(unsafe.Pointer(&x[ix]))
+			yb[lane] = *(*uint32)(unsafe.Pointer(&y[iy]))
 			ix += incX
 			iy += incY
 		}
-		acc = simd.LoadFloat64s(xb[:]).Mul(simd.LoadFloat64s(yb[:])).Add(acc)
+		acc = loadWidenSIMD(unsafe.Slice((*float32)(unsafe.Pointer(unsafe.SliceData(xb))), width)).Mul(loadWidenSIMD(unsafe.Slice((*float32)(unsafe.Pointer(unsafe.SliceData(yb))), width))).Add(acc)
 		remaining -= width
 	}
 	sum := reduceF64(acc)
@@ -293,10 +313,69 @@ func GerSIMD(m, n uintptr, alpha float32, x []float32, incX uintptr, y []float32
 	if int(incY) < 0 {
 		iy = uintptr(-int(n-1) * int(incY))
 	}
+	// Reuse each vector of y across four independent rows. Retain the
+	// sequential path when a write can change a later input.
+	if incY == 1 && simdMatrixDisjoint(a, x) && simdMatrixDisjoint(a, y) {
+		width := simd.BroadcastFloat32s(0).Len()
+		cols := int(n)
+		row := uintptr(0)
+		for ; row+4 <= m; row += 4 {
+			a0 := a[row*lda : row*lda+n : row*lda+n]
+			a1 := a[(row+1)*lda : (row+1)*lda+n : (row+1)*lda+n]
+			a2 := a[(row+2)*lda : (row+2)*lda+n : (row+2)*lda+n]
+			a3 := a[(row+3)*lda : (row+3)*lda+n : (row+3)*lda+n]
+			s0, s1 := alpha*x[ix], alpha*x[ix+incX]
+			s2, s3 := alpha*x[ix+2*incX], alpha*x[ix+3*incX]
+			x0, x1 := simd.BroadcastFloat32s(s0), simd.BroadcastFloat32s(s1)
+			x2, x3 := simd.BroadcastFloat32s(s2), simd.BroadcastFloat32s(s3)
+			yv := y[:cols:cols]
+			j := 0
+			for ; j+width <= cols; j += width {
+				v := simd.LoadFloat32s(yv[j : j+width])
+				v.Mul(x0).Add(simd.LoadFloat32s(a0[j : j+width])).Store(a0[j : j+width])
+				v.Mul(x1).Add(simd.LoadFloat32s(a1[j : j+width])).Store(a1[j : j+width])
+				v.Mul(x2).Add(simd.LoadFloat32s(a2[j : j+width])).Store(a2[j : j+width])
+				v.Mul(x3).Add(simd.LoadFloat32s(a3[j : j+width])).Store(a3[j : j+width])
+			}
+			if j < cols {
+				v, _ := simd.LoadFloat32sPart(yv[j:])
+				v0, _ := simd.LoadFloat32sPart(a0[j:])
+				v1, _ := simd.LoadFloat32sPart(a1[j:])
+				v2, _ := simd.LoadFloat32sPart(a2[j:])
+				v3, _ := simd.LoadFloat32sPart(a3[j:])
+				v.Mul(x0).Add(v0).StorePart(a0[j:])
+				v.Mul(x1).Add(v1).StorePart(a1[j:])
+				v.Mul(x2).Add(v2).StorePart(a2[j:])
+				v.Mul(x3).Add(v3).StorePart(a3[j:])
+			}
+			ix += 4 * incX
+		}
+		for ; row < m; row++ {
+			av := a[row*lda : row*lda+n : row*lda+n]
+			yv := y[:cols:cols]
+			scale := alpha * x[ix]
+			xv := simd.BroadcastFloat32s(scale)
+			for len(yv) >= width {
+				simd.LoadFloat32s(yv).Mul(xv).Add(simd.LoadFloat32s(av)).Store(av)
+				yv, av = yv[width:], av[width:]
+			}
+			for j, v := range yv {
+				av[j] += scale * v
+			}
+			ix += incX
+		}
+		return
+	}
 	for row := uintptr(0); row < m; row++ {
 		AxpyIncSIMD(alpha*x[ix], y, a[row*lda:row*lda+n], n, incY, 1, iy, 0)
 		ix += incX
 	}
+}
+
+func simdMatrixDisjoint(a, b []float32) bool {
+	aStart := uintptr(unsafe.Pointer(unsafe.SliceData(a)))
+	bStart := uintptr(unsafe.Pointer(unsafe.SliceData(b)))
+	return aStart+uintptr(len(a))*4 <= bStart || bStart+uintptr(len(b))*4 <= aStart
 }
 
 func simdSlicesCompatible(a, b []float32) bool {

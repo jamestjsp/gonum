@@ -1,8 +1,11 @@
 # Portable Go SIMD candidates
 
-Portable SIMD candidates live beside the routines they may replace in
-`internal/asm/{f32,f64,c64,c128}/simd.go`. They are architecture-neutral and
-cover every BLAS-related AMD64 assembly entry point. This package keeps only the
+SIMD candidates live beside the routines they may replace in
+`internal/asm/{f32,f64,c64,c128}/simd.go` and cover every BLAS-related AMD64
+assembly entry point. Portable operations are shared across architectures.
+Small AMD64 leaves handle complex permutations and widened dot products where
+the portable API or compiler-generated conversions would require scalar staging.
+Other targets retain portable fallbacks. This package keeps only the
 coverage manifest, equivalence tests, and comparison benchmarks.
 
 The candidates do not change production dispatch. Current AMD64 assembly and
@@ -49,7 +52,8 @@ supported wider vectors at runtime.
 ## Issue 6 follow-up
 
 See [measured ARM64 results and AMD64 instruction findings](RESULTS.md) for
-the optimization follow-up. AMD64 runtime improvements still need a native rerun.
+the optimization follow-up. See [native AMD64 tuning results](RESULTS_AMD64.md) for the subsequent
+comparison against assembly on an AVX512 host.
 
 The [initial AMD64 results](https://github.com/jamestjsp/gonum/issues/6#issuecomment-5541048813)
 identified oversized scratch buffers, unnecessary staging for contiguous
@@ -97,3 +101,12 @@ When portable SIMD becomes stable, recheck the package path, build constraint,
 vector-width contract, generated code, and benchmark crossovers before changing
 dispatch. Removing `goexperiment.simd` is intentionally a small boundary
 change; it is not assumed to be the only migration Go will require.
+
+The native AMD64 follow-up keeps production dispatch unchanged. Contiguous
+complex kernels use interleaved vectors, matrix kernels share loads across rows,
+and ordinary L2 norms use vector sums of squares with a scaled fallback for
+extreme magnitudes. The widening and complex-shuffle AMD64 leaves avoid Go
+1.27.1 `FromArch` stack copies in hot loops. Recheck these workarounds when the
+compiler or portable API changes. Small calls, arbitrary strides, and matrix
+shapes still have different crossovers; native timing is required before changing
+production dispatch.
