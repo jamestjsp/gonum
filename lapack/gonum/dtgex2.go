@@ -78,25 +78,28 @@ func (impl Implementation) Dtgex2(wantq, wantz bool, n int, a []float64, lda int
 	work[0] = float64(minWork)
 
 	const ld = 4
-	var s, tt, li, ir [ld * ld]float64
-	copyLocalBlock(m, a[j1*lda+j1:], lda, s[:], ld)
-	copyLocalBlock(m, b[j1*ldb+j1:], ldb, tt[:], ld)
+	var scratch struct {
+		s, tt, li, ir [ld * ld]float64
+	}
+	s, tt, li, ir := scratch.s[:], scratch.tt[:], scratch.li[:], scratch.ir[:]
+	copyLocalBlock(m, a[j1*lda+j1:], lda, s, ld)
+	copyLocalBlock(m, b[j1*ldb+j1:], ldb, tt, ld)
 
 	eps := dlamchP
 	smlnum := dlamchS / eps
-	threshA := math.Max(20*eps*localNorm(m, s[:], ld), smlnum)
-	threshB := math.Max(20*eps*localNorm(m, tt[:], ld), smlnum)
+	threshA := math.Max(20*eps*localNorm(m, s, ld), smlnum)
+	threshB := math.Max(20*eps*localNorm(m, tt, ld), smlnum)
 
 	if m == 2 {
-		if !impl.dtgex2Swap11(s[:], tt[:], li[:], ir[:], ld, threshA, threshB,
+		if !impl.dtgex2Swap11(s, tt, li, ir, ld, threshA, threshB,
 			a[j1*lda+j1:], lda, b[j1*ldb+j1:], ldb) {
 			return false
 		}
-		impl.dtgex2Apply11(wantq, wantz, n, a, lda, b, ldb, q, ldq, z, ldz, j1, s[:], tt[:], li[:], ir[:])
+		impl.dtgex2Apply11(wantq, wantz, n, a, lda, b, ldb, q, ldq, z, ldz, j1, s, tt, li, ir)
 		return true
 	}
 
-	if !impl.dtgex2SwapLarge(m, n1, n2, s[:], tt[:], li[:], ir[:], ld, threshA, threshB,
+	if !impl.dtgex2SwapLarge(m, n1, n2, s, tt, li, ir, ld, threshA, threshB,
 		a[j1*lda+j1:], lda, b[j1*ldb+j1:], ldb, work) {
 		return false
 	}
@@ -106,11 +109,11 @@ func (impl Implementation) Dtgex2(wantq, wantz bool, n int, a []float64, lda int
 			s[i*ld+j] = 0
 		}
 	}
-	copyLocalBlock(m, s[:], ld, a[j1*lda+j1:], lda)
-	copyLocalBlock(m, tt[:], ld, b[j1*ldb+j1:], ldb)
+	copyLocalBlock(m, s, ld, a[j1*lda+j1:], lda)
+	copyLocalBlock(m, tt, ld, b[j1*ldb+j1:], ldb)
 
-	impl.dtgex2Canonicalize(n1, n2, a[j1*lda+j1:], lda, b[j1*ldb+j1:], ldb, li[:], ir[:], ld)
-	applyDtgex2Transforms(wantq, wantz, n, m, a, lda, b, ldb, q, ldq, z, ldz, j1, li[:], ir[:], ld, work)
+	impl.dtgex2Canonicalize(n1, n2, a[j1*lda+j1:], lda, b[j1*ldb+j1:], ldb, li, ir, ld)
+	applyDtgex2Transforms(wantq, wantz, n, m, a, lda, b, ldb, q, ldq, z, ldz, j1, li, ir, ld, work)
 	return true
 }
 
@@ -192,14 +195,18 @@ func (impl Implementation) dtgex2SwapLarge(m, n1, n2 int, s, t, li, ir []float64
 	impl.Dgerq2(n1, m, ir[n2*ld:], ld, taur[:n1], work)
 	impl.Dorgr2(m, m, n1, ir, ld, taur[:n1], work)
 
-	var tmp, scpy, tcpy, licopy, ircopy [16]float64
+	var tmp, ircopy [16]float64
+	var scratch struct {
+		scpy, tcpy, licopy [16]float64
+	}
+	scpy, tcpy, licopy := scratch.scpy[:], scratch.tcpy[:], scratch.licopy[:]
 	localMul(m, li, true, s, false, tmp[:], ld)
 	localMul(m, tmp[:], false, ir, true, s, ld)
 	localMul(m, li, true, t, false, tmp[:], ld)
 	localMul(m, tmp[:], false, ir, true, t, ld)
-	copy(scpy[:], s)
-	copy(tcpy[:], t)
-	copy(licopy[:], li)
+	copy(scpy, s)
+	copy(tcpy, t)
+	copy(licopy, li)
 	copy(ircopy[:], ir)
 
 	impl.Dgerq2(m, m, t, ld, taur[:m], work)
@@ -207,15 +214,15 @@ func (impl Implementation) dtgex2SwapLarge(m, n1, n2 int, s, t, li, ir []float64
 	impl.Dormr2(blas.Left, blas.NoTrans, m, m, m, t, ld, taur[:m], ir, ld, work)
 	brqa21 := lowerLeftNorm(m, n1, n2, s, ld)
 
-	impl.Dgeqr2(m, m, tcpy[:], ld, taul[:m], work)
-	impl.Dorm2r(blas.Left, blas.Trans, m, m, m, tcpy[:], ld, taul[:m], scpy[:], ld, work)
-	impl.Dorm2r(blas.Right, blas.NoTrans, m, m, m, tcpy[:], ld, taul[:m], licopy[:], ld, work)
-	bqra21 := lowerLeftNorm(m, n1, n2, scpy[:], ld)
+	impl.Dgeqr2(m, m, tcpy, ld, taul[:m], work)
+	impl.Dorm2r(blas.Left, blas.Trans, m, m, m, tcpy, ld, taul[:m], scpy, ld, work)
+	impl.Dorm2r(blas.Right, blas.NoTrans, m, m, m, tcpy, ld, taul[:m], licopy, ld, work)
+	bqra21 := lowerLeftNorm(m, n1, n2, scpy, ld)
 
 	if bqra21 <= brqa21 && bqra21 <= threshA {
-		copy(s, scpy[:])
-		copy(t, tcpy[:])
-		copy(li, licopy[:])
+		copy(s, scpy)
+		copy(t, tcpy)
+		copy(li, licopy)
 		copy(ir, ircopy[:])
 	} else if brqa21 >= threshA {
 		return false

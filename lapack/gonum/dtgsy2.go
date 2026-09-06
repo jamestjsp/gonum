@@ -100,8 +100,11 @@ func (impl Implementation) Dtgsy2(trans blas.Transpose, ijob, m, n int, a []floa
 	bi := blas64.Implementation()
 
 	const ldz = 8
-	var z [ldz * ldz]float64
-	var rhs [ldz]float64
+	var scratch struct {
+		z   [ldz * ldz]float64
+		rhs [ldz]float64
+	}
+	z, rhs := scratch.z[:], scratch.rhs[:]
 	var ipiv, jpiv [ldz]int
 
 	// Determine block structure of A.
