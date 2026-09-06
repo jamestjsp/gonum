@@ -1,6 +1,7 @@
 # Level 1 follow-up: strided index scans and single-precision norms
 
 Base: `792803f0ed5ebe046f74620a7d95840b7ff1c592`.
+Candidate: `856a28593860b8ecaac50537134852c1dc8a7a6d`.
 Native host: Apple M1 Pro, darwin/arm64.
 Primary toolchain: Go 1.27.1, `GOEXPERIMENT=simd`, `GOMAXPROCS=1`.
 Fallback toolchain: installed Go 1.26.4, without experimental SIMD.
@@ -71,6 +72,13 @@ the final complex dispatch recheck's 40ms samples in both toolchains. All use
 the same inputs and batched-call normalization on each side. This desktop
 machine is not CPU-isolated; medians and benchstat significance are reported,
 not fastest observations.
+
+These are legacy manually orchestrated measurements. The retained report does
+not include self-contained runner metadata such as binary hashes, per-process
+sample order, PGO state, or the complete runtime environment. The historical
+numbers and qualifiers below are preserved as recorded; new acceptance work
+should use the `go-optimisation` prebuilt-binary comparison runner and retain
+its metadata and raw per-run output.
 
 ## Results
 
@@ -164,6 +172,13 @@ GOMAXPROCS=1 /tmp/level1-followup.test -test.run '^$' \
   -test.benchtime=40ms -test.count=6 > level1-followup.txt
 benchstat -col /implementation level1-followup.txt
 ```
+
+The single-binary `-test.count=6` command above reproduces the within-binary
+Gonum-versus-native sweep. It does not reproduce the base-versus-candidate
+alternation used for the revision comparison. For a new revision comparison,
+build matching binaries at both named commits with the same harness and use
+`go-optimisation/scripts/compare_benchmarks.py` to alternate them and retain
+binary hashes, run order, environment metadata, and raw samples.
 
 Correctness checks include high-precision magnitude/overflow cases, zero,
 NaN/Inf priority, n=31/32/33 and 255/256/257 boundaries, positive strides,

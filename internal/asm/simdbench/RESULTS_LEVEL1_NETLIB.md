@@ -3,6 +3,7 @@
 ## Scope and method
 
 Base: `b9fb1114efd1f786fc0166a87fe6ea325aebe9e6`.
+Candidate: `792803f0ed5ebe046f74620a7d95840b7ff1c592`.
 Host: Apple M1 Pro, darwin/arm64, macOS 26.6.2 (25G83).
 Primary toolchain: Go 1.27.1 with `GOEXPERIMENT=simd` and `GOMAXPROCS=1`.
 Fallback comparison: installed Go 1.26.4 without the experiment.
@@ -43,6 +44,13 @@ revision order. Reflector consumer samples use 100ms, and default-toolchain
 checks use 30ms. All timed processes are serialized, with no concurrent builds
 or tests. This desktop host is not CPU-isolated; statistical results are
 interpreted with benchstat rather than selecting a fastest sample.
+
+These are legacy manually orchestrated measurements. The retained report does
+not include self-contained runner metadata such as binary hashes, per-process
+sample order, PGO state, or the complete runtime environment. The historical
+numbers and qualifiers below are preserved as recorded; new acceptance work
+should use the `go-optimisation` prebuilt-binary comparison runner and retain
+its metadata and raw per-run output.
 
 ## Measured changes against the base
 
@@ -223,6 +231,13 @@ GOMAXPROCS=1 /tmp/level1-netlib.test -test.run '^$' \
   -test.bench '^BenchmarkLevel1Netlib$' -test.benchtime=40ms -test.count=6 > level1.txt
 benchstat -col /implementation level1.txt
 ```
+
+The single-binary `-test.count=6` command above reproduces the within-binary
+Gonum-versus-native sweep. It does not reproduce the base-versus-candidate
+alternation used for the revision comparison. For a new revision comparison,
+build matching binaries at both named commits with the same harness and use
+`go-optimisation/scripts/compare_benchmarks.py` to alternate them and retain
+binary hashes, run order, environment metadata, and raw samples.
 
 For revision comparisons, apply the identical benchmark harness to the base
 checkout, prebuild both binaries, and alternate their execution. Compare

@@ -10,6 +10,8 @@ import (
 	"math"
 	"math/rand/v2"
 	"testing"
+
+	"gonum.org/v1/gonum/blas"
 )
 
 func checkCloseNetlib(t *testing.T, name string, got, want float64) {
@@ -309,5 +311,92 @@ func checkFactorColPadding(t *testing.T, a []float64, m, n, ld int) {
 				t.Fatalf("column padding [%d,%d] changed to %g", i, j, a[i+j*ld])
 			}
 		}
+	}
+}
+
+func solveRHS(n, nrhs, stride int) []float64 {
+	b := make([]float64, n*stride)
+	for i := 0; i < n; i++ {
+		for j := range nrhs {
+			b[i*stride+j] = math.Sin(float64(9*i + 5*j + 1))
+		}
+		for j := nrhs; j < stride; j++ {
+			b[i*stride+j] = factorPadding
+		}
+	}
+	return b
+}
+
+func scaleSolveRHS(b []float64, n, nrhs, stride int, scale float64) {
+	for i := 0; i < n; i++ {
+		for j := 0; j < nrhs; j++ {
+			b[i*stride+j] *= scale
+		}
+	}
+}
+
+func checkSolveMatchesNetlib(t *testing.T, got, want []float64, n, nrhs, ldg, ldw int) {
+	t.Helper()
+	scale := 0.0
+	for i := 0; i < n; i++ {
+		for j := 0; j < nrhs; j++ {
+			g, w := got[i*ldg+j], want[i*ldw+j]
+			if math.IsNaN(g) || math.IsInf(g, 0) || math.IsNaN(w) || math.IsInf(w, 0) {
+				t.Fatalf("solution[%d,%d]: got %g want finite Netlib %g", i, j, g, w)
+			}
+			scale = math.Max(scale, math.Max(math.Abs(g), math.Abs(w)))
+		}
+	}
+	if scale == 0 {
+		return
+	}
+	for i := 0; i < n; i++ {
+		for j := 0; j < nrhs; j++ {
+			g, w := got[i*ldg+j], want[i*ldw+j]
+			if math.Abs(g/scale-w/scale) > 512*0x1p-52*float64(n) {
+				t.Fatalf("solution[%d,%d]: got %g want Netlib %g", i, j, g, w)
+			}
+		}
+	}
+}
+
+func checkSolveResidual(t *testing.T, name string, trans blas.Transpose, n, nrhs int, a []float64, lda int, rhs []float64, ldr int, x []float64, ldx int) {
+	t.Helper()
+	maxA, maxX, maxB := 0.0, 0.0, 0.0
+	for i := 0; i < n; i++ {
+		for k := 0; k < n; k++ {
+			maxA = math.Max(maxA, math.Abs(a[i*lda+k]))
+		}
+		for j := 0; j < nrhs; j++ {
+			maxX = math.Max(maxX, math.Abs(x[i*ldx+j]))
+			maxB = math.Max(maxB, math.Abs(rhs[i*ldr+j]))
+		}
+	}
+	if math.IsNaN(maxA) || math.IsInf(maxA, 0) || math.IsNaN(maxX) || math.IsInf(maxX, 0) || math.IsNaN(maxB) || math.IsInf(maxB, 0) {
+		t.Fatalf("%s residual has non-finite input scale", name)
+	}
+	_, ea := math.Frexp(maxA)
+	_, ex := math.Frexp(maxX)
+	_, eb := math.Frexp(maxB)
+	escale := max(ea+ex, eb)
+	maxErr := 0.0
+	for i := 0; i < n; i++ {
+		for j := 0; j < nrhs; j++ {
+			sum := 0.0
+			for k := 0; k < n; k++ {
+				av := a[i*lda+k]
+				if trans != blas.NoTrans {
+					av = a[k*lda+i]
+				}
+				sum += math.Ldexp(av, -ea) * math.Ldexp(x[k*ldx+j], -ex)
+			}
+			sum = math.Ldexp(sum, ea+ex-escale)
+			scaledRHS := math.Ldexp(rhs[i*ldr+j], -escale)
+			maxErr = math.Max(maxErr, math.Abs(sum-scaledRHS))
+		}
+	}
+	tol := 512 * 0x1p-52 * float64(n)
+	if math.IsNaN(maxErr) || math.IsInf(maxErr, 0) || maxErr > tol {
+		t.Errorf("%s residual=%g tolerance=%g", name, maxErr, tol)
 	}
 }

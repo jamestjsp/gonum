@@ -2,6 +2,12 @@
 
 ## Scope and reproducibility
 
+Required workflow: `go-optimisation`, together with `gonum-simd` and the scoped
+LAPACK numerical-review gates. The user added `go-optimisation` during this pass;
+subsequent acceptance uses its prebuilt-binary comparison runner with recorded
+binary hashes, sample order, runtime settings, and matching benchmark selection.
+No repository PGO profile or GOFLAGS override was present when checked.
+
 Starting implementation: `856a28593860b8ecaac50537134852c1dc8a7a6d` on
 `codex/arm64-simd-blas`. Common `mat` APIs are the workload proxy; this is not
 usage telemetry or a claim that every LAPACK routine is optimized.
@@ -77,11 +83,14 @@ These are sampled CPU shares for specific inputs, not universal workload weights
 
 ## Shared-panel SIMD results
 
-The benchmark-only checkpoint is `fefd7949` (same implementation as `856a2859`).
-Six interleaved samples per binary used 100 ms for the broad native/public
-cohorts and 150 ms for shared-panel kernels. A separate six-sample 400 ms
-confirmation targeted LU/Cholesky; a four-worker kernel pass checked the existing
-parallel dispatch. Raw local evidence is in
+The benchmark-only checkpoint is `fefd7949` (same implementation as `856a2859`);
+the shared-panel candidate is `dee9b2d4`. The initial manual six-sample screen
+used 100 ms for broad native/public cohorts and 150 ms for shared-panel kernels.
+After the skill audit, both committed trees were rebuilt with Go 1.27.1 SIMD
+and explicit `-pgo=off`. The skill runner alternated ten rounds at 400 ms for
+LU/Cholesky and 300 ms for shared GEMM, recording binary hashes, raw per-process
+output, runtime environment and order. Its results supersede the initial public
+and kernel percentages below. Raw local evidence is in
 `/tmp/gonum-lapack-hotpaths.NcL3gt/`; the directory is not a permanent artifact.
 
 | Workload, one worker | Before | Active-row guard | Time change |
@@ -89,21 +98,23 @@ parallel dispatch. Raw local evidence is in
 | Dgetrf, n=128, reusable workspace | 276.9 us | 251.8 us | -9.1% |
 | Dgetrf, n=256, reusable workspace | 1.681 ms | 1.454 ms | -13.5% |
 | Dpotrf Upper, n=256 | 783.7 us | 692.3 us | -11.7% |
-| Public LU, n=128, confirmation | 359.0 us | 342.0 us | -4.7% |
-| Public LU, n=256, confirmation | 2.022 ms | 1.788 ms | -11.6% |
-| Public Cholesky, n=256, confirmation | 1.272 ms | 1.170 ms | -8.0% |
-| Public Cholesky, n=128, confirmation | 256.2 us | 261.8 us | +2.2% |
+| Public LU, n=128, audited | 360.4 us | 339.9 us | -5.7% |
+| Public LU, n=256, audited | 2.013 ms | 1.813 ms | -10.0% |
+| Public Cholesky, n=256, audited | 1.237 ms | 1.182 ms | -4.5% |
+| Public Cholesky, n=128, audited | 256.1 us | 265.3 us | +3.6% |
 
-All tabulated differences have p<0.05 (six samples), but the n=256 baseline
-Cholesky confidence range was 15%. The n=128 Cholesky slowdown repeated and is
+All tabulated differences have p<0.05 (native rows: six manual samples; public
+rows: ten runner samples). The n=128 Cholesky slowdown repeated and is
 reported as a tradeoff; that size does not execute the changed GEMM path, so a
 causal explanation has not been established. Larger LU/Cholesky gains outweigh
 this measured small-size cost in this cohort, not in every possible workload.
 
-Shared-panel DGEMM/SGEMM runtimes decreased about 26-61% in the one-worker screen
-and 25-61% with four workers, with zero allocations. The initial one-worker
-screen had outliers in some large kernels; use the stable four-worker rows and
-repeated consumer results as stronger evidence, not the noisy maxima. The
+Audited shared-panel DGEMM/SGEMM runtimes decreased 27.6-61.1% at one worker
+(ten rounds, all p<0.001). Four-worker LU-shaped n=256 decreased 23.3% for DGEMM
+and 36.7% for SGEMM (ten rounds, p<0.001). One-worker cases allocate nothing;
+the parallel cases retain about 2 KiB and 20 allocations per operation in both
+revisions. The initial screen's outliers and overbroad zero-allocation claim
+are superseded by these recorded runner results. The
 generated kernel still emits ARM64 vector FMLA instructions. Only dispatch
 geometry changed, not its arithmetic loop or existing bounds checks.
 
@@ -114,6 +125,33 @@ and slower than this Reference-LAPACK runtime at n=256: 1.668 ms versus 1.147 ms
 Upper Cholesky and LU kernels at n=256 are faster than the native reference on
 these fixtures (0.692 versus 1.783 ms; 1.454 versus 2.207 ms respectively).
 These comparisons say nothing about optimized Accelerate/OpenBLAS performance.
+
+Runner directories: `audit-mat`, `audit-gemm`, and `audit-gemm-p4` under the
+evidence directory. For the public API comparison, SHA-256 identifies the
+baseline binary as `d719facb5ec154b65d988d72a18787f93d458679e600fc6788013a9f8b739068`
+and candidate as `55b80a875faabc6982087900cb9d8c9a3eb9d4eb5242b8339067d2e817d19966`.
+Runtime controls: GOMAXPROCS as labeled; GODEBUG, GOGC and GOMEMLIMIT unset.
+
+## Dedicated skill audit
+
+Three independent Sol reviewers checked measurement quality, numerical behavior,
+and code generation/dispatch. The audit corrected parallel-allocation reporting,
+added self-contained comparison metadata and legacy-provenance notes, and
+strengthened shared-panel exceptional-value and native solve tests.
+
+The uncommitted blocked-TRSM prototype failed a persistent finite-to-infinity
+regression in both precisions for Upper/NoTrans. Backward panel traversal also
+reverses Lower/Trans accumulation within panels. The revised candidate blocks
+only Lower/NoTrans and Upper/Trans/ConjTrans, preserving the original backward
+paths. The original Lower/Trans test fixture was nondiscriminating and was
+corrected to isolate descending-versus-ascending order within one panel.
+No prototype timing is accepted as production or consumer performance evidence.
+
+Native solve gates now compare Gonum and Netlib solutions directly as well as
+checking independent residuals. Selected cases cover n=128/129/192/256, RHS
+widths 1/16/17/64, both transpose/triangle choices, and RHS scales 1e-200/1e200.
+Exponent-normalized residuals avoid overflowing the tolerance scale. These are
+bounded numerical gates, not a full LAPACK parity audit.
 
 ## Reproduce
 
