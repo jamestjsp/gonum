@@ -77,6 +77,13 @@ func (Implementation) Dtrsm(s blas.Side, ul blas.Uplo, tA blas.Transpose, d blas
 		}
 		return
 	}
+	// Keep backward substitution scalar because blocking reverses its
+	// coefficient accumulation order and can change finite results to Inf.
+	forward := ul == blas.Lower && tA == blas.NoTrans || ul == blas.Upper && tA != blas.NoTrans
+	if useGEMMSIMD && s == blas.Left && alpha == 1 && m >= 128 && n >= 16 && forward {
+		dtrsmLeftBlocked(ul, tA, d, m, n, a, lda, b, ldb)
+		return
+	}
 	nonUnit := d == blas.NonUnit
 	if s == blas.Left {
 		if tA == blas.NoTrans {
@@ -212,6 +219,21 @@ func (Implementation) Dtrsm(s blas.Side, ul blas.Uplo, tA blas.Transpose, d blas
 				tmp /= a[j*lda+j]
 			}
 			btmp[j] = tmp
+		}
+	}
+}
+
+func dtrsmLeftBlocked(ul blas.Uplo, trans blas.Transpose, diag blas.Diag, m, n int, a []float64, lda int, b []float64, ldb int) {
+	for start := 0; start < m; start += blockSize {
+		end := min(start+blockSize, m)
+		Implementation{}.Dtrsm(blas.Left, ul, trans, diag, end-start, n, 1, a[start*lda+start:], lda, b[start*ldb:], ldb)
+		if end == m {
+			continue
+		}
+		if trans == blas.NoTrans {
+			dgemmSerial(false, false, m-end, n, end-start, a[end*lda+start:], lda, b[start*ldb:], ldb, b[end*ldb:], ldb, -1)
+		} else {
+			dgemmSerial(true, false, m-end, n, end-start, a[start*lda+end:], lda, b[start*ldb:], ldb, b[end*ldb:], ldb, -1)
 		}
 	}
 }

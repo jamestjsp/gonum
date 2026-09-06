@@ -187,6 +187,9 @@ cat level3float64.go \
 | gofmt -r 'f64.AxpyUnitary -> f32.AxpyUnitary' \
 | gofmt -r 'f64.DotUnitary -> f32.DotUnitary' \
 | gofmt -r 'f64.ScalUnitary -> f32.ScalUnitary' \
+| gofmt -r 'dtrsmLeftBlocked -> strsmLeftBlocked' \
+| gofmt -r 'dgemmSerial -> sgemmSerial' \
+| gofmt -r 'Implementation{}.Dtrsm -> Implementation{}.Strsm' \
 \
 | sed -e "s_^\(func (Implementation) \)D\(.*\)\$_$WARNINGF32\1S\2_" \
       -e 's_^// D_// S_' \
