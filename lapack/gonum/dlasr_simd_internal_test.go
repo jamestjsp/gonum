@@ -36,6 +36,15 @@ func TestDlasrLeftVariableSIMDBoundaries(t *testing.T) {
 				dlasrLeftVariableReference(direct, tc.m, tc.n, c, s, want[guard+tc.offset:], lda)
 				Implementation{}.Dlasr(blas.Left, lapack.Variable, direct, tc.m, tc.n, c, s, a, lda)
 				dlasrSIMDCheck(t, store, want, 8*0x1p-52*float64(tc.m))
+				activeStart := guard + tc.offset
+				activeEnd := activeStart + (tc.m-1)*lda + tc.n
+				for _, span := range [][2]int{{0, activeStart}, {activeEnd, len(store)}} {
+					for i := span[0]; i < span[1]; i++ {
+						if math.Float64bits(store[i]) != math.Float64bits(want[i]) {
+							t.Fatalf("guard modified at %d", i)
+						}
+					}
+				}
 				for i := 0; i < tc.m; i++ {
 					for j := tc.n; j < lda; j++ {
 						k := guard + tc.offset + i*lda + j
@@ -46,6 +55,231 @@ func TestDlasrLeftVariableSIMDBoundaries(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestDlasrRightVariableBlockedAliasPreserved(t *testing.T) {
+	const m, n, lda = 65, 65, 68
+	for _, alias := range []string{"c", "s"} {
+		for _, direct := range []lapack.Direct{lapack.Forward, lapack.Backward} {
+			t.Run(alias+"/direct="+string(direct), func(t *testing.T) {
+				got := dlasrSIMDData(m * lda)
+				want := slices.Clone(got)
+				gc, gs := dlasrSIMDRotations(n-1, "dense")
+				wc, ws := slices.Clone(gc), slices.Clone(gs)
+				if alias == "c" {
+					copy(got[1:n], gc)
+					copy(want[1:n], wc)
+					gc, wc = got[1:n], want[1:n]
+				} else {
+					copy(got[1:n], gs)
+					copy(want[1:n], ws)
+					gs, ws = got[1:n], want[1:n]
+				}
+				dlasrRightVariableBlockedReference(direct, m, n, wc, ws, want, lda)
+				Implementation{}.Dlasr(blas.Right, lapack.Variable, direct, m, n, gc, gs, got, lda)
+				dlasrSIMDCheck(t, got, want, 16*float64(n)*0x1p-52)
+			})
+		}
+	}
+}
+
+func TestDlasrRightVariableSIMDNormalizedExtreme(t *testing.T) {
+	const m, n, lda = 64, 64, 67
+	c, s := dlasrSIMDRotations(n-1, "dense")
+	for _, direct := range []lapack.Direct{lapack.Forward, lapack.Backward} {
+		got := make([]float64, m*lda)
+		for i := 0; i < m; i++ {
+			for j := 0; j < n; j++ {
+				got[i*lda+j] = math.Copysign(math.MaxFloat64/16, float64((i+j)%2)-0.5)
+			}
+			for j := n; j < lda; j++ {
+				got[i*lda+j] = math.Copysign(0, -1)
+			}
+		}
+		want := slices.Clone(got)
+		dlasrRightVariableBlockedReference(direct, m, n, c, s, want, lda)
+		Implementation{}.Dlasr(blas.Right, lapack.Variable, direct, m, n, c, s, got, lda)
+		bound := 16 * float64(n) * 0x1p-52 * (math.MaxFloat64 / 16)
+		for i := 0; i < m; i++ {
+			for j := 0; j < n; j++ {
+				k := i*lda + j
+				if math.IsNaN(got[k]) || math.IsInf(got[k], 0) || math.IsNaN(want[k]) || math.IsInf(want[k], 0) || math.Abs(got[k]-want[k]) > bound {
+					t.Fatalf("direct=%c at (%d,%d): got %g want %g bound %g", direct, i, j, got[k], want[k], bound)
+				}
+			}
+			for j := n; j < lda; j++ {
+				k := i*lda + j
+				if math.Float64bits(got[k]) != math.Float64bits(want[k]) {
+					t.Fatalf("direct=%c: padding modified at %d", direct, k)
+				}
+			}
+		}
+	}
+}
+
+func TestDlasrRightVariableSequentialFallback(t *testing.T) {
+	for _, tc := range []struct{ m, n, padding int }{
+		{31, 16, 0}, {32, 15, 3}, {32, 16, 0}, {32, 17, 3}, {33, 16, 0},
+		{31, 32, 0}, {32, 31, 3}, {32, 32, 0}, {33, 33, 3}, {64, 31, 0}, {63, 65, 0},
+	} {
+		for _, direct := range []lapack.Direct{lapack.Forward, lapack.Backward} {
+			t.Run(fmt.Sprintf("m=%d/n=%d/lda=%d/direct=%c", tc.m, tc.n, tc.n+tc.padding, direct), func(t *testing.T) {
+				lda := tc.n + tc.padding
+				got := dlasrSIMDData(tc.m * lda)
+				want := slices.Clone(got)
+				c, s := dlasrSIMDRotations(tc.n-1, "dense")
+				dlasrRightVariableSequentialReference(direct, tc.m, tc.n, c, s, want, lda)
+				Implementation{}.Dlasr(blas.Right, lapack.Variable, direct, tc.m, tc.n, c, s, got, lda)
+				dlasrSIMDCheck(t, got, want, 16*float64(tc.n)*0x1p-52)
+				for i := 0; i < tc.m; i++ {
+					for j := tc.n; j < lda; j++ {
+						k := i*lda + j
+						if math.Float64bits(got[k]) != math.Float64bits(want[k]) {
+							t.Fatalf("padding modified at %d", k)
+						}
+					}
+				}
+			})
+		}
+	}
+
+	t.Run("identity-exceptional", func(t *testing.T) {
+		const m, n, lda = 32, 32, 35
+		got := dlasrSIMDData(m * lda)
+		got[0], got[1], got[2], got[3] = math.NaN(), math.Inf(1), math.Copysign(0, -1), math.SmallestNonzeroFloat64
+		want := slices.Clone(got)
+		c := make([]float64, n-1)
+		for i := range c {
+			c[i] = 1
+		}
+		for _, direct := range []lapack.Direct{lapack.Forward, lapack.Backward} {
+			result := slices.Clone(got)
+			Implementation{}.Dlasr(blas.Right, lapack.Variable, direct, m, n, c, make([]float64, n-1), result, lda)
+			dlasrSIMDCheckBits(t, result, want)
+		}
+	})
+
+	t.Run("unnormalized-overflow-classification", func(t *testing.T) {
+		const m, n, lda = 32, 32, 35
+		c, s := make([]float64, n-1), make([]float64, n-1)
+		for i := range c {
+			c[i] = 1
+		}
+		c[0], s[0] = 2, -2
+		for _, direct := range []lapack.Direct{lapack.Forward, lapack.Backward} {
+			got := make([]float64, m*lda)
+			for i := 0; i < m; i++ {
+				got[i*lda], got[i*lda+1] = math.MaxFloat64, math.MaxFloat64
+				for j := n; j < lda; j++ {
+					got[i*lda+j] = math.Copysign(0, -1)
+				}
+			}
+			Implementation{}.Dlasr(blas.Right, lapack.Variable, direct, m, n, c, s, got, lda)
+			for i := 0; i < m; i++ {
+				if !math.IsInf(got[i*lda], 0) || !math.IsInf(got[i*lda+1], 1) {
+					t.Fatalf("direct=%c row=%d: got [%g %g] want [Inf +Inf]", direct, i, got[i*lda], got[i*lda+1])
+				}
+				for j := n; j < lda; j++ {
+					if math.Float64bits(got[i*lda+j]) != math.Float64bits(math.Copysign(0, -1)) {
+						t.Fatalf("direct=%c: padding modified at (%d,%d)", direct, i, j)
+					}
+				}
+			}
+		}
+	})
+
+	t.Run("active-nonfinite-classification", func(t *testing.T) {
+		const m, n, lda = 32, 32, 35
+		c, s := make([]float64, n-1), make([]float64, n-1)
+		for i := range c {
+			c[i] = 1
+		}
+		c[0], s[0] = 0, 1
+		for _, direct := range []lapack.Direct{lapack.Forward, lapack.Backward} {
+			got := make([]float64, m*lda)
+			for i := 0; i < m; i++ {
+				got[i*lda], got[i*lda+1] = math.Inf(1), math.NaN()
+			}
+			Implementation{}.Dlasr(blas.Right, lapack.Variable, direct, m, n, c, s, got, lda)
+			for i := 0; i < m; i++ {
+				if !math.IsNaN(got[i*lda]) || !math.IsNaN(got[i*lda+1]) {
+					t.Fatalf("direct=%c row=%d: got [%g %g] want [NaN NaN]", direct, i, got[i*lda], got[i*lda+1])
+				}
+			}
+		}
+	})
+
+	t.Run("coefficient-alias", func(t *testing.T) {
+		const m, n, lda = 32, 32, 35
+		for _, direct := range []lapack.Direct{lapack.Forward, lapack.Backward} {
+			got := dlasrSIMDData(m * lda)
+			want := slices.Clone(got)
+			gc, gs := dlasrSIMDRotations(n-1, "dense")
+			copy(got[1:n], gc)
+			copy(want[1:n], gc)
+			gc, wc := got[1:n], want[1:n]
+			dlasrRightVariableSequentialReference(direct, m, n, wc, gs, want, lda)
+			Implementation{}.Dlasr(blas.Right, lapack.Variable, direct, m, n, gc, gs, got, lda)
+			dlasrSIMDCheck(t, got, want, 16*float64(n)*0x1p-52)
+		}
+	})
+}
+
+func dlasrRightVariableSequentialReference(direct lapack.Direct, m, n int, c, s, a []float64, lda int) {
+	if direct == lapack.Forward {
+		for j := 0; j < n-1; j++ {
+			ctmp, stmp := c[j], s[j]
+			if ctmp == 1 && stmp == 0 {
+				continue
+			}
+			for i, k := 0, j; i < m; i, k = i+1, k+lda {
+				right, left := a[k+1], a[k]
+				a[k+1] = ctmp*right - stmp*left
+				a[k] = stmp*right + ctmp*left
+			}
+		}
+		return
+	}
+	for j := n - 2; j >= 0; j-- {
+		ctmp, stmp := c[j], s[j]
+		if ctmp == 1 && stmp == 0 {
+			continue
+		}
+		for i, k := 0, j; i < m; i, k = i+1, k+lda {
+			right, left := a[k+1], a[k]
+			a[k+1] = ctmp*right - stmp*left
+			a[k] = stmp*right + ctmp*left
+		}
+	}
+}
+
+func dlasrRightVariableBlockedReference(direct lapack.Direct, m, n int, c, s, a []float64, lda int) {
+	for ib := 0; ib < m; {
+		iend := min(ib+32, m)
+		if m-iend < 16 {
+			iend = m
+		}
+		if direct == lapack.Forward {
+			for j := 0; j < n-1; j++ {
+				ctmp, stmp := c[j], s[j]
+				for i, k := ib, ib*lda+j; i < iend; i, k = i+1, k+lda {
+					right, left := a[k+1], a[k]
+					a[k+1] = ctmp*right - stmp*left
+					a[k] = stmp*right + ctmp*left
+				}
+			}
+		} else {
+			for j := n - 2; j >= 0; j-- {
+				ctmp, stmp := c[j], s[j]
+				for i, k := ib, ib*lda+j; i < iend; i, k = i+1, k+lda {
+					right, left := a[k+1], a[k]
+					a[k+1] = ctmp*right - stmp*left
+					a[k] = stmp*right + ctmp*left
+				}
+			}
+		}
+		ib = iend
 	}
 }
 
