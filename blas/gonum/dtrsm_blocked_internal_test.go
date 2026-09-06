@@ -331,6 +331,7 @@ func TestStrsmBlocked(t *testing.T) {
 
 func BenchmarkDtrsmBlockedSizes(b *testing.B) {
 	cases := [][2]int{
+		{32, 1}, {128, 1}, {256, 1}, {128, 2}, {128, 3}, {128, 4},
 		{127, 15}, {127, 16}, {127, 17},
 		{128, 15}, {128, 16}, {128, 17},
 		{129, 15}, {129, 16}, {129, 17},
@@ -363,6 +364,7 @@ func BenchmarkDtrsmBlockedSizes(b *testing.B) {
 
 func BenchmarkStrsmBlockedSizes(b *testing.B) {
 	cases := [][2]int{
+		{32, 1}, {128, 1}, {256, 1}, {128, 2}, {128, 3}, {128, 4},
 		{127, 15}, {127, 16}, {127, 17},
 		{128, 15}, {128, 16}, {128, 17},
 		{129, 15}, {129, 16}, {129, 17},
