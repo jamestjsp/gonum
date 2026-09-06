@@ -22,12 +22,19 @@ const (
 // The portable loop structure also appears in Go's SIMD GEMM experiments:
 // https://go-review.googlesource.com/c/go/+/827812
 func sgemmSerialSIMD(aTrans, bTrans bool, m, n, k int, a []float32, lda int, b []float32, ldb int, c []float32, ldc int, alpha float32) bool {
-	if bTrans || m < sgemmSIMDRows || k < 4 || n < 4 || !sgemmSIMDDisjoint(c, a) || !sgemmSIMDDisjoint(c, b) {
+	if bTrans || m < sgemmSIMDRows || k < 4 || n < 4 {
 		return false
 	}
 	width := simd.BroadcastFloat32s(0).Len()
 	tile := sgemmSIMDCols * width
 	if n < tile {
+		return false
+	}
+	ar, ac := m, k
+	if aTrans {
+		ar, ac = k, m
+	}
+	if !sgemmSIMDDisjoint(c, m, n, ldc, a, ar, ac, lda) || !sgemmSIMDDisjoint(c, m, n, ldc, b, k, n, ldb) {
 		return false
 	}
 	rowStride, kStride := lda, 1
@@ -178,8 +185,29 @@ func sgemmSerialSIMD(aTrans, bTrans bool, m, n, k int, a []float32, lda int, b [
 	return true
 }
 
-func sgemmSIMDDisjoint(x, y []float32) bool {
+// LAPACK panels may share backing storage while their active matrix entries do
+// not overlap. Padding and unused slice tails must not disable the SIMD path.
+func sgemmSIMDDisjoint(x []float32, xr, xc, xs int, y []float32, yr, yc, ys int) bool {
+	if xr == 0 || xc == 0 || yr == 0 || yc == 0 {
+		return true
+	}
 	xp, yp := uintptr(unsafe.Pointer(unsafe.SliceData(x))), uintptr(unsafe.Pointer(unsafe.SliceData(y)))
 	const size = unsafe.Sizeof(float32(0))
-	return xp+uintptr(len(x))*size <= yp || yp+uintptr(len(y))*size <= xp
+	xw, yw := uintptr(xc)*size, uintptr(yc)*size
+	xstep, ystep := uintptr(xs)*size, uintptr(ys)*size
+	xend, yend := xp+uintptr(xr-1)*xstep+xw, yp+uintptr(yr-1)*ystep+yw
+	if xend <= yp || yend <= xp {
+		return true
+	}
+	for xp < xend && yp < yend {
+		switch {
+		case xp+xw <= yp:
+			xp += xstep
+		case yp+yw <= xp:
+			yp += ystep
+		default:
+			return false
+		}
+	}
+	return true
 }

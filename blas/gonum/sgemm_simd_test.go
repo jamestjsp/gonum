@@ -127,6 +127,71 @@ func TestSgemmSIMDReject(t *testing.T) {
 	}
 }
 
+func TestSgemmSIMDDisjoint(t *testing.T) {
+	shared := make([]float32, 64)
+	for xoff := 0; xoff < 4; xoff++ {
+		for yoff := 0; yoff < 4; yoff++ {
+			for xr := 0; xr <= 3; xr++ {
+				for yr := 0; yr <= 3; yr++ {
+					for xc := 0; xc <= 3; xc++ {
+						for yc := 0; yc <= 3; yc++ {
+							for xs := max(1, xc); xs <= 4; xs++ {
+								for ys := max(1, yc); ys <= 4; ys++ {
+									want := gemmRegionsDisjoint(xoff, xr, xc, xs, yoff, yr, yc, ys)
+									got := sgemmSIMDDisjoint(shared[xoff:], xr, xc, xs, shared[yoff:], yr, yc, ys)
+									if got != want {
+										t.Fatalf("x=(%d,%d,%d,%d) y=(%d,%d,%d,%d): got %t want %t", xoff, xr, xc, xs, yoff, yr, yc, ys, got, want)
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+func TestSgemmSIMDSharedBacking(t *testing.T) {
+	for _, tc := range []struct {
+		name                      string
+		aTrans                    bool
+		m, n, k, aoff, boff, coff int
+	}{
+		{name: "lu", m: 32, n: 32, k: 16, aoff: 32*64 + 16, boff: 16*64 + 32, coff: 32*64 + 32},
+		{name: "upper-cholesky", aTrans: true, m: 16, n: 32, k: 16, aoff: 16, boff: 32, coff: 16*64 + 32},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			data := make([]float32, 64*64)
+			for i := range data {
+				data[i] = float32(i%29-14) / 32
+			}
+			orig := slices.Clone(data)
+			want := slices.Clone(data)
+			if tc.aTrans {
+				sgemmSerialTransNot(tc.m, tc.n, tc.k, want[tc.aoff:], 64, want[tc.boff:], 64, want[tc.coff:], 64, -0.75)
+			} else {
+				sgemmSerialNotNot(tc.m, tc.n, tc.k, want[tc.aoff:], 64, want[tc.boff:], 64, want[tc.coff:], 64, -0.75)
+			}
+			if !sgemmSerialSIMD(tc.aTrans, false, tc.m, tc.n, tc.k, data[tc.aoff:], 64, data[tc.boff:], 64, data[tc.coff:], 64, -0.75) {
+				t.Fatal("kernel rejected disjoint active regions")
+			}
+			for i := range data {
+				row, col := i/64, i%64
+				crow, ccol := tc.coff/64, tc.coff%64
+				active := row >= crow && row < crow+tc.m && col >= ccol && col < ccol+tc.n
+				if active {
+					if !gemmSIMDClose(float64(data[i]), float64(want[i]), 2e-5, 2e-5) {
+						t.Fatalf("output index %d: got %g want %g", i, data[i], want[i])
+					}
+				} else if math.Float32bits(data[i]) != math.Float32bits(orig[i]) {
+					t.Fatalf("storage outside C changed at %d", i)
+				}
+			}
+		})
+	}
+}
+
 func TestSgemmSIMDNumerical(t *testing.T) {
 	m, k := sgemmSIMDRows+1, 4
 	n := 2*sgemmSIMDCols*simd.BroadcastFloat32s(0).Len() - 1
