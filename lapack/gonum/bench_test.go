@@ -25,6 +25,7 @@ func BenchmarkDlantb(b *testing.B)        { testlapack.DlantbBenchmark(b, impl) 
 func BenchmarkDlaqr5(b *testing.B)        { testlapack.Dlaqr5Benchmark(b, impl) }
 func BenchmarkDlaic1(b *testing.B)        { testlapack.Dlaic1Benchmark(b, impl) }
 func BenchmarkDlasr(b *testing.B)         { testlapack.DlasrBenchmark(b, impl) }
+func BenchmarkDlasrVariable(b *testing.B) { testlapack.DlasrVariableBenchmark(b, impl) }
 func BenchmarkDlarft(b *testing.B)        { testlapack.DlarftBenchmark(b, impl) }
 func BenchmarkZlarfg(b *testing.B)        { testlapack.ZlarfgBenchmark(b, impl) }
 func BenchmarkDtzrzf(b *testing.B)        { testlapack.DtzrzfBenchmark(b, impl) }

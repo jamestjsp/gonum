@@ -113,3 +113,48 @@ func DlasrBenchmark(b *testing.B, impl Dlasrer) {
 		}
 	}
 }
+
+func DlasrVariableBenchmark(b *testing.B, impl Dlasrer) {
+	for _, direct := range []lapack.Direct{lapack.Forward, lapack.Backward} {
+		for _, tc := range []struct {
+			m, n, padding int
+			pattern       string
+		}{
+			{2, 15, 0, "dense"}, {2, 16, 0, "dense"}, {2, 17, 3, "dense"},
+			{4, 16, 0, "dense"}, {4, 17, 3, "sparse"},
+			{32, 16, 0, "dense"}, {32, 32, 3, "dense"}, {32, 256, 0, "dense"},
+			{32, 256, 3, "sparse"}, {32, 256, 3, "identity"},
+		} {
+			b.Run(fmt.Sprintf("direct=%c/pattern=%s/m=%d/n=%d/lda=%d", direct, tc.pattern, tc.m, tc.n, tc.n+tc.padding), func(b *testing.B) {
+				rnd := rand.New(rand.NewPCG(2, 1))
+				lda := tc.n + tc.padding
+				a := make([]float64, tc.m*lda)
+				for i := range a {
+					a[i] = rnd.Float64() - 0.5
+				}
+				c, s := make([]float64, tc.m-1), make([]float64, tc.m-1)
+				for i := range c {
+					c[i] = 1
+					if tc.pattern == "identity" || tc.pattern == "sparse" && i != len(c)/2 {
+						continue
+					}
+					theta := float64(i+1) * math.Pi / float64(2*len(c)+1)
+					c[i], s[i] = math.Cos(theta), math.Sin(theta)
+				}
+				b.ReportAllocs()
+				b.ResetTimer()
+				for i := 0; i < b.N; i++ {
+					impl.Dlasr(blas.Left, lapack.Variable, direct, tc.m, tc.n, c, s, a, lda)
+				}
+				b.StopTimer()
+				for i := 0; i < tc.m; i++ {
+					for _, v := range a[i*lda : i*lda+tc.n] {
+						if math.IsNaN(v) || math.IsInf(v, 0) {
+							b.Fatal("non-finite matrix result")
+						}
+					}
+				}
+			})
+		}
+	}
+}
