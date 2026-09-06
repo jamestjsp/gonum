@@ -153,14 +153,147 @@ widths 1/16/17/64, both transpose/triangle choices, and RHS scales 1e-200/1e200.
 Exponent-normalized residuals avoid overflowing the tolerance scale. These are
 bounded numerical gates, not a full LAPACK parity audit.
 
+The final extreme-scale solve cases use 16 RHS at n=192, so they exercise the
+blocked path; a separate one-RHS case retains fallback coverage. Forward blocked
+DTRSM/STRSM is restricted to left-sided, alpha=1 solves with at least 128 rows
+and 16 RHS, using 64-row diagonal solves and serial GEMM updates. Backward
+substitution, other scales, small cases, and unsupported builds retain the old
+implementation. No workspace allocation or public API was added.
+
+The audit also found that enabling blocking under `GODEBUG=simd=0` routed updates
+through emulated GEMM. A three-round diagnostic screen roughly doubled n=256,
+16-RHS public solve times, and a separate CPU profile attributed 63% cumulatively
+to `dgemmSerialSIMD@simd0`. This was not accepted as a production result. The
+revised gate checks `simd.Emulated()` and preserves the original solve path
+under emulation; it does not change existing GEMM emulation behavior.
+
+## Forward triangular-solve results
+
+The final comparison uses baseline `4fb7419037b6f7c1fba1f75decc94434db4c18df`
+and candidate `4d5e6224539a98917d4b27ed5fd038e853e3871d`. Both include the
+shared-panel repair and identical benchmark code. Test-only extreme-RHS coverage
+was strengthened after the candidate binary build; no benchmark or production
+source changed. All binaries use Go 1.27.1, `GOEXPERIMENT=simd`, `-pgo=off`.
+
+The skill runner collected ten interleaved rounds: 100 ms per BLAS case and
+150 ms per public solve case, with `GOMAXPROCS=1`. Timings exclude benchmark
+input resets for BLAS and use prefactored public solves. They are solve times,
+not factorization-plus-solve times.
+
+| Public solve, 16 RHS | Before | Forward blocking | Time change |
+| --- | ---: | ---: | ---: |
+| LU, n=128 | 112.29 us | 94.42 us | -15.91% |
+| Cholesky, n=128 | 112.50 us | 94.90 us | -15.65% |
+| LU, n=256 | 443.5 us | 338.4 us | -23.69% |
+| Cholesky, n=256 | 444.4 us | 339.0 us | -23.72% |
+| LQ, n=128 | 909.5 us | 892.1 us | -1.92% |
+| LQ, n=256 | 3.895 ms | 3.791 ms | -2.67% |
+
+All rows have p<0.01 with ten samples per revision. QR and all measured one-RHS
+consumer cases are statistically inconclusive, not proven equivalent. LU and
+Cholesky solves remain zero-allocation; QR/LQ retain 32 B and two allocations.
+
+The 104-case public BLAS cohort covers both precisions, all four transpose/
+triangle combinations, 127/128/129-row and 15/16/17-RHS dispatch boundaries,
+and 256/512-row cases with 16/64 RHS. Enabled forward DTRSM cases reduce time
+by 28.75-58.86%, and STRSM by 31.02-64.45% (all p<0.001). Both precisions
+remain zero-allocation. These are per-case kernel results, not an application
+throughput multiplier. Fallback cases include small statistically significant
+slowdowns; the broad run's largest is STRSM Lower/Trans at 127x15 (+3.52%).
+Changing source dispatch can alter generated code placement even when a case
+does not enter the new helper; this is a hypothesis, not a diagnosed cause.
+
+A focused one-worker repeat at 400 ms confirms the Lower/Trans, 15-RHS STRSM
+cost: 127/128/129 rows regress 3.49/3.42/3.13% respectively (ten rounds,
+all p<=0.001, `final-fallback-repeat`). This is an accepted, disclosed tradeoff
+against the substantially larger enabled-path and consumer gains, not a claim
+that all calls improve. No public API consumer regression was found in the
+measured solve cohort. Recalibrate these dispatch decisions on other ARM64 CPUs
+and after toolchain changes; do not extrapolate an M1 result to AMD64.
+
+Local runner directories are `final-trsm` and `final-consumers`. BLAS binary
+SHA-256: baseline `9395e6111828fa0413127d55102053947f2a707e87c9f1abee3600c432b8902e`,
+candidate `b3c8a9ed85136d6e18ce631add1f391392513b1436850738c8c9051c71c2a4f3`.
+
+With `GOMAXPROCS=4`, the 128/256-row, 16-RHS cohort retains forward gains of
+32.6-49.8% for DTRSM and 33.7-54.5% for STRSM (ten rounds at 100 ms,
+all p<0.001). These helpers deliberately use serial GEMM; four available
+workers do not imply a parallel triangular solve. Allocation counts remain zero.
+DTRSM Lower/Trans at 128x16 regresses 1.73% in this run; it remains on the
+original arithmetic path. Results are in `final-trsm-p4`.
+
+The final emulation check (`final-emulation`, ten rounds at 200 ms,
+`GOMAXPROCS=1 GODEBUG=simd=0`) finds no statistically significant change in
+LU/Cholesky 128/256, 16-RHS solve times (all p>=0.85; unchanged zero allocations).
+LU n=256 is 443.2 us on both revisions. This removes the earlier roughly 2x
+diagnostic regression; it is not a claim of native SIMD speed under emulation.
+
+Public solve binary SHA-256: baseline
+`3d4130294b08fcc0755b309038df14478f5f5c2234a74680ec68c154889131c0`, candidate
+`b18fe05633c43c165e2141101811e2b6e0bbbe4ce415cfcf90b7576088be92e7`.
+Native solve binary SHA-256: baseline
+`e034590031dc19949e7c523a434322df67a42597e38fb75f43320ec128e29ab8`, candidate
+`42f3b319e1e5067923333d41f55f241cfed3bbac7ed2e4239fe630362beeeee7`.
+
+The native solve cohort (`final-native`, ten rounds at 100 ms) independently
+confirms 15.1-24.2% lower Gonum time for 16 RHS and 9.4-14.9% for 64 RHS
+across both DGETRS transpose and DPOTRS triangle choices (all p<0.001).
+At n=256 and 16 RHS, DGETRS NoTrans takes 339.1 us versus Reference-LAPACK's
+476.5 us; DPOTRS Upper takes 339.0 us versus 642.6 us. Both sides remain
+zero Go allocations, and native-reference controls are largely unchanged.
+
+One-RHS solves expose a separate major remaining bottleneck: at n=256,
+DGETRS NoTrans is 273.8 us versus 30.20 us in Reference-LAPACK; DPOTRS Upper
+is 273.6 us versus 40.97 us. This pass does not improve them. Their many
+one-element TRSM updates warrant a dedicated vector-solve dispatch/profile
+investigation, with transpose, layout, scaling and numerical gates, before
+further instruction-level tuning.
+
+Next priorities are this one-RHS solve path, transposed-B GEMM for QR/LQ
+reflector updates, and SYRK/TRSV for Cholesky and condition estimation.
+Backward TRSM needs an order-preserving algorithm before being reconsidered.
+The earlier n=128 Cholesky factorization regression remains disclosed above;
+this solve-only pass neither fixes it nor establishes a general SVD speedup.
+
+A final factorization control (`final-factorizations`, ten rounds at 200 ms)
+compares the same solve baseline/candidate for LU/Cholesky at 128 and 256.
+No material additional change is established: three cases are statistically
+inconclusive; LU n=128 changes -0.20% (p=0.029). Allocations are unchanged.
+
+## Final validation
+
+The finalized implementation passes full `go test ./...` runs with Go 1.26.4
+and Go 1.27.1 SIMD, plus BLAS/LAPACK/mat `noasm` and `bounds` suites. Focused
+safe-build, race and emulation checks cover blocked DTRSM/STRSM and shared
+GEMM regressions. Strengthened native DGETRS/DPOTRS tests pass, including
+16-RHS extreme scales that enter blocked dispatch. Prior shared-panel gates
+also cover native factorization reconstruction and SVD conformance.
+
+`go generate ./blas/gonum` leaves generated files unchanged. Import/copyright
+policy checks and whitespace checks pass. Final binary inspection confirms
+ARM64 D2/S4 vector FMLA updates in the reused GEMM kernels; no mallocgc or
+makeslice call appears in the inspected TRSM/GEMM symbols. Existing bounds
+exits remain; this is not a claim that all bounds checks or spills disappeared.
+A final independent Sol review found no correctness or build-compatibility
+blockers in the corrected dispatch. AMD64 production dispatch is unchanged
+and has not been benchmarked in this pass; no cross-compilation was performed.
+
 ## Reproduce
+
+Analysis uses `golang.org/x/perf/cmd/benchstat` at
+`v0.0.0-20260312031701-16a31bc5fbd0`. The recorded host is macOS 26.6.2
+(25G83), Apple M1 Pro; no affinity or frequency lock was applied. Except for
+the explicitly labeled worker/emulation runs, GOMAXPROCS is 1 and GODEBUG,
+GOGC and GOMEMLIMIT are unset. Builds, tests and profiles ran outside acceptance
+timing windows. Temporary raw evidence is not a permanent repository artifact;
+the persistent benchmarks and exact revisions above support reproduction.
 
 Build each tree before timing, with matching benchmark files:
 
 ```sh
-GOTOOLCHAIN=go1.27.1 GOEXPERIMENT=simd go test -c ./mat -o mat.test
-GOTOOLCHAIN=go1.27.1 GOEXPERIMENT=simd go test -c ./blas/gonum -o blas.test
-GOTOOLCHAIN=go1.27.1 GOEXPERIMENT=simd go test -c -tags netlib ./lapack/gonum -o lapack.test
+GOTOOLCHAIN=go1.27.1 GOEXPERIMENT=simd go test -c -pgo=off ./mat -o mat.test
+GOTOOLCHAIN=go1.27.1 GOEXPERIMENT=simd go test -c -pgo=off ./blas/gonum -o blas.test
+GOTOOLCHAIN=go1.27.1 GOEXPERIMENT=simd go test -c -pgo=off -tags netlib ./lapack/gonum -o lapack.test
 GOMAXPROCS=1 ./mat.test -test.run '^$' -test.bench '^BenchmarkFactorization' -test.benchtime=400ms -test.benchmem
 GOMAXPROCS=1 ./blas.test -test.run '^$' -test.bench '^Benchmark[DS]gemmSharedBacking$' -test.benchtime=400ms -test.benchmem
 GOMAXPROCS=1 ./lapack.test -test.run '^$' -test.bench '^BenchmarkD(geqrf|getrf|potrf)Netlib$' -test.benchtime=400ms -test.benchmem
@@ -168,8 +301,9 @@ GOMAXPROCS=1 ./mat.test -test.run '^$' -test.bench '^BenchmarkFactorization$/LU$
 GOTOOLCHAIN=go1.27.1 go tool pprof -top mat.test lu.cpu
 ```
 
-Alternate baseline/candidate order for at least six samples and compare files
-with `benchstat`. Repeat selected kernels with `GOMAXPROCS=4`. Native tags need
+Use the skill comparison runner with ten alternating baseline/candidate rounds
+and compare its recorded files with `benchstat`. Repeat selected kernels with
+`GOMAXPROCS=4` and solve consumers with `GODEBUG=simd=0`. Native tags need
 the optional darwin/cgo Homebrew Reference-LAPACK installation; the `mat` and
 BLAS manifests are runnable without it, including on AMD64. AMD64 does not gain
 new automatic GEMM dispatch from this ARM64-validated change.

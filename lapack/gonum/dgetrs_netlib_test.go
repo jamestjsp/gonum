@@ -21,8 +21,9 @@ func TestDgetrsNetlib(t *testing.T) {
 	}{
 		{n: 128, nrhs: 16, scale: 1},
 		{n: 129, nrhs: 17, scale: 1},
-		{n: 192, nrhs: 1, scale: 1e-200},
-		{n: 192, nrhs: 1, scale: 1e200},
+		{n: 192, nrhs: 1, scale: 1},
+		{n: 192, nrhs: 16, scale: 1e-200},
+		{n: 192, nrhs: 16, scale: 1e200},
 		{n: 256, nrhs: 64, scale: 1},
 	} {
 		for _, trans := range []blas.Transpose{blas.NoTrans, blas.Trans} {
