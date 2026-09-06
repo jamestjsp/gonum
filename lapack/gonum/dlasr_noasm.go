@@ -11,11 +11,3 @@ import "gonum.org/v1/gonum/lapack"
 func dlasrLeftVariableSIMD(direct lapack.Direct, m, n int, c, s, a []float64, lda int) bool {
 	return false
 }
-
-func dlasrRightVariableCarry4(direct lapack.Direct, m, n int, c, s, a []float64, lda int) bool {
-	return false
-}
-
-func dlasrRightVariableSequential(direct lapack.Direct, m, n int, c, s, a []float64, lda int) bool {
-	return false
-}
