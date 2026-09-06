@@ -6,7 +6,16 @@
 
 package gonum
 
+import "gonum.org/v1/gonum/blas"
+
 const useGEMMSIMD = false
+
+func dsyrkBlocked(ul blas.Uplo, n, k int, alpha float64, a []float64, lda int, beta float64, c []float64, ldc int) bool {
+	return false
+}
+func ssyrkBlocked(ul blas.Uplo, n, k int, alpha float32, a []float32, lda int, beta float32, c []float32, ldc int) bool {
+	return false
+}
 
 func gemmSIMDHardware() bool {
 	return false
