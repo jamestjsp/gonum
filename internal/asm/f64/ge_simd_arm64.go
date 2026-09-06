@@ -21,5 +21,10 @@ func GemvT(m, n uintptr, alpha float64, a []float64, lda uintptr, x []float64, i
 		GemvTSIMD(m, n, alpha, a, lda, x, incX, beta, y, incY)
 		return
 	}
+	if m >= 8 && n != 0 && n <= 32 && lda >= n && int(incX) > 0 && incY > 1 && int(incY) > 0 &&
+		gemvTShortStridedValid(m, n, a, lda, x, incX, y, incY) {
+		gemvTShortStrided(m, n, alpha, a, lda, x, incX, beta, y, incY)
+		return
+	}
 	gemvT(m, n, alpha, a, lda, x, incX, beta, y, incY)
 }
