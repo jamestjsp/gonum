@@ -12,6 +12,11 @@ func GemvN(m, n uintptr, alpha float64, a []float64, lda uintptr, x []float64, i
 		GemvNSIMD(m, n, alpha, a, lda, x, incX, beta, y, incY)
 		return
 	}
+	if m >= 4 && m <= 32 && n >= 8 && lda >= n && incX == 1 && incY > 1 && int(incY) > 0 &&
+		gemvNShortStridedValid(m, n, a, lda, x, incX, y, incY) {
+		gemvNShortStrided(m, n, alpha, a, lda, x, beta, y, incY)
+		return
+	}
 	gemvN(m, n, alpha, a, lda, x, incX, beta, y, incY)
 }
 
