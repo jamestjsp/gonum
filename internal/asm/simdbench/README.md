@@ -73,6 +73,8 @@ the remaining single-precision norm gap and strided maximum-index scans.
 The [bottom-up triangular solve pass](RESULTS_BOTTOM_UP.md) removes repeated
 single-element AXPY dispatch. The [strided GEMV follow-up](RESULTS_STRIDED_GEMV.md)
 traces reflector workspace strides through Dlarft and measures public QR gains.
+The [RowWise GEMV follow-up](RESULTS_ROWWISE_GEMV.md) shares input loads across
+ordered row reductions and measures public LQ gains.
 
 The [initial AMD64 results](https://github.com/jamestjsp/gonum/issues/6#issuecomment-5541048813)
 identified oversized scratch buffers, unnecessary staging for contiguous
