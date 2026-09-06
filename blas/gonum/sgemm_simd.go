@@ -22,7 +22,10 @@ const (
 // The portable loop structure also appears in Go's SIMD GEMM experiments:
 // https://go-review.googlesource.com/c/go/+/827812
 func sgemmSerialSIMD(aTrans, bTrans bool, m, n, k int, a []float32, lda int, b []float32, ldb int, c []float32, ldc int, alpha float32) bool {
-	if bTrans || m < sgemmSIMDRows || k < 4 || n < 4 {
+	if bTrans {
+		return !aTrans && n >= 2 && k >= 16 && sgemmSerialNotTransSIMD(m, n, k, a, lda, b, ldb, c, ldc, alpha)
+	}
+	if m < sgemmSIMDRows || k < 4 || n < 4 {
 		return false
 	}
 	width := simd.BroadcastFloat32s(0).Len()

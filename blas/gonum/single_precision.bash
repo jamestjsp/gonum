@@ -241,6 +241,7 @@ cat dgemm_simd.go \
 | gofmt -r 'dgemmSIMDRows -> sgemmSIMDRows' \
 | gofmt -r 'dgemmSIMDCols -> sgemmSIMDCols' \
 | gofmt -r 'dgemmSerialSIMD -> sgemmSerialSIMD' \
+| gofmt -r 'dgemmSerialNotTransSIMD -> sgemmSerialNotTransSIMD' \
 | gofmt -r 'dgemmSerialNotNot -> sgemmSerialNotNot' \
 | gofmt -r 'dgemmSerialTransNot -> sgemmSerialTransNot' \
 | gofmt -r 'gemmSIMDDisjoint -> sgemmSIMDDisjoint' \
