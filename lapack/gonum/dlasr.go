@@ -104,6 +104,9 @@ func (impl Implementation) Dlasr(side blas.Side, pivot lapack.Pivot, direct lapa
 
 	if side == blas.Left {
 		if pivot == lapack.Variable {
+			if m >= 2 && n >= 16 && (m > 2 || n >= 32) && dlasrLeftVariableSIMD(direct, m, n, c, s, a, lda) {
+				return
+			}
 			if direct == lapack.Forward {
 				for j := 0; j < m-1; j++ {
 					ctmp := c[j]
@@ -196,6 +199,9 @@ func (impl Implementation) Dlasr(side blas.Side, pivot lapack.Pivot, direct lapa
 			return
 		}
 		if m >= 64 && n >= 64 && dlasrRightVariableBlocked(direct, m, n, c, s, a, lda) {
+			return
+		}
+		if m >= 32 && n >= 16 && dlasrRightVariableSequential(direct, m, n, c, s, a, lda) {
 			return
 		}
 		if direct == lapack.Forward {
@@ -291,6 +297,9 @@ func dlasrRightVariableBlocked(direct lapack.Direct, m, n int, c, s, a []float64
 		if c[j] == 1 && s[j] == 0 {
 			return false
 		}
+	}
+	if dlasrRightVariableCarry4(direct, m, n, c, s, a, lda) {
+		return true
 	}
 	if direct == lapack.Forward {
 		for ib := 0; ib < m; {
