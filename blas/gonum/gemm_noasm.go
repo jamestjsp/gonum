@@ -8,6 +8,10 @@ package gonum
 
 const useGEMMSIMD = false
 
+func gemmSIMDHardware() bool {
+	return false
+}
+
 func dgemmSerialSIMD(aTrans, bTrans bool, m, n, k int, a []float64, lda int, b []float64, ldb int, c []float64, ldc int, alpha float64) bool {
 	return false
 }

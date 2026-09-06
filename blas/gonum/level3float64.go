@@ -80,7 +80,7 @@ func (Implementation) Dtrsm(s blas.Side, ul blas.Uplo, tA blas.Transpose, d blas
 	// Keep backward substitution scalar because blocking reverses its
 	// coefficient accumulation order and can change finite results to Inf.
 	forward := ul == blas.Lower && tA == blas.NoTrans || ul == blas.Upper && tA != blas.NoTrans
-	if useGEMMSIMD && s == blas.Left && alpha == 1 && m >= 128 && n >= 16 && forward {
+	if useGEMMSIMD && s == blas.Left && alpha == 1 && m >= 128 && n >= 16 && forward && gemmSIMDHardware() {
 		dtrsmLeftBlocked(ul, tA, d, m, n, a, lda, b, ldb)
 		return
 	}

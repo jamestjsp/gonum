@@ -6,6 +6,13 @@
 
 package gonum
 
-import "runtime"
+import (
+	"runtime"
+	"simd"
+)
 
 const useGEMMSIMD = runtime.GOARCH == "arm64"
+
+func gemmSIMDHardware() bool {
+	return useGEMMSIMD && !simd.Emulated()
+}
