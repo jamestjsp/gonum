@@ -111,8 +111,44 @@ func (Implementation) Isamax(n int, x []float32, incX int) int {
 	idx := 0
 	max := math.Abs(x[0])
 	if incX == 1 {
-		for i, v := range x[:n] {
-			absV := math.Abs(v)
+		if n < 32 {
+			for i, v := range x[:n] {
+				absV := math.Abs(v)
+				if absV > max {
+					max = absV
+					idx = i
+				}
+			}
+			return idx
+		}
+		i := 1
+		for ; i+4 <= n; i += 4 {
+			v0 := math.Abs(x[i])
+			v1 := math.Abs(x[i+1])
+			v2 := math.Abs(x[i+2])
+			v3 := math.Abs(x[i+3])
+			if v0 <= max && v1 <= max && v2 <= max && v3 <= max {
+				continue
+			}
+			if v0 > max {
+				max = v0
+				idx = i
+			}
+			if v1 > max {
+				max = v1
+				idx = i + 1
+			}
+			if v2 > max {
+				max = v2
+				idx = i + 2
+			}
+			if v3 > max {
+				max = v3
+				idx = i + 3
+			}
+		}
+		for ; i < n; i++ {
+			absV := math.Abs(x[i])
 			if absV > max {
 				max = absV
 				idx = i

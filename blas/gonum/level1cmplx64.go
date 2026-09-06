@@ -37,10 +37,13 @@ func (Implementation) Scasum(n int, x []complex64, incX int) float32 {
 		if len(x) < n {
 			panic(shortX)
 		}
-		for _, v := range x[:n] {
-			sum += scabs1(v)
+		if n < 8 {
+			for _, v := range x[:n] {
+				sum += scabs1(v)
+			}
+			return sum
 		}
-		return sum
+		return c64.AsumUnitary(x[:n])
 	}
 	if (n-1)*incX >= len(x) {
 		panic(shortX)
@@ -74,6 +77,11 @@ func (Implementation) Scnrm2(n int, x []complex64, incX int) float32 {
 	}
 	if (n-1)*incX >= len(x) {
 		panic(shortX)
+	}
+	if incX == 1 && n >= 32 {
+		if norm, ok := scnrm2Unitary(x[:n]); ok {
+			return norm
+		}
 	}
 	var (
 		scale float32

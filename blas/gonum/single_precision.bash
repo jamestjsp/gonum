@@ -54,6 +54,7 @@ cat level1cmplx128.go \
 \
 | gofmt -r 'c128.AxpyInc -> c64.AxpyInc' \
 | gofmt -r 'c128.AxpyUnitary -> c64.AxpyUnitary' \
+| gofmt -r 'c128.AsumUnitary -> c64.AsumUnitary' \
 | gofmt -r 'c128.DotcInc -> c64.DotcInc' \
 | gofmt -r 'c128.DotcUnitary -> c64.DotcUnitary' \
 | gofmt -r 'c128.DotuInc -> c64.DotuInc' \
@@ -62,6 +63,7 @@ cat level1cmplx128.go \
 | gofmt -r 'c128.ScalInc -> c64.ScalInc' \
 | gofmt -r 'c128.ScalUnitary -> c64.ScalUnitary' \
 | gofmt -r 'dcabs1 -> scabs1' \
+| gofmt -r 'dznrm2Unitary -> scnrm2Unitary' \
 \
 | sed -e "s_^\(func (Implementation) \)Zdot\(.*\)\$_$WARNINGC64\1Cdot\2_" \
       -e 's_^// Zdot_// Cdot_' \

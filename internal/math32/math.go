@@ -28,13 +28,7 @@ const (
 //	Abs(±Inf) = +Inf
 //	Abs(NaN) = NaN
 func Abs(x float32) float32 {
-	switch {
-	case x < 0:
-		return -x
-	case x == 0:
-		return 0 // return correctly abs(-0)
-	}
-	return x
+	return math.Float32frombits(math.Float32bits(x) & 0x7fffffff)
 }
 
 // Copysign returns a value with the magnitude

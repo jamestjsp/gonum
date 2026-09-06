@@ -33,10 +33,13 @@ func (Implementation) Dzasum(n int, x []complex128, incX int) float64 {
 		if len(x) < n {
 			panic(shortX)
 		}
-		for _, v := range x[:n] {
-			sum += dcabs1(v)
+		if n < 8 {
+			for _, v := range x[:n] {
+				sum += dcabs1(v)
+			}
+			return sum
 		}
-		return sum
+		return c128.AsumUnitary(x[:n])
 	}
 	if (n-1)*incX >= len(x) {
 		panic(shortX)
@@ -68,6 +71,11 @@ func (Implementation) Dznrm2(n int, x []complex128, incX int) float64 {
 	}
 	if (n-1)*incX >= len(x) {
 		panic(shortX)
+	}
+	if incX == 1 && n >= 32 {
+		if norm, ok := dznrm2Unitary(x[:n]); ok {
+			return norm
+		}
 	}
 	var (
 		scale float64

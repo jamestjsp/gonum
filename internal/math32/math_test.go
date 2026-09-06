@@ -15,9 +15,33 @@ import (
 const tol = 1e-7
 
 func TestAbs(t *testing.T) {
-	f := func(x float32) bool {
-		y := Abs(x)
-		return y == float32(math.Abs(float64(x)))
+	for _, bits := range []uint32{
+		0,
+		1 << 31,
+		1,
+		1<<31 | 1,
+		math.Float32bits(math.MaxFloat32),
+		math.Float32bits(-math.MaxFloat32),
+		0x7f800000,
+		0xff800000,
+		0x7fc00123,
+		0xffc00123,
+	} {
+		x := math.Float32frombits(bits)
+		want := bits & 0x7fffffff
+		if got := math.Float32bits(Abs(x)); got != want {
+			t.Errorf("unexpected result for bits %#08x: got %#08x want %#08x", bits, got, want)
+		}
+	}
+
+	f := func(bits uint32) bool {
+		x := math.Float32frombits(bits)
+		if math.IsNaN(float64(x)) || math.IsInf(float64(x), 0) {
+			return true
+		}
+		got := math.Float32bits(Abs(x))
+		want := math.Float32bits(float32(math.Abs(float64(x))))
+		return got == want
 	}
 	if err := quick.Check(f, nil); err != nil {
 		t.Error(err)
