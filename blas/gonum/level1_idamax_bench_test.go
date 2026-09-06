@@ -11,6 +11,51 @@ import (
 
 var idamaxBenchmarkSink int
 
+// BenchmarkIndexMaxStrided includes both frequent and rare index updates.
+func BenchmarkIndexMaxStrided(b *testing.B) {
+	for _, n := range []int{15, 16, 17, 31, 32, 33, 256, 4096} {
+		for _, inc := range []int{2, 3, 17, 257} {
+			for _, pattern := range []string{"rare", "monotone", "random"} {
+				for _, precision := range []string{"float64", "float32"} {
+					b.Run(fmt.Sprintf("n=%d/inc=%d/pattern=%s/type=%s", n, inc, pattern, precision), func(b *testing.B) {
+						x := make([]float64, (n-1)*inc+1)
+						xs := make([]float32, len(x))
+						want, largest := 0, -1.0
+						for i := 0; i < n; i++ {
+							v := float64(n - i)
+							if pattern == "monotone" {
+								v = float64(i + 1)
+							}
+							if pattern == "random" {
+								v = float64((i * 7919) % 1009)
+							}
+							x[i*inc], xs[i*inc] = v, float32(v)
+							if v > largest {
+								want, largest = i, v
+							}
+						}
+						b.ReportAllocs()
+						b.ResetTimer()
+						if precision == "float64" {
+							for i := 0; i < b.N; i++ {
+								idamaxBenchmarkSink = impl.Idamax(n, x, inc)
+							}
+						} else {
+							for i := 0; i < b.N; i++ {
+								idamaxBenchmarkSink = impl.Isamax(n, xs, inc)
+							}
+						}
+						b.StopTimer()
+						if idamaxBenchmarkSink != want {
+							b.Fatalf("got %d, want %d", idamaxBenchmarkSink, want)
+						}
+					})
+				}
+			}
+		}
+	}
+}
+
 func BenchmarkIdamaxUnitaryPatterns(b *testing.B) {
 	for _, n := range []int{15, 16, 17, 256, 4096} {
 		for _, pattern := range []string{"rare", "monotone"} {

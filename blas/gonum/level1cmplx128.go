@@ -77,6 +77,11 @@ func (Implementation) Dznrm2(n int, x []complex128, incX int) float64 {
 			return norm
 		}
 	}
+	if incX != 1 && n >= 32 {
+		if norm, ok := dznrm2Inc(n, x, incX); ok {
+			return norm
+		}
+	}
 	var (
 		scale float64
 		ssq   float64 = 1

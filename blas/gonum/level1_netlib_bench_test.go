@@ -89,7 +89,7 @@ func BenchmarkLevel1Netlib(b *testing.B) {
 
 func level1BoundaryBenchmark(routine string) bool {
 	switch routine {
-	case "Isamax", "Idamax", "Scasum", "Dzasum", "Dznrm2":
+	case "Isamax", "Idamax", "Scasum", "Dzasum", "Dznrm2", "Snrm2", "Scnrm2":
 		return true
 	default:
 		return false

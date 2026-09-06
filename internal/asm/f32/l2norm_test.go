@@ -67,6 +67,12 @@ func TestL2NormInc(t *testing.T) {
 	}
 }
 
+func TestL2NormZeroIncrement(t *testing.T) {
+	if got := L2NormInc(nil, 5, 0); got != 0 {
+		t.Fatalf("zero increment: got %g, want 0", got)
+	}
+}
+
 func TestL2DistanceUnitary(t *testing.T) {
 	const tol = 1e-7
 

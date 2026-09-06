@@ -83,6 +83,11 @@ func (Implementation) Scnrm2(n int, x []complex64, incX int) float32 {
 			return norm
 		}
 	}
+	if incX != 1 && n >= 32 {
+		if norm, ok := scnrm2Inc(n, x, incX); ok {
+			return norm
+		}
+	}
 	var (
 		scale float32
 		ssq   float32 = 1

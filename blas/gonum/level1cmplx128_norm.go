@@ -4,4 +4,4 @@
 
 package gonum
 
-func scnrm2Unitary([]complex64) (float32, bool) { return 0, false }
+func dznrm2Inc(int, []complex128, int) (float64, bool) { return 0, false }

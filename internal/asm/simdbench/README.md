@@ -68,6 +68,8 @@ The [native SVD rotation follow-up](RESULTS_SVD.md) adds independent Netlib
 comparisons and measures shared LAPACK cache-blocking improvements.
 The [complete Level 1 native comparison](RESULTS_LEVEL1_NETLIB.md) covers all
 46 public Level 1 routines and measures the subsequent scalar and SIMD changes.
+The [norm and strided-index follow-up](RESULTS_LEVEL1_NORMS_STRIDES.md) targets
+the remaining single-precision norm gap and strided maximum-index scans.
 
 The [initial AMD64 results](https://github.com/jamestjsp/gonum/issues/6#issuecomment-5541048813)
 identified oversized scratch buffers, unnecessary staging for contiguous

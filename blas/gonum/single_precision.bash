@@ -64,6 +64,7 @@ cat level1cmplx128.go \
 | gofmt -r 'c128.ScalUnitary -> c64.ScalUnitary' \
 | gofmt -r 'dcabs1 -> scabs1' \
 | gofmt -r 'dznrm2Unitary -> scnrm2Unitary' \
+| gofmt -r 'dznrm2Inc -> scnrm2Inc' \
 \
 | sed -e "s_^\(func (Implementation) \)Zdot\(.*\)\$_$WARNINGC64\1Cdot\2_" \
       -e 's_^// Zdot_// Cdot_' \
