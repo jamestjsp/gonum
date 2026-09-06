@@ -35,6 +35,7 @@ func DlarftTest(t *testing.T, impl Dlarfter) {
 				{6, 6, 15, 10},
 				{8, 6, 15, 10},
 				{6, 8, 15, 10},
+				{65, 32, 0, 64},
 			} {
 				// Generate a matrix
 				m := test.m

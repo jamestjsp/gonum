@@ -19,8 +19,11 @@ var (
 
 func TestAxpyIncDlarftGeometry(t *testing.T) {
 	for _, n := range []int{0, 1, 2, 7, 8, 15, 16, 17, 31} {
-		for _, stride := range []int{1, 32, 0, -32} {
+		for _, stride := range []int{1, 32, 64, 0, -32} {
 			t.Run(fmt.Sprintf("n=%d/incy=%d", n, stride), func(t *testing.T) {
+				if runtime.GOARCH == "amd64" && stride == 0 {
+					t.Skip("amd64 assembly does not guarantee repeated-destination order")
+				}
 				x := make([]float64, n+4)
 				for i := range x {
 					x[i] = float64(i%7+1) / 8
@@ -94,12 +97,16 @@ func TestAxpyIncDlarftShortX(t *testing.T) {
 		})
 	}
 	t.Run("immediate", func(t *testing.T) {
+		y := []float64{5}
 		defer func() {
 			if recover() == nil {
 				t.Fatal("empty x did not panic")
 			}
+			if y[0] != 5 {
+				t.Fatalf("destination changed to %g", y[0])
+			}
 		}()
-		AxpyInc(0.5, nil, []float64{5}, 1, 1, 1, 0, 0)
+		AxpyInc(0.5, nil, y, 1, 1, 1, 0, 0)
 	})
 }
 
@@ -130,8 +137,11 @@ func TestGemvTDlarftGeometry(t *testing.T) {
 	}{
 		{65, 1, 128, 128, 32},
 		{65, 7, 128, 128, 32},
+		{65, 8, 128, 128, 64},
 		{129, 16, 256, 256, 32},
+		{129, 17, 256, 256, 64},
 		{257, 31, 256, 256, 32},
+		{257, 31, 256, 256, 64},
 		{65, 17, 20, 1, 1},
 	} {
 		t.Run(fmt.Sprintf("m=%d/n=%d/lda=%d/incx=%d/incy=%d", tc.m, tc.n, tc.lda, tc.incX, tc.incY), func(t *testing.T) {
@@ -160,8 +170,11 @@ func TestGemvTDlarftGeometry(t *testing.T) {
 
 func BenchmarkAxpyIncDlarft(b *testing.B) {
 	for _, n := range []int{1, 2, 7, 8, 15, 16, 17, 31} {
-		for _, stride := range []int{1, 32, 0, -32} {
+		for _, stride := range []int{1, 32, 64, 0, -32} {
 			b.Run(fmt.Sprintf("n=%d/incy=%d", n, stride), func(b *testing.B) {
+				if runtime.GOARCH == "amd64" && stride == 0 {
+					b.Skip("amd64 assembly does not guarantee repeated-destination order")
+				}
 				x := make([]float64, n)
 				y, iy := dlarftStridedVector(n, stride, 0)
 				for i := range x {
@@ -193,9 +206,13 @@ func BenchmarkGemvTDlarft(b *testing.B) {
 		{name: "dlarft-128x7", m: 128, n: 7, lda: 128, incX: 128, incY: 32},
 		{name: "dlarft-128x16", m: 128, n: 16, lda: 128, incX: 128, incY: 32},
 		{name: "dlarft-128x31", m: 128, n: 31, lda: 128, incX: 128, incY: 32},
+		{name: "dlarft64-128x16", m: 128, n: 16, lda: 128, incX: 128, incY: 64},
+		{name: "dlarft64-128x31", m: 128, n: 31, lda: 128, incX: 128, incY: 64},
 		{name: "dlarft-256x1", m: 256, n: 1, lda: 256, incX: 256, incY: 32},
 		{name: "dlarft-256x16", m: 256, n: 16, lda: 256, incX: 256, incY: 32},
 		{name: "dlarft-256x31", m: 256, n: 31, lda: 256, incX: 256, incY: 32},
+		{name: "dlarft64-256x16", m: 256, n: 16, lda: 256, incX: 256, incY: 64},
+		{name: "dlarft64-256x31", m: 256, n: 31, lda: 256, incX: 256, incY: 64},
 		{name: "contiguous-128x16", m: 128, n: 16, lda: 16, incX: 1, incY: 1},
 		{name: "contiguous-256x31", m: 256, n: 31, lda: 31, incX: 1, incY: 1},
 	} {
