@@ -77,6 +77,10 @@ func (Implementation) Dtrsm(s blas.Side, ul blas.Uplo, tA blas.Transpose, d blas
 		}
 		return
 	}
+	if useGEMMSIMD && s == blas.Left && n == 1 {
+		dtrsmLeftVector(ul, tA, d, m, alpha, a, lda, b, ldb)
+		return
+	}
 	// Keep backward substitution scalar because blocking reverses its
 	// coefficient accumulation order and can change finite results to Inf.
 	forward := ul == blas.Lower && tA == blas.NoTrans || ul == blas.Upper && tA != blas.NoTrans
@@ -220,6 +224,90 @@ func (Implementation) Dtrsm(s blas.Side, ul blas.Uplo, tA blas.Transpose, d blas
 			}
 			btmp[j] = tmp
 		}
+	}
+}
+
+// Unlike TRSV, this path retains TRSM's ordered updates and reciprocal multiplication.
+func dtrsmLeftVector(ul blas.Uplo, trans blas.Transpose, diag blas.Diag, m int, alpha float64, a []float64, lda int, b []float64, ldb int) {
+	nonUnit := diag == blas.NonUnit
+	if trans == blas.NoTrans {
+		if ul == blas.Upper {
+			for i := m - 1; i >= 0; i-- {
+				bi := i * ldb
+				value := b[bi]
+				if alpha != 1 {
+					value *= alpha
+				}
+				for ka, va := range a[i*lda+i+1 : i*lda+m] {
+					if va != 0 {
+						k := ka + i + 1
+						value += -va * b[k*ldb]
+					}
+				}
+				if nonUnit {
+					tmp := 1 / a[i*lda+i]
+					value *= tmp
+				}
+				b[bi] = value
+			}
+			return
+		}
+		for i := 0; i < m; i++ {
+			bi := i * ldb
+			value := b[bi]
+			if alpha != 1 {
+				value *= alpha
+			}
+			for k, va := range a[i*lda : i*lda+i] {
+				if va != 0 {
+					value += -va * b[k*ldb]
+				}
+			}
+			if nonUnit {
+				tmp := 1 / a[i*lda+i]
+				value *= tmp
+			}
+			b[bi] = value
+		}
+		return
+	}
+	if ul == blas.Upper {
+		for k := 0; k < m; k++ {
+			bk := k * ldb
+			value := b[bk]
+			if nonUnit {
+				tmp := 1 / a[k*lda+k]
+				value *= tmp
+			}
+			for ia, va := range a[k*lda+k+1 : k*lda+m] {
+				if va != 0 {
+					i := ia + k + 1
+					b[i*ldb] += -va * value
+				}
+			}
+			if alpha != 1 {
+				value *= alpha
+			}
+			b[bk] = value
+		}
+		return
+	}
+	for k := m - 1; k >= 0; k-- {
+		bk := k * ldb
+		value := b[bk]
+		if nonUnit {
+			tmp := 1 / a[k*lda+k]
+			value *= tmp
+		}
+		for i, va := range a[k*lda : k*lda+k] {
+			if va != 0 {
+				b[i*ldb] += -va * value
+			}
+		}
+		if alpha != 1 {
+			value *= alpha
+		}
+		b[bk] = value
 	}
 }
 
