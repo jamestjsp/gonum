@@ -195,3 +195,119 @@ func boolInt(v bool) int {
 	}
 	return 0
 }
+
+const factorPadding = 9.87654321
+
+func factorMatrix(m, n, stride int) []float64 {
+	a := make([]float64, m*stride)
+	for i := 0; i < m; i++ {
+		for j := n; j < stride; j++ {
+			a[i*stride+j] = factorPadding
+		}
+	}
+	for i := 0; i < m; i++ {
+		for j := 0; j < n; j++ {
+			a[i*stride+j] = math.Sin(float64(17*i+11*j+3)) + math.Cos(float64(5*i-7*j+1))
+			if i == j {
+				a[i*stride+j] += float64(min(m, n))
+			}
+		}
+	}
+	return a
+}
+
+func factorPivotMatrix(m, n, stride int) []float64 {
+	a := factorMatrix(m, n, stride)
+	for i := 0; i < m/2; i++ {
+		j := m - 1 - i
+		for k := 0; k < n; k++ {
+			a[i*stride+k], a[j*stride+k] = a[j*stride+k], a[i*stride+k]
+		}
+	}
+	return a
+}
+
+func factorColMajor(m, n int, row []float64, stride, ld int) []float64 {
+	col := make([]float64, ld*n)
+	for j := 0; j < n; j++ {
+		for i := m; i < ld; i++ {
+			col[i+j*ld] = factorPadding
+		}
+	}
+	for i := 0; i < m; i++ {
+		for j := 0; j < n; j++ {
+			col[i+j*ld] = row[i*stride+j]
+		}
+	}
+	return col
+}
+func factorRowMajor(m, n int, col []float64, ld, stride int) []float64 {
+	row := make([]float64, m*stride)
+	for i := 0; i < m; i++ {
+		for j := 0; j < n; j++ {
+			row[i*stride+j] = col[i+j*ld]
+		}
+	}
+	return row
+}
+func factorOrthoResidual(q []float64, n int) float64 {
+	r := 0.0
+	for i := 0; i < n; i++ {
+		for j := 0; j < n; j++ {
+			s := 0.0
+			for k := 0; k < n; k++ {
+				s += q[k*n+i] * q[k*n+j]
+			}
+			if i == j {
+				s--
+			}
+			r = math.Max(r, math.Abs(s))
+		}
+	}
+	return r
+}
+func factorSPD(n, stride int) []float64 {
+	a := make([]float64, n*stride)
+	for i := 0; i < n; i++ {
+		for j := n; j < stride; j++ {
+			a[i*stride+j] = factorPadding
+		}
+	}
+	for i := 0; i < n; i++ {
+		for j := 0; j < n; j++ {
+			v := math.Sin(float64(13*i+7*j+1)) / float64(n)
+			if i == j {
+				v += float64(n)
+			}
+			a[i*stride+j] = v
+		}
+	}
+	for i := 0; i < n; i++ {
+		for j := 0; j < i; j++ {
+			v := 0.5 * (a[i*stride+j] + a[j*stride+i])
+			a[i*stride+j], a[j*stride+i] = v, v
+		}
+	}
+	return a
+}
+
+func checkFactorRowPadding(t *testing.T, a []float64, m, n, stride int) {
+	t.Helper()
+	for i := 0; i < m; i++ {
+		for j := n; j < stride; j++ {
+			if a[i*stride+j] != factorPadding {
+				t.Fatalf("row padding [%d,%d] changed to %g", i, j, a[i*stride+j])
+			}
+		}
+	}
+}
+func checkFactorColPadding(t *testing.T, a []float64, m, n, ld int) {
+	t.Helper()
+	for j := 0; j < n; j++ {
+		for i := m; i < ld; i++ {
+			if a[i+j*ld] != factorPadding {
+				t.Fatalf("column padding [%d,%d] changed to %g", i, j, a[i+j*ld])
+			}
+		}
+	}
+}
