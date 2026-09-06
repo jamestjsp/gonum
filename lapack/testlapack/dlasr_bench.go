@@ -121,6 +121,7 @@ func DlasrVariableBenchmark(b *testing.B, impl Dlasrer) {
 			pattern       string
 		}{
 			{2, 15, 0, "dense"}, {2, 16, 0, "dense"}, {2, 17, 3, "dense"},
+			{2, 31, 0, "dense"}, {2, 32, 0, "dense"}, {2, 33, 3, "dense"},
 			{4, 16, 0, "dense"}, {4, 17, 3, "sparse"},
 			{32, 16, 0, "dense"}, {32, 32, 3, "dense"}, {32, 256, 0, "dense"},
 			{32, 256, 3, "sparse"}, {32, 256, 3, "identity"},
