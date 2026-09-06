@@ -122,6 +122,9 @@ func (Implementation) Sgemm(tA, tB blas.Transpose, m, n, k int, alpha float32, a
 		}
 	}
 
+	if alpha == 0 {
+		return
+	}
 	sgemmParallel(aTrans, bTrans, m, n, k, a, lda, b, ldb, c, ldc, alpha)
 }
 

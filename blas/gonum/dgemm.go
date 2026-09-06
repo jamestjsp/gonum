@@ -118,6 +118,9 @@ func (Implementation) Dgemm(tA, tB blas.Transpose, m, n, k int, alpha float64, a
 		}
 	}
 
+	if alpha == 0 {
+		return
+	}
 	dgemmParallel(aTrans, bTrans, m, n, k, a, lda, b, ldb, c, ldc, alpha)
 }
 
