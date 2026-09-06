@@ -1,0 +1,219 @@
+goos: darwin
+goarch: arm64
+pkg: gonum.org/v1/gonum/lapack/gonum
+cpu: Apple M1 Pro
+BenchmarkDggesControl/mode=form/n=32         	     561	    196617 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=form/n=64         	      93	   1183419 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=form/n=128        	      13	   8831769 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=form/n=256        	       1	 125452583 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=vectors/n=32      	     428	    279912 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=vectors/n=64      	      67	   1731662 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=vectors/n=128     	       7	  14855321 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=vectors/n=256     	       1	 181511750 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=left/n=32         	     303	    396550 ns/op	   23552 B/op	      48 allocs/op
+BenchmarkDggesControl/mode=left/n=64         	      32	   3599858 ns/op	  282624 B/op	     576 allocs/op
+BenchmarkDggesControl/mode=left/n=128        	       4	  25497583 ns/op	 1083392 B/op	    2208 allocs/op
+BenchmarkDggesControl/mode=left/n=256        	       1	 277514917 ns/op	 4521984 B/op	    9216 allocs/op
+BenchmarkDggesControl/mode=unit/n=32         	     163	    741886 ns/op	   94208 B/op	     192 allocs/op
+BenchmarkDggesControl/mode=unit/n=64         	      28	   4145217 ns/op	  376832 B/op	     768 allocs/op
+BenchmarkDggesControl/mode=unit/n=128        	       4	  29940729 ns/op	 1507328 B/op	    3072 allocs/op
+BenchmarkDggesControl/mode=unit/n=256        	       1	 272826125 ns/op	 6029312 B/op	   12288 allocs/op
+PASS
+
+goos: darwin
+goarch: arm64
+pkg: gonum.org/v1/gonum/lapack/gonum
+cpu: Apple M1 Pro
+BenchmarkDggesControl/mode=form/n=32         	     597	    196970 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=form/n=64         	      98	   1186529 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=form/n=128        	      13	   8777535 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=form/n=256        	       1	 124794500 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=vectors/n=32      	     428	    279125 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=vectors/n=64      	      68	   1731593 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=vectors/n=128     	       7	  14869167 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=vectors/n=256     	       1	 181112291 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=left/n=32         	     302	    399879 ns/op	   23552 B/op	      48 allocs/op
+BenchmarkDggesControl/mode=left/n=64         	      32	   3552658 ns/op	  282624 B/op	     576 allocs/op
+BenchmarkDggesControl/mode=left/n=128        	       4	  25544771 ns/op	 1083392 B/op	    2208 allocs/op
+BenchmarkDggesControl/mode=left/n=256        	       1	 244661917 ns/op	 4521984 B/op	    9216 allocs/op
+BenchmarkDggesControl/mode=unit/n=32         	     162	    770896 ns/op	   94208 B/op	     192 allocs/op
+BenchmarkDggesControl/mode=unit/n=64         	      27	   4130565 ns/op	  376832 B/op	     768 allocs/op
+BenchmarkDggesControl/mode=unit/n=128        	       4	  30445333 ns/op	 1507328 B/op	    3072 allocs/op
+BenchmarkDggesControl/mode=unit/n=256        	       1	 271324167 ns/op	 6029312 B/op	   12288 allocs/op
+PASS
+
+goos: darwin
+goarch: arm64
+pkg: gonum.org/v1/gonum/lapack/gonum
+cpu: Apple M1 Pro
+BenchmarkDggesControl/mode=form/n=32         	     586	    197151 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=form/n=64         	      99	   1177563 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=form/n=128        	      13	   8788163 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=form/n=256        	       1	 125500334 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=vectors/n=32      	     429	    282944 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=vectors/n=64      	      68	   1727273 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=vectors/n=128     	       7	  14873446 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=vectors/n=256     	       1	 181376667 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=left/n=32         	     307	    389511 ns/op	   23552 B/op	      48 allocs/op
+BenchmarkDggesControl/mode=left/n=64         	      33	   3740792 ns/op	  282624 B/op	     576 allocs/op
+BenchmarkDggesControl/mode=left/n=128        	       4	  25614281 ns/op	 1083392 B/op	    2208 allocs/op
+BenchmarkDggesControl/mode=left/n=256        	       1	 243172291 ns/op	 4521984 B/op	    9216 allocs/op
+BenchmarkDggesControl/mode=unit/n=32         	     164	    748144 ns/op	   94208 B/op	     192 allocs/op
+BenchmarkDggesControl/mode=unit/n=64         	      27	   4156748 ns/op	  376832 B/op	     768 allocs/op
+BenchmarkDggesControl/mode=unit/n=128        	       4	  29824542 ns/op	 1507328 B/op	    3072 allocs/op
+BenchmarkDggesControl/mode=unit/n=256        	       1	 273070042 ns/op	 6029312 B/op	   12288 allocs/op
+PASS
+
+goos: darwin
+goarch: arm64
+pkg: gonum.org/v1/gonum/lapack/gonum
+cpu: Apple M1 Pro
+BenchmarkDggesControl/mode=form/n=32         	     603	    196799 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=form/n=64         	      98	   1184999 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=form/n=128        	      13	   8809359 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=form/n=256        	       1	 125397708 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=vectors/n=32      	     429	    278607 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=vectors/n=64      	      68	   1730737 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=vectors/n=128     	       7	  14821577 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=vectors/n=256     	       1	 180588084 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=left/n=32         	     307	    388590 ns/op	   23552 B/op	      48 allocs/op
+BenchmarkDggesControl/mode=left/n=64         	      32	   3587842 ns/op	  282624 B/op	     576 allocs/op
+BenchmarkDggesControl/mode=left/n=128        	       4	  25660958 ns/op	 1083392 B/op	    2208 allocs/op
+BenchmarkDggesControl/mode=left/n=256        	       1	 252738875 ns/op	 4521984 B/op	    9216 allocs/op
+BenchmarkDggesControl/mode=unit/n=32         	     166	    734073 ns/op	   94208 B/op	     192 allocs/op
+BenchmarkDggesControl/mode=unit/n=64         	      28	   4142759 ns/op	  376832 B/op	     768 allocs/op
+BenchmarkDggesControl/mode=unit/n=128        	       4	  29666542 ns/op	 1507328 B/op	    3072 allocs/op
+BenchmarkDggesControl/mode=unit/n=256        	       1	 277535542 ns/op	 6029312 B/op	   12288 allocs/op
+PASS
+
+goos: darwin
+goarch: arm64
+pkg: gonum.org/v1/gonum/lapack/gonum
+cpu: Apple M1 Pro
+BenchmarkDggesControl/mode=form/n=32         	     562	    196934 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=form/n=64         	      98	   1177088 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=form/n=128        	      13	   8758212 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=form/n=256        	       1	 125217041 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=vectors/n=32      	     406	    282573 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=vectors/n=64      	      68	   1740738 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=vectors/n=128     	       7	  14851292 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=vectors/n=256     	       1	 181947834 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=left/n=32         	     301	    399932 ns/op	   23552 B/op	      48 allocs/op
+BenchmarkDggesControl/mode=left/n=64         	      33	   3552744 ns/op	  282624 B/op	     576 allocs/op
+BenchmarkDggesControl/mode=left/n=128        	       4	  25564177 ns/op	 1083392 B/op	    2208 allocs/op
+BenchmarkDggesControl/mode=left/n=256        	       1	 247636208 ns/op	 4521984 B/op	    9216 allocs/op
+BenchmarkDggesControl/mode=unit/n=32         	     164	    734052 ns/op	   94208 B/op	     192 allocs/op
+BenchmarkDggesControl/mode=unit/n=64         	      27	   4191304 ns/op	  376832 B/op	     768 allocs/op
+BenchmarkDggesControl/mode=unit/n=128        	       4	  29792188 ns/op	 1507328 B/op	    3072 allocs/op
+BenchmarkDggesControl/mode=unit/n=256        	       1	 271104792 ns/op	 6029312 B/op	   12288 allocs/op
+PASS
+
+goos: darwin
+goarch: arm64
+pkg: gonum.org/v1/gonum/lapack/gonum
+cpu: Apple M1 Pro
+BenchmarkDggesControl/mode=form/n=32         	     542	    197567 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=form/n=64         	      97	   1184886 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=form/n=128        	      13	   8789218 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=form/n=256        	       1	 124950125 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=vectors/n=32      	     428	    278446 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=vectors/n=64      	      67	   1735393 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=vectors/n=128     	       7	  14835238 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=vectors/n=256     	       1	 181313167 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=left/n=32         	     307	    404011 ns/op	   23552 B/op	      48 allocs/op
+BenchmarkDggesControl/mode=left/n=64         	      31	   3621302 ns/op	  282624 B/op	     576 allocs/op
+BenchmarkDggesControl/mode=left/n=128        	       4	  26448614 ns/op	 1083392 B/op	    2208 allocs/op
+BenchmarkDggesControl/mode=left/n=256        	       1	 248913542 ns/op	 4521984 B/op	    9216 allocs/op
+BenchmarkDggesControl/mode=unit/n=32         	     165	    758462 ns/op	   94208 B/op	     192 allocs/op
+BenchmarkDggesControl/mode=unit/n=64         	      28	   4149246 ns/op	  376832 B/op	     768 allocs/op
+BenchmarkDggesControl/mode=unit/n=128        	       4	  29705812 ns/op	 1507328 B/op	    3072 allocs/op
+BenchmarkDggesControl/mode=unit/n=256        	       1	 290123209 ns/op	 6029312 B/op	   12288 allocs/op
+PASS
+
+goos: darwin
+goarch: arm64
+pkg: gonum.org/v1/gonum/lapack/gonum
+cpu: Apple M1 Pro
+BenchmarkDggesControl/mode=form/n=32         	     535	    197605 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=form/n=64         	      98	   1183176 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=form/n=128        	      13	   8783436 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=form/n=256        	       1	 124757208 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=vectors/n=32      	     430	    278399 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=vectors/n=64      	      68	   1731702 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=vectors/n=128     	       7	  14878577 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=vectors/n=256     	       1	 181347375 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=left/n=32         	     304	    394265 ns/op	   23552 B/op	      48 allocs/op
+BenchmarkDggesControl/mode=left/n=64         	      33	   3561843 ns/op	  282624 B/op	     576 allocs/op
+BenchmarkDggesControl/mode=left/n=128        	       4	  25509823 ns/op	 1083392 B/op	    2208 allocs/op
+BenchmarkDggesControl/mode=left/n=256        	       1	 255875750 ns/op	 4521984 B/op	    9216 allocs/op
+BenchmarkDggesControl/mode=unit/n=32         	     164	    750605 ns/op	   94208 B/op	     192 allocs/op
+BenchmarkDggesControl/mode=unit/n=64         	      27	   4258975 ns/op	  376832 B/op	     768 allocs/op
+BenchmarkDggesControl/mode=unit/n=128        	       4	  29755906 ns/op	 1507328 B/op	    3072 allocs/op
+BenchmarkDggesControl/mode=unit/n=256        	       1	 280752500 ns/op	 6029312 B/op	   12288 allocs/op
+PASS
+
+goos: darwin
+goarch: arm64
+pkg: gonum.org/v1/gonum/lapack/gonum
+cpu: Apple M1 Pro
+BenchmarkDggesControl/mode=form/n=32         	     520	    197347 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=form/n=64         	      98	   1185015 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=form/n=128        	      13	   8794292 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=form/n=256        	       1	 125166417 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=vectors/n=32      	     429	    280962 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=vectors/n=64      	      68	   1732254 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=vectors/n=128     	       7	  14920143 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=vectors/n=256     	       1	 180334625 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=left/n=32         	     302	    399705 ns/op	   23552 B/op	      48 allocs/op
+BenchmarkDggesControl/mode=left/n=64         	      33	   3565020 ns/op	  282624 B/op	     576 allocs/op
+BenchmarkDggesControl/mode=left/n=128        	       4	  25453906 ns/op	 1083392 B/op	    2208 allocs/op
+BenchmarkDggesControl/mode=left/n=256        	       1	 262933000 ns/op	 4521984 B/op	    9216 allocs/op
+BenchmarkDggesControl/mode=unit/n=32         	     162	    741821 ns/op	   94208 B/op	     192 allocs/op
+BenchmarkDggesControl/mode=unit/n=64         	      28	   4137771 ns/op	  376832 B/op	     768 allocs/op
+BenchmarkDggesControl/mode=unit/n=128        	       4	  29807521 ns/op	 1507328 B/op	    3072 allocs/op
+BenchmarkDggesControl/mode=unit/n=256        	       1	 287342875 ns/op	 6029312 B/op	   12288 allocs/op
+PASS
+
+goos: darwin
+goarch: arm64
+pkg: gonum.org/v1/gonum/lapack/gonum
+cpu: Apple M1 Pro
+BenchmarkDggesControl/mode=form/n=32         	     570	    211922 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=form/n=64         	      90	   1247906 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=form/n=128        	      12	   8952170 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=form/n=256        	       1	 125145500 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=vectors/n=32      	     426	    284075 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=vectors/n=64      	      67	   1731261 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=vectors/n=128     	       7	  14865685 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=vectors/n=256     	       1	 187028709 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=left/n=32         	     302	    397627 ns/op	   23552 B/op	      48 allocs/op
+BenchmarkDggesControl/mode=left/n=64         	      32	   3553780 ns/op	  282624 B/op	     576 allocs/op
+BenchmarkDggesControl/mode=left/n=128        	       4	  25512656 ns/op	 1083392 B/op	    2208 allocs/op
+BenchmarkDggesControl/mode=left/n=256        	       1	 254017042 ns/op	 4521984 B/op	    9216 allocs/op
+BenchmarkDggesControl/mode=unit/n=32         	     166	    721560 ns/op	   94208 B/op	     192 allocs/op
+BenchmarkDggesControl/mode=unit/n=64         	      27	   4148699 ns/op	  376832 B/op	     768 allocs/op
+BenchmarkDggesControl/mode=unit/n=128        	       4	  29773479 ns/op	 1507328 B/op	    3072 allocs/op
+BenchmarkDggesControl/mode=unit/n=256        	       1	 280716000 ns/op	 6029312 B/op	   12288 allocs/op
+PASS
+
+goos: darwin
+goarch: arm64
+pkg: gonum.org/v1/gonum/lapack/gonum
+cpu: Apple M1 Pro
+BenchmarkDggesControl/mode=form/n=32         	     540	    197669 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=form/n=64         	      97	   1187334 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=form/n=128        	      13	   8801279 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=form/n=256        	       1	 125374792 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=vectors/n=32      	     427	    280650 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=vectors/n=64      	      68	   1758926 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=vectors/n=128     	       7	  15744667 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=vectors/n=256     	       1	 186711375 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=left/n=32         	     302	    397612 ns/op	   23552 B/op	      48 allocs/op
+BenchmarkDggesControl/mode=left/n=64         	      33	   3551336 ns/op	  282624 B/op	     576 allocs/op
+BenchmarkDggesControl/mode=left/n=128        	       4	  25506052 ns/op	 1083392 B/op	    2208 allocs/op
+BenchmarkDggesControl/mode=left/n=256        	       1	 253222500 ns/op	 4521984 B/op	    9216 allocs/op
+BenchmarkDggesControl/mode=unit/n=32         	     164	    747534 ns/op	   94208 B/op	     192 allocs/op
+BenchmarkDggesControl/mode=unit/n=64         	      28	   4184713 ns/op	  376832 B/op	     768 allocs/op
+BenchmarkDggesControl/mode=unit/n=128        	       4	  29732896 ns/op	 1507328 B/op	    3072 allocs/op
+BenchmarkDggesControl/mode=unit/n=256        	       1	 283310333 ns/op	 6029312 B/op	   12288 allocs/op
+PASS

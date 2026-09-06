@@ -596,16 +596,23 @@ func (impl Implementation) doQZSweepDouble(ilschr, ilq, ilz bool, n, ifirst, ila
 		// Apply Householder from left to H and T.
 		t2 := tau * v2
 		t3 := tau * v3
-		for jc := j; jc <= ilastm; jc++ {
-			sumh := h[j*ldh+jc] + v2*h[(j+1)*ldh+jc] + v3*h[(j+2)*ldh+jc]
-			h[j*ldh+jc] -= tau * sumh
-			h[(j+1)*ldh+jc] -= t2 * sumh
-			h[(j+2)*ldh+jc] -= t3 * sumh
+		width := ilastm - j + 1
+		h0 := h[j*ldh+j:][:width]
+		h1 := h[(j+1)*ldh+j:][:width]
+		h2 := h[(j+2)*ldh+j:][:width]
+		t0 := t[j*ldt+j:][:width]
+		t1row := t[(j+1)*ldt+j:][:width]
+		t2row := t[(j+2)*ldt+j:][:width]
+		for jc := range h0 {
+			sumh := h0[jc] + v2*h1[jc] + v3*h2[jc]
+			h0[jc] -= tau * sumh
+			h1[jc] -= t2 * sumh
+			h2[jc] -= t3 * sumh
 
-			sumt := t[j*ldt+jc] + v2*t[(j+1)*ldt+jc] + v3*t[(j+2)*ldt+jc]
-			t[j*ldt+jc] -= tau * sumt
-			t[(j+1)*ldt+jc] -= t2 * sumt
-			t[(j+2)*ldt+jc] -= t3 * sumt
+			sumt := t0[jc] + v2*t1row[jc] + v3*t2row[jc]
+			t0[jc] -= tau * sumt
+			t1row[jc] -= t2 * sumt
+			t2row[jc] -= t3 * sumt
 		}
 		if ilq {
 			for jr := 0; jr < n; jr++ {

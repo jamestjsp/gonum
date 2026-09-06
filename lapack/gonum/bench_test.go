@@ -5,6 +5,8 @@
 package gonum
 
 import (
+	"fmt"
+	"math"
 	"testing"
 
 	"gonum.org/v1/gonum/lapack/testlapack"
@@ -22,6 +24,66 @@ func BenchmarkDggesControl(b *testing.B)  { testlapack.DggesControlBenchmark(b, 
 func BenchmarkDgghrd(b *testing.B)        { testlapack.DgghrdBenchmark(b, impl) }
 func BenchmarkDgghrdControl(b *testing.B) { testlapack.DgghrdControlBenchmark(b, impl) }
 func BenchmarkDhgeqz(b *testing.B)        { testlapack.DhgeqzBenchmark(b, impl) }
+
+func BenchmarkDhgeqzSweepDouble(b *testing.B) {
+	for _, mode := range []struct {
+		name string
+		q, z bool
+	}{
+		{"none", false, false},
+		{"q", true, false},
+		{"z", false, true},
+		{"both", true, true},
+	} {
+		for _, size := range []struct{ n, extra int }{
+			{3, 0}, {4, 0}, {5, 0}, {32, 0}, {64, 0},
+			{128, 0}, {256, 0}, {256, 3},
+		} {
+			n, ld := size.n, size.n+size.extra
+			b.Run(fmt.Sprintf("mode=%s/n=%d/stride=%d", mode.name, n, ld), func(b *testing.B) {
+				hOrig := make([]float64, (n-1)*ld+n)
+				tOrig := make([]float64, len(hOrig))
+				vOrig := make([]float64, len(hOrig))
+				for i := range n {
+					for j := max(0, i-1); j < n; j++ {
+						hOrig[i*ld+j] = float64((i*17+j*13+7)%23-11) / 16
+					}
+					for j := i; j < n; j++ {
+						tOrig[i*ld+j] = float64((i*11+j*7+3)%19-9) / 16
+					}
+					tOrig[i*ld+i] += float64(n)
+					vOrig[i*ld+i] = 1
+				}
+				h, t := make([]float64, len(hOrig)), make([]float64, len(tOrig))
+				var q, z []float64
+				if mode.q {
+					q = make([]float64, len(vOrig))
+				}
+				if mode.z {
+					z = make([]float64, len(vOrig))
+				}
+				b.ReportAllocs()
+				b.ResetTimer()
+				for i := 0; i < b.N; i++ {
+					copy(h, hOrig)
+					copy(t, tOrig)
+					copy(q, vOrig)
+					copy(z, vOrig)
+					Implementation{}.doQZSweepDouble(true, mode.q, mode.z, n, 0, n-1, 0, n-1,
+						h, ld, t, ld, q, ld, z, ld, 1, 1/float64(n), dlamchS)
+				}
+				b.StopTimer()
+				for _, a := range [][]float64{h, t, q, z} {
+					for _, v := range a {
+						if math.IsNaN(v) || math.IsInf(v, 0) {
+							b.Fatal("non-finite sweep output")
+						}
+					}
+				}
+			})
+		}
+	}
+}
 func BenchmarkDlangb(b *testing.B)        { testlapack.DlangbBenchmark(b, impl) }
 func BenchmarkDlantb(b *testing.B)        { testlapack.DlantbBenchmark(b, impl) }
 func BenchmarkDlaqr5(b *testing.B)        { testlapack.Dlaqr5Benchmark(b, impl) }

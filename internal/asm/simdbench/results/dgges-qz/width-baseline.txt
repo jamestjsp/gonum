@@ -1,0 +1,539 @@
+goos: darwin
+goarch: arm64
+pkg: gonum.org/v1/gonum/lapack/gonum
+cpu: Apple M1 Pro
+BenchmarkDggesControl/mode=form/n=32         	     594	    199625 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=form/n=64         	     100	   1107377 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=form/n=128        	      14	   7959777 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=form/n=256        	       1	 117828416 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=vectors/n=32      	     421	    286921 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=vectors/n=64      	      70	   1674742 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=vectors/n=128     	       8	  13775458 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=vectors/n=256     	       1	 169519167 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=left/n=32         	     285	    427127 ns/op	   23552 B/op	      48 allocs/op
+BenchmarkDggesControl/mode=left/n=64         	      48	   2515013 ns/op	  105984 B/op	     216 allocs/op
+BenchmarkDggesControl/mode=left/n=128        	       6	  18503361 ns/op	  423936 B/op	     864 allocs/op
+BenchmarkDggesControl/mode=left/n=256        	       1	 200002583 ns/op	 1507328 B/op	    3072 allocs/op
+BenchmarkDggesControl/mode=unit/n=32         	     157	    796651 ns/op	   94208 B/op	     192 allocs/op
+BenchmarkDggesControl/mode=unit/n=64         	      26	   4349160 ns/op	  376832 B/op	     768 allocs/op
+BenchmarkDggesControl/mode=unit/n=128        	       4	  30517427 ns/op	 1507328 B/op	    3072 allocs/op
+BenchmarkDggesControl/mode=unit/n=256        	       1	 285569125 ns/op	 6029312 B/op	   12288 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=none/n=3/stride=3         	  960447	       127.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=none/n=4/stride=4         	  588151	       206.2 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=none/n=5/stride=5         	  406486	       288.3 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=none/n=32/stride=32       	   33517	      3555 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=none/n=64/stride=64       	   10000	     11461 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=none/n=128/stride=128     	    2287	     52500 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=none/n=256/stride=256     	     250	    478068 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=none/n=256/stride=259     	     757	    169344 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=q/n=3/stride=3            	  813168	       141.5 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=q/n=4/stride=4            	  540316	       227.7 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=q/n=5/stride=5            	  373467	       322.2 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=q/n=32/stride=32          	   25641	      4591 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=q/n=64/stride=64          	    7078	     16986 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=q/n=128/stride=128        	    1339	     89529 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=q/n=256/stride=256        	     180	    660942 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=q/n=256/stride=259        	     502	    241113 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=z/n=3/stride=3            	  902114	       134.7 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=z/n=4/stride=4            	  558561	       217.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=z/n=5/stride=5            	  382977	       309.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=z/n=32/stride=32          	   26185	      4642 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=z/n=64/stride=64          	    7174	     16886 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=z/n=128/stride=128        	    1346	     90461 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=z/n=256/stride=256        	     177	    664073 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=z/n=256/stride=259        	     505	    237557 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=both/n=3/stride=3         	  859983	       139.5 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=both/n=4/stride=4         	  524666	       227.5 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=both/n=5/stride=5         	  368427	       327.6 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=both/n=32/stride=32       	   21171	      5698 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=both/n=64/stride=64       	    5420	     22100 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=both/n=128/stride=128     	     978	    122579 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=both/n=256/stride=256     	     135	    878415 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=both/n=256/stride=259     	     363	    327246 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: darwin
+goarch: arm64
+pkg: gonum.org/v1/gonum/lapack/gonum
+cpu: Apple M1 Pro
+BenchmarkDggesControl/mode=form/n=32         	     584	    205868 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=form/n=64         	      93	   1129639 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=form/n=128        	      14	   7953592 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=form/n=256        	       1	 119495459 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=vectors/n=32      	     426	    284505 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=vectors/n=64      	      70	   1663980 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=vectors/n=128     	       8	  13528849 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=vectors/n=256     	       1	 170815625 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=left/n=32         	     294	    406180 ns/op	   23552 B/op	      48 allocs/op
+BenchmarkDggesControl/mode=left/n=64         	      49	   2477982 ns/op	  105984 B/op	     216 allocs/op
+BenchmarkDggesControl/mode=left/n=128        	       6	  18219847 ns/op	  423936 B/op	     864 allocs/op
+BenchmarkDggesControl/mode=left/n=256        	       1	 197726792 ns/op	 1507328 B/op	    3072 allocs/op
+BenchmarkDggesControl/mode=unit/n=32         	     144	    777376 ns/op	   94208 B/op	     192 allocs/op
+BenchmarkDggesControl/mode=unit/n=64         	      27	   4297466 ns/op	  376832 B/op	     768 allocs/op
+BenchmarkDggesControl/mode=unit/n=128        	       4	  30943114 ns/op	 1507328 B/op	    3072 allocs/op
+BenchmarkDggesControl/mode=unit/n=256        	       1	 279348750 ns/op	 6029312 B/op	   12288 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=none/n=3/stride=3         	  958114	       125.7 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=none/n=4/stride=4         	  586653	       205.2 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=none/n=5/stride=5         	  419226	       287.9 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=none/n=32/stride=32       	   34009	      3665 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=none/n=64/stride=64       	    9931	     11800 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=none/n=128/stride=128     	    2258	     53007 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=none/n=256/stride=256     	     253	    474283 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=none/n=256/stride=259     	     753	    159294 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=q/n=3/stride=3            	  909636	       132.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=q/n=4/stride=4            	  563622	       214.3 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=q/n=5/stride=5            	  394752	       304.3 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=q/n=32/stride=32          	   26150	      4601 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=q/n=64/stride=64          	    7117	     16833 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=q/n=128/stride=128        	    1347	     87574 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=q/n=256/stride=256        	     178	    665179 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=q/n=256/stride=259        	     502	    238005 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=z/n=3/stride=3            	  896524	       133.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=z/n=4/stride=4            	  556617	       219.6 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=z/n=5/stride=5            	  306303	       444.3 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=z/n=32/stride=32          	   25996	      4592 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=z/n=64/stride=64          	    7065	     16732 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=z/n=128/stride=128        	    1353	     88689 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=z/n=256/stride=256        	     177	    672567 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=z/n=256/stride=259        	     504	    237384 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=both/n=3/stride=3         	  858829	       139.6 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=both/n=4/stride=4         	  527917	       227.6 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=both/n=5/stride=5         	  368592	       326.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=both/n=32/stride=32       	   21112	      5662 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=both/n=64/stride=64       	    5400	     22260 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=both/n=128/stride=128     	     981	    121197 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=both/n=256/stride=256     	     134	    887980 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=both/n=256/stride=259     	     364	    323583 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: darwin
+goarch: arm64
+pkg: gonum.org/v1/gonum/lapack/gonum
+cpu: Apple M1 Pro
+BenchmarkDggesControl/mode=form/n=32         	     583	    196831 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=form/n=64         	     100	   1102215 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=form/n=128        	      14	   7702601 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=form/n=256        	       1	 116305917 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=vectors/n=32      	     422	    282577 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=vectors/n=64      	      70	   1652535 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=vectors/n=128     	       8	  13508526 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=vectors/n=256     	       1	 169555417 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=left/n=32         	     291	    407622 ns/op	   23552 B/op	      48 allocs/op
+BenchmarkDggesControl/mode=left/n=64         	      48	   2406201 ns/op	  105984 B/op	     216 allocs/op
+BenchmarkDggesControl/mode=left/n=128        	       6	  19124903 ns/op	  423936 B/op	     864 allocs/op
+BenchmarkDggesControl/mode=left/n=256        	       1	 204095916 ns/op	 1507328 B/op	    3072 allocs/op
+BenchmarkDggesControl/mode=unit/n=32         	     128	    829408 ns/op	   94208 B/op	     192 allocs/op
+BenchmarkDggesControl/mode=unit/n=64         	      22	   5607883 ns/op	  376832 B/op	     768 allocs/op
+BenchmarkDggesControl/mode=unit/n=128        	       4	  32044844 ns/op	 1507328 B/op	    3072 allocs/op
+BenchmarkDggesControl/mode=unit/n=256        	       1	 300188084 ns/op	 6029312 B/op	   12288 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=none/n=3/stride=3         	  883515	       136.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=none/n=4/stride=4         	  555834	       221.3 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=none/n=5/stride=5         	  382490	       308.2 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=none/n=32/stride=32       	   31910	      3725 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=none/n=64/stride=64       	   10000	     11862 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=none/n=128/stride=128     	    2161	     56493 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=none/n=256/stride=256     	     290	    465096 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=none/n=256/stride=259     	     752	    157586 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=q/n=3/stride=3            	  904152	       133.6 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=q/n=4/stride=4            	  529576	       216.6 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=q/n=5/stride=5            	  395679	       306.5 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=q/n=32/stride=32          	   25941	      4642 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=q/n=64/stride=64          	    7123	     16911 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=q/n=128/stride=128        	    1360	     87064 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=q/n=256/stride=256        	     184	    668250 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=q/n=256/stride=259        	     498	    238304 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=z/n=3/stride=3            	  865176	       137.1 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=z/n=4/stride=4            	  553207	       217.1 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=z/n=5/stride=5            	  394822	       307.6 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=z/n=32/stride=32          	   25281	      4733 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=z/n=64/stride=64          	    6644	     17228 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=z/n=128/stride=128        	    1354	     89564 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=z/n=256/stride=256        	     178	    664678 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=z/n=256/stride=259        	     505	    229467 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=both/n=3/stride=3         	  845317	       143.5 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=both/n=4/stride=4         	  527114	       228.7 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=both/n=5/stride=5         	  369296	       326.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=both/n=32/stride=32       	   21196	      5649 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=both/n=64/stride=64       	    5374	     22708 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=both/n=128/stride=128     	     966	    124637 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=both/n=256/stride=256     	     133	    886632 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=both/n=256/stride=259     	     364	    315793 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: darwin
+goarch: arm64
+pkg: gonum.org/v1/gonum/lapack/gonum
+cpu: Apple M1 Pro
+BenchmarkDggesControl/mode=form/n=32         	     582	    200698 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=form/n=64         	     100	   1120310 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=form/n=128        	      14	   8000780 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=form/n=256        	       1	 117372834 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=vectors/n=32      	     394	    289608 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=vectors/n=64      	      70	   1686204 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=vectors/n=128     	       8	  13750073 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=vectors/n=256     	       1	 169262708 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=left/n=32         	     295	    403110 ns/op	   23552 B/op	      48 allocs/op
+BenchmarkDggesControl/mode=left/n=64         	      49	   2390326 ns/op	  105984 B/op	     216 allocs/op
+BenchmarkDggesControl/mode=left/n=128        	       6	  18138479 ns/op	  423936 B/op	     864 allocs/op
+BenchmarkDggesControl/mode=left/n=256        	       1	 200483042 ns/op	 1507328 B/op	    3072 allocs/op
+BenchmarkDggesControl/mode=unit/n=32         	     147	    780323 ns/op	   94208 B/op	     192 allocs/op
+BenchmarkDggesControl/mode=unit/n=64         	      27	   4331582 ns/op	  376832 B/op	     768 allocs/op
+BenchmarkDggesControl/mode=unit/n=128        	       4	  29828083 ns/op	 1507328 B/op	    3072 allocs/op
+BenchmarkDggesControl/mode=unit/n=256        	       1	 270916667 ns/op	 6029312 B/op	   12288 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=none/n=3/stride=3         	  929481	       125.3 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=none/n=4/stride=4         	  586521	       204.3 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=none/n=5/stride=5         	  418416	       286.7 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=none/n=32/stride=32       	   33928	      3520 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=none/n=64/stride=64       	   10000	     11324 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=none/n=128/stride=128     	    2295	     52373 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=none/n=256/stride=256     	     253	    472769 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=none/n=256/stride=259     	     751	    159054 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=q/n=3/stride=3            	  909894	       131.7 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=q/n=4/stride=4            	  563821	       214.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=q/n=5/stride=5            	  394017	       307.1 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=q/n=32/stride=32          	   26101	      4587 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=q/n=64/stride=64          	    7106	     16781 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=q/n=128/stride=128        	    1344	     89275 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=q/n=256/stride=256        	     182	    657602 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=q/n=256/stride=259        	     504	    238221 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=z/n=3/stride=3            	  904152	       134.2 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=z/n=4/stride=4            	  512036	       230.6 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=z/n=5/stride=5            	  381314	       323.6 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=z/n=32/stride=32          	   24615	      4886 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=z/n=64/stride=64          	    6181	     17808 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=z/n=128/stride=128        	    1266	     93466 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=z/n=256/stride=256        	     172	    691797 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=z/n=256/stride=259        	     483	    242135 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=both/n=3/stride=3         	  831936	       149.8 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=both/n=4/stride=4         	  498631	       237.9 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=both/n=5/stride=5         	  353088	       347.8 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=both/n=32/stride=32       	   20008	      5891 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=both/n=64/stride=64       	    5161	     24228 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=both/n=128/stride=128     	     889	    126698 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=both/n=256/stride=256     	     135	    885383 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=both/n=256/stride=259     	     363	    312987 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: darwin
+goarch: arm64
+pkg: gonum.org/v1/gonum/lapack/gonum
+cpu: Apple M1 Pro
+BenchmarkDggesControl/mode=form/n=32         	     601	    195879 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=form/n=64         	     100	   1102998 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=form/n=128        	      14	   7735616 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=form/n=256        	       1	 116066834 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=vectors/n=32      	     428	    279132 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=vectors/n=64      	      70	   1659405 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=vectors/n=128     	       8	  13512104 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=vectors/n=256     	       1	 171557125 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=left/n=32         	     292	    406376 ns/op	   23552 B/op	      48 allocs/op
+BenchmarkDggesControl/mode=left/n=64         	      49	   2429614 ns/op	  105984 B/op	     216 allocs/op
+BenchmarkDggesControl/mode=left/n=128        	       6	  20441340 ns/op	  423936 B/op	     864 allocs/op
+BenchmarkDggesControl/mode=left/n=256        	       1	 191503334 ns/op	 1507328 B/op	    3072 allocs/op
+BenchmarkDggesControl/mode=unit/n=32         	     157	    771223 ns/op	   94208 B/op	     192 allocs/op
+BenchmarkDggesControl/mode=unit/n=64         	      27	   4335565 ns/op	  376832 B/op	     768 allocs/op
+BenchmarkDggesControl/mode=unit/n=128        	       4	  30238500 ns/op	 1507328 B/op	    3072 allocs/op
+BenchmarkDggesControl/mode=unit/n=256        	       1	 296627542 ns/op	 6029312 B/op	   12288 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=none/n=3/stride=3         	  885745	       133.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=none/n=4/stride=4         	  568708	       218.6 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=none/n=5/stride=5         	  385603	       306.9 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=none/n=32/stride=32       	   31918	      3780 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=none/n=64/stride=64       	   10000	     12921 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=none/n=128/stride=128     	    2269	     56051 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=none/n=256/stride=256     	     246	    487926 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=none/n=256/stride=259     	     706	    165445 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=q/n=3/stride=3            	  850334	       141.2 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=q/n=4/stride=4            	  501000	       224.2 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=q/n=5/stride=5            	  372766	       317.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=q/n=32/stride=32          	   26091	      4643 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=q/n=64/stride=64          	    7134	     16782 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=q/n=128/stride=128        	    1334	     89570 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=q/n=256/stride=256        	     180	    663903 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=q/n=256/stride=259        	     500	    234832 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=z/n=3/stride=3            	  904096	       132.9 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=z/n=4/stride=4            	  551206	       215.3 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=z/n=5/stride=5            	  395152	       304.2 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=z/n=32/stride=32          	   26188	      4580 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=z/n=64/stride=64          	    7194	     16717 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=z/n=128/stride=128        	    1346	     89059 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=z/n=256/stride=256        	     177	    671054 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=z/n=256/stride=259        	     505	    236923 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=both/n=3/stride=3         	  858702	       139.7 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=both/n=4/stride=4         	  528459	       233.8 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=both/n=5/stride=5         	  368139	       325.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=both/n=32/stride=32       	   21216	      5658 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=both/n=64/stride=64       	    5379	     22252 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=both/n=128/stride=128     	     985	    120983 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=both/n=256/stride=256     	     135	    880427 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=both/n=256/stride=259     	     368	    323449 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: darwin
+goarch: arm64
+pkg: gonum.org/v1/gonum/lapack/gonum
+cpu: Apple M1 Pro
+BenchmarkDggesControl/mode=form/n=32         	     558	    196083 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=form/n=64         	     100	   1098102 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=form/n=128        	      14	   7741488 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=form/n=256        	       1	 115846875 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=vectors/n=32      	     424	    284255 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=vectors/n=64      	      70	   1656319 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=vectors/n=128     	       8	  13511443 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=vectors/n=256     	       1	 170296250 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=left/n=32         	     297	    407600 ns/op	   23552 B/op	      48 allocs/op
+BenchmarkDggesControl/mode=left/n=64         	      49	   2394322 ns/op	  105984 B/op	     216 allocs/op
+BenchmarkDggesControl/mode=left/n=128        	       6	  18103451 ns/op	  423936 B/op	     864 allocs/op
+BenchmarkDggesControl/mode=left/n=256        	       1	 199083917 ns/op	 1507328 B/op	    3072 allocs/op
+BenchmarkDggesControl/mode=unit/n=32         	     157	    769261 ns/op	   94208 B/op	     192 allocs/op
+BenchmarkDggesControl/mode=unit/n=64         	      27	   4276907 ns/op	  376832 B/op	     768 allocs/op
+BenchmarkDggesControl/mode=unit/n=128        	       4	  29812000 ns/op	 1507328 B/op	    3072 allocs/op
+BenchmarkDggesControl/mode=unit/n=256        	       1	 280865833 ns/op	 6029312 B/op	   12288 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=none/n=3/stride=3         	  958020	       125.2 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=none/n=4/stride=4         	  586940	       204.3 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=none/n=5/stride=5         	  419073	       287.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=none/n=32/stride=32       	   34130	      3518 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=none/n=64/stride=64       	   10000	     11329 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=none/n=128/stride=128     	    2298	     52282 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=none/n=256/stride=256     	     254	    471857 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=none/n=256/stride=259     	     754	    159123 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=q/n=3/stride=3            	  909808	       131.6 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=q/n=4/stride=4            	  549502	       214.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=q/n=5/stride=5            	  395788	       303.8 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=q/n=32/stride=32          	   26120	      4592 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=q/n=64/stride=64          	    7136	     16800 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=q/n=128/stride=128        	    1339	     89329 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=q/n=256/stride=256        	     181	    658786 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=q/n=256/stride=259        	     502	    237814 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=z/n=3/stride=3            	  901605	       133.1 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=z/n=4/stride=4            	  556876	       215.8 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=z/n=5/stride=5            	  395440	       304.2 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=z/n=32/stride=32          	   26184	      4582 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=z/n=64/stride=64          	    7149	     16738 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=z/n=128/stride=128        	    1348	     89004 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=z/n=256/stride=256        	     180	    671378 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=z/n=256/stride=259        	     505	    232940 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=both/n=3/stride=3         	  833091	       139.6 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=both/n=4/stride=4         	  519246	       228.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=both/n=5/stride=5         	  369088	       325.1 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=both/n=32/stride=32       	   21181	      5660 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=both/n=64/stride=64       	    5372	     22171 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=both/n=128/stride=128     	     979	    122559 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=both/n=256/stride=256     	     135	    876032 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=both/n=256/stride=259     	     364	    324424 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: darwin
+goarch: arm64
+pkg: gonum.org/v1/gonum/lapack/gonum
+cpu: Apple M1 Pro
+BenchmarkDggesControl/mode=form/n=32         	     547	    196014 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=form/n=64         	     100	   1098972 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=form/n=128        	      14	   7703479 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=form/n=256        	       1	 116026375 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=vectors/n=32      	     427	    279243 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=vectors/n=64      	      72	   1658016 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=vectors/n=128     	       8	  13528297 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=vectors/n=256     	       1	 169978166 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=left/n=32         	     296	    408224 ns/op	   23552 B/op	      48 allocs/op
+BenchmarkDggesControl/mode=left/n=64         	      49	   2393414 ns/op	  105984 B/op	     216 allocs/op
+BenchmarkDggesControl/mode=left/n=128        	       6	  18160854 ns/op	  423936 B/op	     864 allocs/op
+BenchmarkDggesControl/mode=left/n=256        	       1	 199562459 ns/op	 1507328 B/op	    3072 allocs/op
+BenchmarkDggesControl/mode=unit/n=32         	     157	    761599 ns/op	   94208 B/op	     192 allocs/op
+BenchmarkDggesControl/mode=unit/n=64         	      27	   4302647 ns/op	  376832 B/op	     768 allocs/op
+BenchmarkDggesControl/mode=unit/n=128        	       4	  29829823 ns/op	 1507328 B/op	    3072 allocs/op
+BenchmarkDggesControl/mode=unit/n=256        	       1	 279743417 ns/op	 6029312 B/op	   12288 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=none/n=3/stride=3         	  972577	       123.6 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=none/n=4/stride=4         	  572211	       204.7 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=none/n=5/stride=5         	  418525	       290.3 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=none/n=32/stride=32       	   34140	      3536 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=none/n=64/stride=64       	    9692	     12107 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=none/n=128/stride=128     	    2229	     52392 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=none/n=256/stride=256     	     254	    479492 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=none/n=256/stride=259     	     752	    153646 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=q/n=3/stride=3            	  905090	       132.6 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=q/n=4/stride=4            	  560103	       215.1 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=q/n=5/stride=5            	  394482	       304.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=q/n=32/stride=32          	   26096	      4592 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=q/n=64/stride=64          	    7072	     16813 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=q/n=128/stride=128        	    1340	     89583 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=q/n=256/stride=256        	     180	    665207 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=q/n=256/stride=259        	     504	    238286 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=z/n=3/stride=3            	  893106	       134.7 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=z/n=4/stride=4            	  554763	       216.3 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=z/n=5/stride=5            	  392916	       304.7 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=z/n=32/stride=32          	   25408	      4702 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=z/n=64/stride=64          	    7080	     16712 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=z/n=128/stride=128        	    1350	     87493 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=z/n=256/stride=256        	     178	    665287 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=z/n=256/stride=259        	     505	    231120 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=both/n=3/stride=3         	  851667	       140.7 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=both/n=4/stride=4         	  527172	       227.8 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=both/n=5/stride=5         	  362354	       325.6 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=both/n=32/stride=32       	   21141	      5658 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=both/n=64/stride=64       	    5416	     22200 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=both/n=128/stride=128     	     967	    127808 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=both/n=256/stride=256     	     138	    866811 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=both/n=256/stride=259     	     364	    323985 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: darwin
+goarch: arm64
+pkg: gonum.org/v1/gonum/lapack/gonum
+cpu: Apple M1 Pro
+BenchmarkDggesControl/mode=form/n=32         	     589	    196275 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=form/n=64         	     100	   1098148 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=form/n=128        	      14	   7704030 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=form/n=256        	       1	 115945375 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=vectors/n=32      	     429	    278678 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=vectors/n=64      	      72	   1660659 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=vectors/n=128     	       8	  13534656 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=vectors/n=256     	       1	 170338000 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=left/n=32         	     301	    398642 ns/op	   23552 B/op	      48 allocs/op
+BenchmarkDggesControl/mode=left/n=64         	      48	   2404247 ns/op	  105984 B/op	     216 allocs/op
+BenchmarkDggesControl/mode=left/n=128        	       6	  18183035 ns/op	  423936 B/op	     864 allocs/op
+BenchmarkDggesControl/mode=left/n=256        	       1	 198517291 ns/op	 1507328 B/op	    3072 allocs/op
+BenchmarkDggesControl/mode=unit/n=32         	     156	    772923 ns/op	   94208 B/op	     192 allocs/op
+BenchmarkDggesControl/mode=unit/n=64         	      27	   4270992 ns/op	  376832 B/op	     768 allocs/op
+BenchmarkDggesControl/mode=unit/n=128        	       4	  29852416 ns/op	 1507328 B/op	    3072 allocs/op
+BenchmarkDggesControl/mode=unit/n=256        	       1	 270970541 ns/op	 6029312 B/op	   12288 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=none/n=3/stride=3         	  960223	       125.3 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=none/n=4/stride=4         	  587131	       204.8 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=none/n=5/stride=5         	  417900	       286.8 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=none/n=32/stride=32       	   34165	      3526 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=none/n=64/stride=64       	   10000	     11331 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=none/n=128/stride=128     	    2290	     52522 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=none/n=256/stride=256     	     253	    478950 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=none/n=256/stride=259     	     754	    159311 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=q/n=3/stride=3            	  906885	       131.8 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=q/n=4/stride=4            	  554208	       213.2 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=q/n=5/stride=5            	  395332	       303.9 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=q/n=32/stride=32          	   26116	      4595 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=q/n=64/stride=64          	    7128	     16782 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=q/n=128/stride=128        	    1344	     88680 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=q/n=256/stride=256        	     180	    665716 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=q/n=256/stride=259        	     500	    236429 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=z/n=3/stride=3            	  901294	       133.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=z/n=4/stride=4            	  556918	       215.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=z/n=5/stride=5            	  395066	       304.2 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=z/n=32/stride=32          	   26188	      4601 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=z/n=64/stride=64          	    7184	     16692 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=z/n=128/stride=128        	    1346	     89475 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=z/n=256/stride=256        	     177	    672933 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=z/n=256/stride=259        	     506	    236885 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=both/n=3/stride=3         	  860625	       139.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=both/n=4/stride=4         	  527820	       227.7 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=both/n=5/stride=5         	  369490	       325.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=both/n=32/stride=32       	   21183	      5659 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=both/n=64/stride=64       	    5443	     22120 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=both/n=128/stride=128     	     980	    122281 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=both/n=256/stride=256     	     136	    872786 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=both/n=256/stride=259     	     356	    317595 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: darwin
+goarch: arm64
+pkg: gonum.org/v1/gonum/lapack/gonum
+cpu: Apple M1 Pro
+BenchmarkDggesControl/mode=form/n=32         	     550	    196218 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=form/n=64         	     100	   1097010 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=form/n=128        	      15	   7718328 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=form/n=256        	       1	 116376583 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=vectors/n=32      	     423	    289129 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=vectors/n=64      	      70	   1654079 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=vectors/n=128     	       8	  13525432 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=vectors/n=256     	       1	 170650667 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=left/n=32         	     300	    398340 ns/op	   23552 B/op	      48 allocs/op
+BenchmarkDggesControl/mode=left/n=64         	      49	   2391979 ns/op	  105984 B/op	     216 allocs/op
+BenchmarkDggesControl/mode=left/n=128        	       6	  18192680 ns/op	  423936 B/op	     864 allocs/op
+BenchmarkDggesControl/mode=left/n=256        	       1	 200147375 ns/op	 1507328 B/op	    3072 allocs/op
+BenchmarkDggesControl/mode=unit/n=32         	     158	    766152 ns/op	   94208 B/op	     192 allocs/op
+BenchmarkDggesControl/mode=unit/n=64         	      26	   4298779 ns/op	  376832 B/op	     768 allocs/op
+BenchmarkDggesControl/mode=unit/n=128        	       4	  29782188 ns/op	 1507328 B/op	    3072 allocs/op
+BenchmarkDggesControl/mode=unit/n=256        	       1	 280829000 ns/op	 6029312 B/op	   12288 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=none/n=3/stride=3         	  970023	       123.8 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=none/n=4/stride=4         	  585591	       204.3 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=none/n=5/stride=5         	  418561	       287.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=none/n=32/stride=32       	   34113	      3558 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=none/n=64/stride=64       	   10000	     11559 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=none/n=128/stride=128     	    2281	     52579 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=none/n=256/stride=256     	     252	    478295 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=none/n=256/stride=259     	     753	    155692 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=q/n=3/stride=3            	  905233	       132.7 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=q/n=4/stride=4            	  559158	       214.3 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=q/n=5/stride=5            	  387700	       304.1 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=q/n=32/stride=32          	   26122	      4590 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=q/n=64/stride=64          	    7102	     16816 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=q/n=128/stride=128        	    1340	     89517 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=q/n=256/stride=256        	     180	    665407 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=q/n=256/stride=259        	     502	    237929 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=z/n=3/stride=3            	  893216	       134.5 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=z/n=4/stride=4            	  555234	       215.7 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=z/n=5/stride=5            	  388244	       304.5 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=z/n=32/stride=32          	   26113	      4590 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=z/n=64/stride=64          	    7159	     16730 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=z/n=128/stride=128        	    1342	     89362 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=z/n=256/stride=256        	     178	    672119 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=z/n=256/stride=259        	     504	    248007 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=both/n=3/stride=3         	  805773	       149.5 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=both/n=4/stride=4         	  459014	       241.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=both/n=5/stride=5         	  356991	       347.8 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=both/n=32/stride=32       	   19794	      5997 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=both/n=64/stride=64       	    4851	     23774 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=both/n=128/stride=128     	     910	    128241 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=both/n=256/stride=256     	     130	    917110 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=both/n=256/stride=259     	     348	    335845 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: darwin
+goarch: arm64
+pkg: gonum.org/v1/gonum/lapack/gonum
+cpu: Apple M1 Pro
+BenchmarkDggesControl/mode=form/n=32         	     573	    196670 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=form/n=64         	     100	   1098630 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=form/n=128        	      14	   8110607 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=form/n=256        	       1	 116285542 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=vectors/n=32      	     426	    282886 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=vectors/n=64      	      70	   1653082 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=vectors/n=128     	       8	  13514177 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=vectors/n=256     	       1	 169544083 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDggesControl/mode=left/n=32         	     298	    403229 ns/op	   23552 B/op	      48 allocs/op
+BenchmarkDggesControl/mode=left/n=64         	      49	   2388233 ns/op	  105984 B/op	     216 allocs/op
+BenchmarkDggesControl/mode=left/n=128        	       6	  18253236 ns/op	  423936 B/op	     864 allocs/op
+BenchmarkDggesControl/mode=left/n=256        	       1	 198703208 ns/op	 1507328 B/op	    3072 allocs/op
+BenchmarkDggesControl/mode=unit/n=32         	     157	    770184 ns/op	   94208 B/op	     192 allocs/op
+BenchmarkDggesControl/mode=unit/n=64         	      26	   4302242 ns/op	  376832 B/op	     768 allocs/op
+BenchmarkDggesControl/mode=unit/n=128        	       4	  29807406 ns/op	 1507328 B/op	    3072 allocs/op
+BenchmarkDggesControl/mode=unit/n=256        	       1	 283998083 ns/op	 6029312 B/op	   12288 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=none/n=3/stride=3         	  959104	       125.1 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=none/n=4/stride=4         	  572222	       204.3 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=none/n=5/stride=5         	  419188	       287.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=none/n=32/stride=32       	   33931	      3515 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=none/n=64/stride=64       	   10000	     11317 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=none/n=128/stride=128     	    2287	     52450 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=none/n=256/stride=256     	     252	    470737 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=none/n=256/stride=259     	     753	    159131 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=q/n=3/stride=3            	  909780	       131.6 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=q/n=4/stride=4            	  562696	       213.2 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=q/n=5/stride=5            	  395380	       304.3 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=q/n=32/stride=32          	   26160	      4581 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=q/n=64/stride=64          	    7101	     16794 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=q/n=128/stride=128        	    1340	     89544 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=q/n=256/stride=256        	     181	    659890 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=q/n=256/stride=259        	     502	    238279 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=z/n=3/stride=3            	  901860	       132.9 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=z/n=4/stride=4            	  558009	       215.5 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=z/n=5/stride=5            	  394023	       303.9 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=z/n=32/stride=32          	   26218	      4608 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=z/n=64/stride=64          	    7174	     16808 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=z/n=128/stride=128        	    1320	     87985 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=z/n=256/stride=256        	     180	    665675 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=z/n=256/stride=259        	     505	    237526 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=both/n=3/stride=3         	  858982	       139.7 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=both/n=4/stride=4         	  526190	       227.9 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=both/n=5/stride=5         	  368484	       325.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=both/n=32/stride=32       	   21232	      5659 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=both/n=64/stride=64       	    5395	     22183 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=both/n=128/stride=128     	     976	    122564 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=both/n=256/stride=256     	     135	    880773 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDhgeqzSweepDouble/mode=both/n=256/stride=259     	     363	    326307 ns/op	       0 B/op	       0 allocs/op
+PASS
