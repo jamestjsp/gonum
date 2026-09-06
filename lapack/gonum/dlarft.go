@@ -43,8 +43,8 @@ func (Implementation) Dlarft(direct lapack.Direct, store lapack.StoreV, n, k int
 		panic(badStoreV)
 	case n < 0:
 		panic(nLT0)
-	case k < 1:
-		panic(kLT1)
+	case k < 0:
+		panic(kLT0)
 	case ldv < max(1, nv):
 		panic(badLdV)
 	case len(tau) < k:
@@ -53,7 +53,7 @@ func (Implementation) Dlarft(direct lapack.Direct, store lapack.StoreV, n, k int
 		panic(shortT)
 	}
 
-	if n == 0 {
+	if n == 0 || k == 0 {
 		return
 	}
 

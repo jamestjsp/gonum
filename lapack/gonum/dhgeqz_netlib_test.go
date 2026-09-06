@@ -227,7 +227,7 @@ func compareDhgeqzWithNetlib(t *testing.T, job lapack.SchurJob, compq, compz lap
 		t.Fatalf("success mismatch: Gonum=%v Netlib info=%d", gok, info)
 	}
 	if !gok {
-		return
+		t.Fatal("both implementations unexpectedly failed on a finite QZ fixture")
 	}
 	compareGeneralizedEigenvalues(t, gar, gai, gbeta, nar, nai, nbeta)
 	if checkSchur {

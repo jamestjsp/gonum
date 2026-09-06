@@ -49,7 +49,11 @@ func (impl Implementation) Dlange(norm lapack.MatrixNorm, m, n int, a []float64,
 		var value float64
 		for i := 0; i < m; i++ {
 			for j := 0; j < n; j++ {
-				value = math.Max(value, math.Abs(a[i*lda+j]))
+				v := math.Abs(a[i*lda+j])
+				if math.IsNaN(v) {
+					return v
+				}
+				value = math.Max(value, v)
 			}
 		}
 		return value
@@ -64,6 +68,9 @@ func (impl Implementation) Dlange(norm lapack.MatrixNorm, m, n int, a []float64,
 		}
 		var value float64
 		for i := 0; i < n; i++ {
+			if math.IsNaN(work[i]) {
+				return work[i]
+			}
 			value = math.Max(value, work[i])
 		}
 		return value
@@ -73,6 +80,9 @@ func (impl Implementation) Dlange(norm lapack.MatrixNorm, m, n int, a []float64,
 			var sum float64
 			for j := 0; j < n; j++ {
 				sum += math.Abs(a[i*lda+j])
+			}
+			if math.IsNaN(sum) {
+				return sum
 			}
 			value = math.Max(value, sum)
 		}

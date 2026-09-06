@@ -27,4 +27,15 @@ func Dlapy2Test(t *testing.T, impl Dlapy2er) {
 			t.Errorf("Dlapy2(%g, %g) = %g, want %g", x, y, got, want)
 		}
 	}
+	for _, tc := range []struct {
+		x, y float64
+	}{
+		{math.NaN(), math.Inf(1)},
+		{math.Inf(1), math.NaN()},
+		{math.NaN(), math.Inf(-1)},
+	} {
+		if got := impl.Dlapy2(tc.x, tc.y); !math.IsNaN(got) {
+			t.Errorf("Dlapy2(%g, %g) = %g, want NaN", tc.x, tc.y, got)
+		}
+	}
 }

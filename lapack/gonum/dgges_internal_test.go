@@ -6,6 +6,21 @@ package gonum
 
 import "testing"
 
+func TestRecheckDggesSelectionMisorderedPair(t *testing.T) {
+	for _, imagSign := range []float64{-1, 1} {
+		calls := 0
+		selector := func(_, ai, _ float64) bool {
+			calls++
+			return ai*imagSign > 0
+		}
+		sdim, ok := recheckDggesSelection(true, selector,
+			[]float64{1, 2, 2}, []float64{0, 1, -1}, []float64{1, 1, 1})
+		if ok || sdim != 2 || calls != 3 {
+			t.Fatalf("imagSign=%g: ok=%v sdim=%d calls=%d, want false,2,3", imagSign, ok, sdim, calls)
+		}
+	}
+}
+
 func TestRecheckDggesSelectionAfterFailure(t *testing.T) {
 	calls := 0
 	selector := func(alphar, _, _ float64) bool {

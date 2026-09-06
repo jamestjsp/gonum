@@ -16,16 +16,22 @@ import (
 
 func checkCloseNetlib(t *testing.T, name string, got, want float64) {
 	t.Helper()
+	if got == want {
+		return
+	}
 	tol := 5e-11 * math.Max(1, math.Abs(want))
-	if math.Abs(got-want) > tol {
+	if math.IsNaN(got) || math.IsNaN(want) || math.IsInf(got, 0) || math.IsInf(want, 0) || math.Abs(got-want) > tol {
 		t.Errorf("%s=%g, want Netlib %g (tolerance %g)", name, got, want, tol)
 	}
 }
 
 func checkEstimateNetlib(t *testing.T, name string, got, want float64) {
 	t.Helper()
+	if got == want {
+		return
+	}
 	tol := 0.1 * math.Max(math.Abs(want), math.SmallestNonzeroFloat64)
-	if math.Abs(got-want) > tol {
+	if math.IsNaN(got) || math.IsNaN(want) || math.IsInf(got, 0) || math.IsInf(want, 0) || math.Abs(got-want) > tol {
 		t.Errorf("%s=%g, want Netlib estimate %g (tolerance %g)", name, got, want, tol)
 	}
 }
@@ -86,6 +92,13 @@ func checkGeneralizedSchurResult(t *testing.T, name string, aOrig, bOrig, s, tt,
 func checkGeneralizedSchurStructure(t *testing.T, name string, s, tt []float64, n int) {
 	t.Helper()
 	for i := 0; i < n; i++ {
+		for j := 0; j < n; j++ {
+			if math.IsNaN(s[i*n+j]) || math.IsInf(s[i*n+j], 0) || math.IsNaN(tt[i*n+j]) || math.IsInf(tt[i*n+j], 0) {
+				t.Fatalf("%s: nonfinite Schur form entry at [%d,%d]: S=%g T=%g", name, i, j, s[i*n+j], tt[i*n+j])
+			}
+		}
+	}
+	for i := 0; i < n; i++ {
 		for j := 0; j < i; j++ {
 			if tt[i*n+j] != 0 {
 				t.Fatalf("%s: T[%d,%d]=%g, want exact zero", name, i, j, tt[i*n+j])
@@ -132,6 +145,9 @@ func checkOrthogonal(t *testing.T, name string, q []float64, n int) {
 			if i == j {
 				want = 1
 			}
+			if math.IsNaN(dot) || math.IsInf(dot, 0) {
+				t.Fatalf("%s: nonfinite inner product at [%d,%d]: %g", name, i, j, dot)
+			}
 			maxErr = math.Max(maxErr, math.Abs(dot-want))
 		}
 	}
@@ -150,6 +166,9 @@ func checkPencilResidual(t *testing.T, name string, orig, schur, q, z []float64,
 				for l := 0; l < n; l++ {
 					got += q[i*n+k] * schur[k*n+l] * z[j*n+l]
 				}
+			}
+			if math.IsNaN(orig[i*n+j]) || math.IsInf(orig[i*n+j], 0) || math.IsNaN(got) || math.IsInf(got, 0) {
+				t.Fatalf("%s: nonfinite residual operand at [%d,%d]: original=%g reconstructed=%g", name, i, j, orig[i*n+j], got)
 			}
 			norm = math.Max(norm, math.Abs(orig[i*n+j]))
 			maxErr = math.Max(maxErr, math.Abs(orig[i*n+j]-got))

@@ -63,6 +63,37 @@ func TestDtgsenNetlibSingularConditionEstimate(t *testing.T) {
 	}
 }
 
+func TestDtgsenNetlibPartialRejection(t *testing.T) {
+	const n = 8
+	a, b := dtgexcPartialRejectionPencil()
+	selected := []bool{false, false, false, false, false, false, true, true}
+	ga, gb := append([]float64(nil), a...), append([]float64(nil), b...)
+	na, nb := append([]float64(nil), a...), append([]float64(nil), b...)
+	gar, gai, gbeta := make([]float64, n), make([]float64, n), make([]float64, n)
+	nar, nai, nbeta := make([]float64, n), make([]float64, n), make([]float64, n)
+	gq, gz := identityData(n), identityData(n)
+	nq, nz := identityData(n), identityData(n)
+	work := make([]float64, 4*n+16)
+	iwork := make([]int, 1)
+	gm, _, _, _, gok := Implementation{}.Dtgsen(0, true, true, selected, n,
+		ga, n, gb, n, gar, gai, gbeta, gq, n, gz, n,
+		work, len(work), iwork, len(iwork))
+	nm, info, nwork, niwork := netlib.DtgsenReorderOutputs(selected, n,
+		na, nb, nar, nai, nbeta, nq, nz)
+	if gok || info == 0 {
+		t.Fatalf("fixture did not reject: Gonum ok=%v Netlib info=%d", gok, info)
+	}
+	if gm != nm || gm != 2 {
+		t.Fatalf("selected dimension: Gonum=%d Netlib=%d want=2", gm, nm)
+	}
+	if work[0] != nwork || iwork[0] != niwork {
+		t.Fatalf("workspace outputs: Gonum=(%v,%d) Netlib=(%v,%d)", work[0], iwork[0], nwork, niwork)
+	}
+	checkGeneralizedSchurResult(t, "Gonum DTGSEN partial rejection", a, b, ga, gb, gq, gz, n)
+	checkGeneralizedSchurResult(t, "Netlib DTGSEN partial rejection", a, b, na, nb, nq, nz, n)
+	compareGeneralizedEigenvalues(t, gar, gai, gbeta, nar, nai, nbeta)
+}
+
 func TestDtgsenNetlibDifferential(t *testing.T) {
 	const n = 5
 	aOrig, bOrig, selected := dtgsenOraclePencil()

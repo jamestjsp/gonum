@@ -38,7 +38,7 @@ func DlanhsTest(t *testing.T, impl Dlanhser) {
 				}
 				want := dlange(norm, a.Rows, a.Cols, a.Data, a.Stride)
 
-				if math.Abs(want-got) > tol*want {
+				if math.IsNaN(got) || math.Abs(want-got) > tol*want {
 					t.Errorf("Case n=%v,lda=%v,norm=%v: unexpected result. Want %v, got %v.", n, lda, normToString(norm), want, got)
 				}
 			}

@@ -71,7 +71,9 @@ func dlag2Test(t *testing.T, impl Dlag2er, rnd *rand.Rand, lda, ldb int, aKind, 
 
 	resid, err := residualDlag2(a, b, scale1, complex(wr1, wi))
 	if err != nil {
-		t.Logf("%s: invalid input data: %v\n%s\n%s", name, err, aStr, bStr)
+		if regularDlag2Pencil(a, b) {
+			t.Fatalf("%s: invalid eigenvalue for regular pencil: %v\n%s\n%s", name, err, aStr, bStr)
+		}
 		return
 	}
 	if resid > tol || math.IsNaN(resid) {
@@ -80,12 +82,30 @@ func dlag2Test(t *testing.T, impl Dlag2er, rnd *rand.Rand, lda, ldb int, aKind, 
 
 	resid, err = residualDlag2(a, b, scale2, complex(wr2, -wi))
 	if err != nil {
-		t.Logf("%s: invalid input data: %s\n%s\n%s", name, err, aStr, bStr)
+		if regularDlag2Pencil(a, b) {
+			t.Fatalf("%s: invalid eigenvalue for regular pencil: %v\n%s\n%s", name, err, aStr, bStr)
+		}
 		return
 	}
 	if resid > tol || math.IsNaN(resid) {
 		t.Errorf("%s: unexpected second eigenvalue %g with s=%g; resid=%g, want<=%g\n%s\n%s", name, complex(wr2, -wi), scale2, resid, tol, aStr, bStr)
 	}
+}
+
+func regularDlag2Pencil(a, b blas64.General) bool {
+	aScale := math.Max(math.Max(math.Abs(a.Data[0]), math.Abs(a.Data[1])),
+		math.Max(math.Abs(a.Data[a.Stride]), math.Abs(a.Data[a.Stride+1])))
+	bScale := math.Max(math.Max(math.Abs(b.Data[0]), math.Abs(b.Data[1])), math.Abs(b.Data[b.Stride+1]))
+	if aScale == 0 {
+		return b.Data[0] != 0 && b.Data[b.Stride+1] != 0
+	}
+	a11, a12 := a.Data[0]/aScale, a.Data[1]/aScale
+	a21, a22 := a.Data[a.Stride]/aScale, a.Data[a.Stride+1]/aScale
+	if bScale == 0 {
+		return a11*a22 != a12*a21
+	}
+	b11, b12, b22 := b.Data[0]/bScale, b.Data[1]/bScale, b.Data[b.Stride+1]/bScale
+	return a11*a22 != a12*a21 || b11*b22 != 0 || a11*b22+a22*b11 != a21*b12
 }
 
 func makeDlag2TestMatrix(rnd *rand.Rand, ld, kind int) blas64.General {

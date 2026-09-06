@@ -332,7 +332,7 @@ func TestDggesNetlibOptions(t *testing.T) {
 						t.Fatalf("Gonum=(sdim=%d,ok=%v), Netlib=(sdim=%d,info=%d)", gsdim, gok, nsdim, info)
 					}
 					if !gok {
-						return
+						t.Fatal("both implementations unexpectedly failed on a finite options fixture")
 					}
 					compareGeneralizedEigenvalues(t, gar, gai, gbet, nar, nai, nbet)
 					checkGeneralizedSchurStructure(t, "Gonum DGGES", ga, gb, n)

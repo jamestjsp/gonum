@@ -70,3 +70,30 @@ func TestDtgsy2NetlibSuccessiveBlocks(t *testing.T) {
 		})
 	}
 }
+
+func TestDtgsy2NetlibScaling(t *testing.T) {
+	const small = 1e-100
+	a, b := []float64{small}, []float64{2 * small}
+	d, e := []float64{3 * small}, []float64{5 * small}
+	for _, trans := range []blas.Transpose{blas.NoTrans, blas.Trans} {
+		t.Run(fmt.Sprintf("Trans=%c", trans), func(t *testing.T) {
+			gc, gf := []float64{1e300}, []float64{-1e300}
+			nc, nf := append([]float64(nil), gc...), append([]float64(nil), gf...)
+			gscale, gsum, gscal, gpq, gok := Implementation{}.Dtgsy2(trans, 0, 1, 1,
+				a, 1, b, 1, gc, 1, d, 1, e, 1, gf, 1, 1, 0, make([]int, 4))
+			nscale, nsum, nscal, npq, info := netlib.Dtgsy2(byte(trans), 0, 1, 1,
+				a, b, nc, d, e, nf, 1, 0)
+			if gok != (info == 0) || gpq != npq {
+				t.Fatalf("Gonum=(pq=%d,ok=%v), Netlib=(pq=%d,info=%d)", gpq, gok, npq, info)
+			}
+			if !(gscale < 1) || !(nscale < 1) {
+				t.Fatalf("scaling not exercised: Gonum=%g Netlib=%g", gscale, nscale)
+			}
+			checkCloseNetlib(t, "scale", gscale, nscale)
+			checkCloseNetlib(t, "rdsum", gsum, nsum)
+			checkCloseNetlib(t, "rdscal", gscal, nscal)
+			checkCloseNetlib(t, "C", gc[0], nc[0])
+			checkCloseNetlib(t, "F", gf[0], nf[0])
+		})
+	}
+}
