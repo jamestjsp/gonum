@@ -25,7 +25,8 @@ func BenchmarkGemvTStrided(b *testing.B) {
 				b.ReportAllocs()
 				b.ResetTimer()
 				for i := 0; i < b.N; i++ {
-					GemvT(uintptr(m), uintptr(n), 2, a, uintptr(n), x, incX, 1, y, incY)
+					// Alternating the previous result with beta=-1 keeps the mutable fixture bounded.
+					GemvT(uintptr(m), uintptr(n), 2, a, uintptr(n), x, incX, -1, y, incY)
 				}
 			})
 		}
