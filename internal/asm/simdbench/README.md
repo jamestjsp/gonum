@@ -70,6 +70,9 @@ The [complete Level 1 native comparison](RESULTS_LEVEL1_NETLIB.md) covers all
 46 public Level 1 routines and measures the subsequent scalar and SIMD changes.
 The [norm and strided-index follow-up](RESULTS_LEVEL1_NORMS_STRIDES.md) targets
 the remaining single-precision norm gap and strided maximum-index scans.
+The [bottom-up triangular solve pass](RESULTS_BOTTOM_UP.md) removes repeated
+single-element AXPY dispatch. The [strided GEMV follow-up](RESULTS_STRIDED_GEMV.md)
+traces reflector workspace strides through Dlarft and measures public QR gains.
 
 The [initial AMD64 results](https://github.com/jamestjsp/gonum/issues/6#issuecomment-5541048813)
 identified oversized scratch buffers, unnecessary staging for contiguous
