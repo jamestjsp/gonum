@@ -116,10 +116,12 @@ func TestSgemmSIMDReject(t *testing.T) {
 					}
 				}
 				aOrig, bOrig, cOrig := slices.Clone(a), slices.Clone(b), slices.Clone(c)
-				if sgemmSerialSIMD(trans, alias == "transposed-b", m, n, k, a, lda, b, n, c, n, 0.75) {
-					t.Fatal("kernel accepted unsupported layout")
+				accepted := sgemmSerialSIMD(trans, alias == "transposed-b", m, n, k, a, lda, b, n, c, n, 0.75)
+				wantAccepted := trans && alias == "transposed-b"
+				if accepted != wantAccepted {
+					t.Fatalf("accepted=%t want %t", accepted, wantAccepted)
 				}
-				if !sgemmSIMDEqualBits(a, aOrig) || !sgemmSIMDEqualBits(b, bOrig) || !sgemmSIMDEqualBits(c, cOrig) {
+				if !sgemmSIMDEqualBits(a, aOrig) || !sgemmSIMDEqualBits(b, bOrig) || !accepted && !sgemmSIMDEqualBits(c, cOrig) {
 					t.Fatal("rejected kernel changed an operand")
 				}
 			})

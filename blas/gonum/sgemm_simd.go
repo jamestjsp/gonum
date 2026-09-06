@@ -23,6 +23,9 @@ const (
 // https://go-review.googlesource.com/c/go/+/827812
 func sgemmSerialSIMD(aTrans, bTrans bool, m, n, k int, a []float32, lda int, b []float32, ldb int, c []float32, ldc int, alpha float32) bool {
 	if bTrans {
+		if aTrans {
+			return k >= 16 && m >= 2 && n >= 4 && sgemmSerialTransTransBlocked(m, n, k, a, lda, b, ldb, c, ldc, alpha)
+		}
 		return !aTrans && n >= 2 && k >= 16 && sgemmSerialNotTransSIMD(m, n, k, a, lda, b, ldb, c, ldc, alpha)
 	}
 	if m < sgemmSIMDRows || k < 4 || n < 4 {
@@ -211,6 +214,45 @@ func sgemmSIMDDisjoint(x []float32, xr, xc, xs int, y []float32, yr, yc, ys int)
 		default:
 			return false
 		}
+	}
+	return true
+}
+
+func sgemmSerialTransTransBlocked(m, n, k int, a []float32, lda int, b []float32, ldb int, c []float32, ldc int, alpha float32) bool {
+	if m < 2 || n < 4 || k < 16 || !sgemmSIMDDisjoint(c, m, n, ldc, a, k, m, lda) || !sgemmSIMDDisjoint(c, m, n, ldc, b, n, k, ldb) {
+		return false
+	}
+	rows, cols := m-m%2, n-n%4
+	for i := 0; i < rows; i += 2 {
+		c0, c1 := c[i*ldc:i*ldc+n], c[(i+1)*ldc:(i+1)*ldc+n]
+		for j := 0; j < cols; j += 4 {
+			v00, v01, v02, v03 := c0[j], c0[j+1], c0[j+2], c0[j+3]
+			v10, v11, v12, v13 := c1[j], c1[j+1], c1[j+2], c1[j+3]
+			b0, b1 := b[j*ldb:j*ldb+k], b[(j+1)*ldb:(j+1)*ldb+k]
+			b2, b3 := b[(j+2)*ldb:(j+2)*ldb+k], b[(j+3)*ldb:(j+3)*ldb+k]
+			for l := 0; l < k; l++ {
+				if scale := alpha * a[l*lda+i]; scale != 0 {
+					v00 += scale * b0[l]
+					v01 += scale * b1[l]
+					v02 += scale * b2[l]
+					v03 += scale * b3[l]
+				}
+				if scale := alpha * a[l*lda+i+1]; scale != 0 {
+					v10 += scale * b0[l]
+					v11 += scale * b1[l]
+					v12 += scale * b2[l]
+					v13 += scale * b3[l]
+				}
+			}
+			c0[j], c0[j+1], c0[j+2], c0[j+3] = v00, v01, v02, v03
+			c1[j], c1[j+1], c1[j+2], c1[j+3] = v10, v11, v12, v13
+		}
+		if cols < n {
+			sgemmSerialTransTrans(2, n-cols, k, a[i:], lda, b[cols*ldb:], ldb, c[i*ldc+cols:], ldc, alpha)
+		}
+	}
+	if rows < m {
+		sgemmSerialTransTrans(1, n, k, a[rows:], lda, b, ldb, c[rows*ldc:], ldc, alpha)
 	}
 	return true
 }

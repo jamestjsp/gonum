@@ -94,6 +94,7 @@ func BenchmarkDlarft(b *testing.B)        { testlapack.DlarftBenchmark(b, impl) 
 func BenchmarkZlarfg(b *testing.B)        { testlapack.ZlarfgBenchmark(b, impl) }
 func BenchmarkDtzrzf(b *testing.B)        { testlapack.DtzrzfBenchmark(b, impl) }
 func BenchmarkDormrz(b *testing.B)        { testlapack.DormrzBenchmark(b, impl) }
+func BenchmarkDormlqLeft(b *testing.B)    { testlapack.DormlqLeftBenchmark(b, impl) }
 func BenchmarkDtgex2Scratch(b *testing.B) { testlapack.Dtgex2ScratchBenchmark(b, impl) }
 func BenchmarkDtgsy2Scratch(b *testing.B) { testlapack.Dtgsy2ScratchBenchmark(b, impl) }
 
