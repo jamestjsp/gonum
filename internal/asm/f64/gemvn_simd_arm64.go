@@ -6,16 +6,15 @@
 
 package f64
 
-func gemvNShortStridedValid(m, n uintptr, a []float64, lda uintptr, x []float64, incX uintptr, y []float64, incY uintptr) bool {
-	if m < 4 || m > 32 || n < 8 || lda < n || incX != 1 || incY <= 1 || int(incY) <= 0 {
+func gemvNStridedOutputValid(m, n uintptr, a []float64, lda uintptr, x []float64, y []float64, incY uintptr) bool {
+	if m < 4 || n < 8 || lda < n || incY <= 1 || int(incY) <= 0 {
 		return false
 	}
 	aLen, ok := matrixSpan(m, n, lda)
 	if !ok || aLen > uintptr(len(a)) {
 		return false
 	}
-	xLen, ok := vectorSpan(n, incX)
-	if !ok || xLen > uintptr(len(x)) {
+	if n > uintptr(len(x)) {
 		return false
 	}
 	yLen, ok := vectorSpan(m, incY)
@@ -23,10 +22,10 @@ func gemvNShortStridedValid(m, n uintptr, a []float64, lda uintptr, x []float64,
 		return false
 	}
 	activeY := y[:yLen]
-	return simdMatrixDisjoint(activeY, a[:aLen]) && simdMatrixDisjoint(activeY, x[:xLen])
+	return simdMatrixDisjoint(activeY, a[:aLen]) && simdMatrixDisjoint(activeY, x[:n])
 }
 
-func gemvNShortStrided(m, n uintptr, alpha float64, a []float64, lda uintptr, x []float64, beta float64, y []float64, incY uintptr) {
+func gemvNStridedOutput(m, n uintptr, alpha float64, a []float64, lda uintptr, x []float64, beta float64, y []float64, incY uintptr) {
 	x = x[:n:n]
 	var row uintptr
 	for ; row+4 <= m; row += 4 {
