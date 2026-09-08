@@ -103,3 +103,33 @@ func TestSIMDComplexPortableGroupingRecovery(t *testing.T) {
 		}
 	}
 }
+
+// Fusing one product with the real subtraction changes an overflowing separate
+// product into a finite result. A retry based only on the fused output cannot
+// recover the established classification for this finite-input case.
+func TestSIMDComplexAxpyProductOverflowClassification(t *testing.T) {
+	const alpha complex128 = 2 + 0.5i
+	value := complex(float64(0.52*math.MaxFloat64), float64(0.13*math.MaxFloat64))
+	want := alpha * value
+	if !math.IsInf(float64(real(want)), 1) || math.IsInf(float64(imag(want)), 0) {
+		t.Fatal("overflow fixture has wrong classification")
+	}
+	for _, n := range []int{4, 31, 65} {
+		x, y, dst := make([]complex128, 2*n), make([]complex128, 3*n), make([]complex128, 5*n)
+		for i := range x {
+			x[i] = value
+		}
+		AxpyUnitaryToSIMD(dst[:n], alpha, x[:n], y[:n])
+		for i := 0; i < n; i++ {
+			if dst[i] != want {
+				t.Errorf("unitary n=%d i=%d: got %v want %v", n, i, dst[i], want)
+			}
+		}
+		AxpyIncToSIMD(dst, 5, 0, alpha, x, y, uintptr(n), 2, 3, 0, 0)
+		for i := 0; i < n; i++ {
+			if dst[5*i] != want {
+				t.Errorf("strided n=%d i=%d: got %v want %v", n, i, dst[5*i], want)
+			}
+		}
+	}
+}

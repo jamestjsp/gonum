@@ -27,16 +27,38 @@ func loadWidenSIMD(x []float32) simd.Float64s {
 	}
 }
 
+// canDdotShortSIMD checks a slice length against the cached native admission
+// limit. Go 1.27 initializes its Float64x4 accumulators with VPXOR YMM, which
+// requires AVX2 even though widening uses AVX.
+func canDdotShortSIMD(n int) bool {
+	return uint(n) < uint(nativeDdotShortLimitSIMD) && n&7 != 0
+}
+
+// DdotUnitarySIMD has already rejected the short native path.
 func ddotUnitaryHardwareSIMD(x, y []float32) float64 {
 	if !simd.Emulated() {
 		switch simd.VectorBitSize() {
 		case 512:
 			return ddotUnitary512(x, y)
 		case 256:
+			// A requested width can be capped from native512 even when AVX2
+			// is independently disabled. Avoid native and portable256 here.
+			if !archsimd.X86.AVX2() {
+				return ddotUnitarySequentialSIMD(x, y)
+			}
 			return ddotUnitary256(x, y)
 		}
 	}
 	return ddotUnitaryPortableSIMD(x, y)
+}
+
+func ddotUnitarySequentialSIMD(x, y []float32) float64 {
+	y = y[:len(x):len(x)]
+	var sum float64
+	for i, v := range x {
+		sum += float64(v) * float64(y[i])
+	}
+	return sum
 }
 
 // Keep the widening loop entirely in archsimd: Go 1.27's FromArch bridge
@@ -80,6 +102,11 @@ func ddotUnitary512(x, y []float32) float64 {
 	for len(x) >= 8 {
 		acc = archsimd.LoadFloat32x8Array((*[8]float32)(x[:8])).ConvertToFloat64().Mul(archsimd.LoadFloat32x8Array((*[8]float32)(y[:8])).ConvertToFloat64()).Add(acc)
 		x, y = x[8:], y[8:]
+	}
+	if len(x) >= 4 {
+		product := archsimd.LoadFloat32x4Array((*[4]float32)(x[:4])).ConvertToFloat64().Mul(archsimd.LoadFloat32x4Array((*[4]float32)(y[:4])).ConvertToFloat64())
+		acc = acc.SetLo(acc.GetLo().Add(product))
+		x, y = x[4:], y[4:]
 	}
 	half := acc.GetLo().Add(acc.GetHi())
 	pair := half.GetLo().Add(half.GetHi())

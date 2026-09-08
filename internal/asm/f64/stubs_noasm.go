@@ -28,6 +28,8 @@ func L1Norm(x []float64) (sum float64) {
 //		sum += math.Abs(x[i])
 //	}
 //	return sum
+//
+// If incX is zero, L1NormInc returns positive zero without accessing x.
 func L1NormInc(x []float64, n, incX int) (sum float64) {
 	for i := 0; i < n*incX; i += incX {
 		sum += math.Abs(x[i])

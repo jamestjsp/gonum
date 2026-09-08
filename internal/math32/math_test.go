@@ -274,7 +274,7 @@ func sqrt(x float32) float32 {
 	// normalize x
 	exp := int((ix >> shift) & mask)
 	if exp == 0 { // subnormal x
-		for ix&1<<shift == 0 {
+		for ix&(1<<shift) == 0 {
 			ix <<= 1
 			exp--
 		}

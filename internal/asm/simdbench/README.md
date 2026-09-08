@@ -11,10 +11,12 @@ coverage manifest, equivalence tests, and comparison benchmarks.
 
 With Go 1.27 SIMD enabled, measured ARM64 paths now use portable kernels for
 real GEMM, selected contiguous GEMV shapes, and sufficiently long float64 norms.
-Other candidates remain comparison-only; AMD64 production assembly is unchanged.
+Other candidates remain comparison-only; AMD64 production retains assembly
+dispatch, including the separately validated assembly correctness repairs.
 See the [BLAS integration results](RESULTS_BLAS.md) for dispatch boundaries,
-accuracy checks, and consumer measurements. On AMD64, `current` below means
-assembly; on ARM64 it means the currently selected production implementation.
+accuracy checks, and consumer measurements. `current` means the existing
+production entry point. Most AMD64 entries use assembly; remaining Go paths
+are identified in the routine inventory.
 
 With Go 1.27.1 or newer, run the same-binary equivalence tests and benchmarks
 with:
@@ -107,6 +109,17 @@ Complex alpha broadcasts are hoisted outside the vector loop as well.
 Removing these instructions is verified in Windows/AMD64 compiler output;
 their contribution to the office timings still needs native measurement.
 
+For controlled AMD64 assembly comparisons, build the benchmark binary with
+`-tags simdbenchclean`. The manifest, boundary and stride benchmarks then execute
+`VZEROUPPER` immediately before every current and candidate call, when AVX is
+supported. This includes the same state-preparation cost in both measurements
+and leaves all kernels and production dispatch unchanged. Keep these results
+separate from ordinary benchmark runs: instruction-state diagnostics reproduced
+a roughly fivefold slow state in the unchanged short assembly norm, while
+clearing only once before the trial did not ensure stability. Apply the same
+benchmark harness and tag to both revisions. The optional `simdasmstate` tag
+provides explicit native/clean/dirty controls on Linux AMD64.
+
 Portable mixed-precision and prefix fallbacks still mix scalar arithmetic
 with vectors. The AMD64 Ddot leaf avoids scalar widening, and ordinary norms
 avoid the scaled recurrence. Efficient portable widening/reduction/scan
@@ -143,3 +156,5 @@ The `BenchmarkSIMDBoundaries` and `BenchmarkSIMDStrides` sweeps cover uneven
 lengths and increments 1, 2, 3, 7, 16 and 63. Cumulative-product timing uses
 bounded alternating reciprocal factors so prefixes remain normal and finite.
 Apply the same benchmark harness to both source revisions before comparison.
+
+The initial complete native AMD64 checkpoint is documented in [RESULTS_ALL_ASM.md](RESULTS_ALL_ASM.md). It covers all 57 BLAS assembly entries, 402 matched real BLAS consumer cases, remaining losses, and the separate square-root production change. The subsequent stock Go 1.27.1 investigations, retained candidates, correctness repairs and measured costs are documented in [RESULTS_GO1271.md](RESULTS_GO1271.md). SIMD candidates do not change AMD64 production BLAS dispatch.

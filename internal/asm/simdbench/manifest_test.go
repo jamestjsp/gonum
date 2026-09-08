@@ -8,6 +8,7 @@ import (
 	"bufio"
 	"fmt"
 	"go/ast"
+	"go/build"
 	"go/build/constraint"
 	"go/parser"
 	"go/token"
@@ -37,38 +38,58 @@ func TestAMD64SIMDCandidateCoverage(t *testing.T) {
 	directSIMD := make(map[string]bool)
 	calls := make(map[string]map[string]bool)
 	fset := token.NewFileSet()
+	ctx := build.Default
+	ctx.GOARCH, ctx.GOOS = "amd64", "linux"
+	ctx.BuildTags = []string{"goexperiment.simd"}
+	ctx.ReleaseTags = append(ctx.ReleaseTags, "go1.27")
 	for _, pkg := range []string{"c128", "c64", "f32", "f64"} {
-		path := filepath.Join(asmRoot, pkg, "simd.go")
-		checkPortableSIMDBuildConstraint(t, path)
-		file, err := parser.ParseFile(fset, path, nil, 0)
+		dir := filepath.Join(asmRoot, pkg)
+		checkPortableSIMDBuildConstraint(t, filepath.Join(dir, "simd.go"))
+		paths, err := filepath.Glob(filepath.Join(dir, "*.go"))
 		if err != nil {
-			t.Fatalf("parse %s: %v", path, err)
+			t.Fatal(err)
 		}
-		for _, declaration := range file.Decls {
-			function, ok := declaration.(*ast.FuncDecl)
-			if !ok || function.Body == nil {
+		for _, path := range paths {
+			if strings.HasSuffix(path, "_test.go") {
 				continue
 			}
-			name := pkg + "." + function.Name.Name
-			if ast.IsExported(function.Name.Name) && strings.HasSuffix(function.Name.Name, "SIMD") {
-				got = append(got, name)
+			match, err := ctx.MatchFile(dir, filepath.Base(path))
+			if err != nil {
+				t.Fatal(err)
 			}
-			calls[name] = make(map[string]bool)
-			ast.Inspect(function.Body, func(node ast.Node) bool {
-				call, ok := node.(*ast.CallExpr)
-				if !ok {
-					return true
+			if !match {
+				continue
+			}
+			file, err := parser.ParseFile(fset, path, nil, 0)
+			if err != nil {
+				t.Fatalf("parse %s: %v", path, err)
+			}
+			for _, declaration := range file.Decls {
+				function, ok := declaration.(*ast.FuncDecl)
+				if !ok || function.Body == nil {
+					continue
 				}
-				switch target := call.Fun.(type) {
-				case *ast.Ident:
-					calls[name][pkg+"."+target.Name] = true
-				case *ast.SelectorExpr:
-					if receiver, ok := target.X.(*ast.Ident); ok && receiver.Name == "simd" {
-						directSIMD[name] = true
+				name := pkg + "." + function.Name.Name
+				if ast.IsExported(function.Name.Name) && strings.HasSuffix(function.Name.Name, "SIMD") {
+					got = append(got, name)
+				}
+				calls[name] = make(map[string]bool)
+				ast.Inspect(function.Body, func(node ast.Node) bool {
+					call, ok := node.(*ast.CallExpr)
+					if !ok {
+						return true
 					}
-				}
-				return true
-			})
+					switch target := call.Fun.(type) {
+					case *ast.Ident:
+						calls[name][pkg+"."+target.Name] = true
+					case *ast.SelectorExpr:
+						if receiver, ok := target.X.(*ast.Ident); ok && receiver.Name == "simd" {
+							directSIMD[name] = true
+						}
+					}
+					return true
+				})
+			}
 		}
 	}
 	sort.Strings(got)

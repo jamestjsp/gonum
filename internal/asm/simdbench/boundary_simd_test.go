@@ -53,8 +53,10 @@ func benchmarkKernelVariants(b *testing.B, entry Entry, n, stride int) {
 			b.ReportAllocs()
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
+				clearBenchmarkAVXState()
 				runner.run()
 			}
+			b.StopTimer()
 			benchmarkSink = runner.result()
 		})
 	}

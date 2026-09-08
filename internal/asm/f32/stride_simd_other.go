@@ -17,3 +17,13 @@ func dotIncHardwareSIMD(x, y []float32, n, incX, incY, ix, iy uintptr) (float32,
 func ddotIncHardwareSIMD(x, y []float32, n, incX, incY, ix, iy uintptr) (float64, bool) {
 	return 0, false
 }
+
+func axpyIncPositiveHardwareSIMD(dst []float32, incDst, idst uintptr, alpha float32, x, y []float32, n, incX, incY, ix, iy uintptr) bool {
+	return false
+}
+func dotIncPositiveHardwareSIMD(x, y []float32, n, incX, incY, ix, iy uintptr) (float32, bool) {
+	return 0, false
+}
+func ddotIncPositiveHardwareSIMD(x, y []float32, n, incX, incY, ix, iy uintptr) (float64, bool) {
+	return 0, false
+}

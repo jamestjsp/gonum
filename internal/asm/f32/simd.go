@@ -22,11 +22,21 @@ func AxpyUnitarySIMD(alpha float32, x, y []float32) {
 	a := simd.BroadcastFloat32s(alpha)
 	width := a.Len()
 	y = y[:len(x):len(x)]
+	if hardwareStridedSIMD && width == 8 && len(x) >= 4*width && !simd.Emulated() {
+		for len(x) >= 4*width {
+			xb, yb := x[:4*width], y[:4*width]
+			simd.LoadFloat32s(xb[0:width]).Mul(a).Add(simd.LoadFloat32s(yb[0:width])).Store(yb[0:width])
+			simd.LoadFloat32s(xb[width : 2*width]).Mul(a).Add(simd.LoadFloat32s(yb[width : 2*width])).Store(yb[width : 2*width])
+			simd.LoadFloat32s(xb[2*width : 3*width]).Mul(a).Add(simd.LoadFloat32s(yb[2*width : 3*width])).Store(yb[2*width : 3*width])
+			simd.LoadFloat32s(xb[3*width : 4*width]).Mul(a).Add(simd.LoadFloat32s(yb[3*width : 4*width])).Store(yb[3*width : 4*width])
+			x, y = x[4*width:], y[4*width:]
+		}
+	}
 	for len(x) >= width {
 		simd.LoadFloat32s(x[:width]).Mul(a).Add(simd.LoadFloat32s(y[:width])).Store(y[:width])
 		x, y = x[width:], y[width:]
 	}
-	if hardwareStridedSIMD && !simd.Emulated() && width >= 16 && len(x) >= 8 {
+	if hardwareStridedSIMD && !simd.Emulated() && width >= 16 && len(x) >= 8 && supportsAVX2SIMD() {
 		for len(x) >= 4 {
 			axpyTailSIMD(y, alpha, x, y)
 			x, y = x[4:], y[4:]
@@ -50,11 +60,23 @@ func AxpyUnitaryToSIMD(dst []float32, alpha float32, x, y []float32) {
 	a := simd.BroadcastFloat32s(alpha)
 	width := a.Len()
 	y, dst = y[:len(x):len(x)], dst[:len(x):len(x)]
+	if hardwareStridedSIMD && width == 8 && len(x) >= 4*width && !simd.Emulated() {
+		for len(x) >= 4*width {
+			xb, yb := x[:4*width], y[:4*width]
+			db := dst[:4*width]
+			simd.LoadFloat32s(xb[0:width]).Mul(a).Add(simd.LoadFloat32s(yb[0:width])).Store(db[0:width])
+			simd.LoadFloat32s(xb[width : 2*width]).Mul(a).Add(simd.LoadFloat32s(yb[width : 2*width])).Store(db[width : 2*width])
+			simd.LoadFloat32s(xb[2*width : 3*width]).Mul(a).Add(simd.LoadFloat32s(yb[2*width : 3*width])).Store(db[2*width : 3*width])
+			simd.LoadFloat32s(xb[3*width : 4*width]).Mul(a).Add(simd.LoadFloat32s(yb[3*width : 4*width])).Store(db[3*width : 4*width])
+			x, y = x[4*width:], y[4*width:]
+			dst = dst[4*width:]
+		}
+	}
 	for len(x) >= width {
 		simd.LoadFloat32s(x[:width]).Mul(a).Add(simd.LoadFloat32s(y[:width])).Store(dst[:width])
 		x, y, dst = x[width:], y[width:], dst[width:]
 	}
-	if hardwareStridedSIMD && !simd.Emulated() && width >= 16 && len(x) >= 8 {
+	if hardwareStridedSIMD && !simd.Emulated() && width >= 16 && len(x) >= 8 && supportsAVX2SIMD() {
 		for len(x) >= 4 {
 			axpyTailSIMD(dst, alpha, x, y)
 			x, y, dst = x[4:], y[4:], dst[4:]
@@ -81,8 +103,13 @@ func AxpyIncSIMD(alpha float32, x, y []float32, n, incX, incY, ix, iy uintptr) {
 		return
 	}
 
-	if n >= 4 && incY != 0 && simdMatrixDisjoint(x, y) && axpyIncHardwareSIMD(y, incY, iy, alpha, x, y, n, incX, incY, ix, iy) {
-		return
+	if n >= 4 && incY != 0 && simdMatrixDisjoint(x, y) {
+		if n >= 16 && axpyIncPositiveHardwareSIMD(y, incY, iy, alpha, x, y, n, incX, incY, ix, iy) {
+			return
+		}
+		if axpyIncHardwareSIMD(y, incY, iy, alpha, x, y, n, incX, incY, ix, iy) {
+			return
+		}
 	}
 
 	// Direct scalar updates avoid packing and scattering scratch vectors.
@@ -122,8 +149,13 @@ func AxpyIncToSIMD(dst []float32, incDst, idst uintptr, alpha float32, x, y []fl
 		return
 	}
 
-	if n >= 4 && incDst != 0 && simdMatrixDisjoint(dst, x) && simdMatrixDisjoint(dst, y) && axpyIncHardwareSIMD(dst, incDst, idst, alpha, x, y, n, incX, incY, ix, iy) {
-		return
+	if n >= 4 && incDst != 0 && simdMatrixDisjoint(dst, x) && simdMatrixDisjoint(dst, y) {
+		if n >= 16 && axpyIncPositiveHardwareSIMD(dst, incDst, idst, alpha, x, y, n, incX, incY, ix, iy) {
+			return
+		}
+		if axpyIncHardwareSIMD(dst, incDst, idst, alpha, x, y, n, incX, incY, ix, iy) {
+			return
+		}
 	}
 
 	// Direct scalar updates avoid packing and scattering scratch vectors.
@@ -155,7 +187,17 @@ func AxpyIncToSIMD(dst []float32, incDst, idst uintptr, alpha float32, x, y []fl
 	}
 }
 
-func DotUnitarySIMD(x, y []float32) float32 {
+func dotUnitaryPortableEntrySIMD(x, y []float32) float32 {
+	if hardwareStridedSIMD && !simd.Emulated() && len(x) < 32 {
+		sum := dotShortHardwareSIMD(x, y)
+		if math.Float32bits(sum)&0x7f800000 == 0x7f800000 {
+			sum = dotUnitaryOriginalSIMD(x, y)
+			if math.Float32bits(sum)&0x7f800000 == 0x7f800000 {
+				return dotIncSequentialSIMD(x, y, uintptr(len(x)), 1, 1, 0, 0)
+			}
+		}
+		return sum
+	}
 	x0, y0 := x, y
 	acc := simd.BroadcastFloat32s(0)
 	acc1, acc2, acc3 := acc, acc, acc
@@ -187,7 +229,7 @@ func DotUnitarySIMD(x, y []float32) float32 {
 	return sum
 }
 
-func DotIncSIMD(x, y []float32, n, incX, incY, ix, iy uintptr) float32 {
+func dotIncPortableEntrySIMD(x, y []float32, n, incX, incY, ix, iy uintptr) float32 {
 	if n == 0 {
 		return 0
 	}
@@ -199,7 +241,15 @@ func DotIncSIMD(x, y []float32, n, incX, incY, ix, iy uintptr) float32 {
 	}
 
 	if n >= 4 {
-		if result, ok := dotIncHardwareSIMD(x, y, n, incX, incY, ix, iy); ok {
+		var result float32
+		var ok bool
+		if n >= 16 {
+			result, ok = dotIncPositiveHardwareSIMD(x, y, n, incX, incY, ix, iy)
+		}
+		if !ok {
+			result, ok = dotIncHardwareSIMD(x, y, n, incX, incY, ix, iy)
+		}
+		if ok {
 			if math.Float32bits(result)&0x7f800000 == 0x7f800000 {
 				// The original width may cancel values that overflow both
 				// the new grouping and a sequential accumulation.
@@ -246,13 +296,6 @@ func loadWidenPortableSIMD(x []float32) simd.Float64s {
 	return simd.LoadFloat64s(lanes)
 }
 
-func DdotUnitarySIMD(x, y []float32) float64 {
-	if simd.Emulated() {
-		return ddotUnitaryPortableSIMD(x, y)
-	}
-	return ddotUnitaryHardwareSIMD(x, y)
-}
-
 func ddotUnitaryPortableSIMD(x, y []float32) float64 {
 	acc := simd.BroadcastFloat64s(0)
 	width := acc.Len()
@@ -297,7 +340,7 @@ func ddotIncPortableSIMD(x, y []float32, n, incX, incY, ix, iy uintptr) float64 
 	return sum
 }
 
-func DdotIncSIMD(x, y []float32, n, incX, incY, ix, iy uintptr) float64 {
+func ddotIncPortableEntrySIMD(x, y []float32, n, incX, incY, ix, iy uintptr) float64 {
 	if n == 0 {
 		return 0
 	}
@@ -309,7 +352,15 @@ func DdotIncSIMD(x, y []float32, n, incX, incY, ix, iy uintptr) float64 {
 	}
 
 	if n >= 4 {
-		if result, ok := ddotIncHardwareSIMD(x, y, n, incX, incY, ix, iy); ok {
+		var result float64
+		var ok bool
+		if n >= 16 {
+			result, ok = ddotIncPositiveHardwareSIMD(x, y, n, incX, incY, ix, iy)
+		}
+		if !ok {
+			result, ok = ddotIncHardwareSIMD(x, y, n, incX, incY, ix, iy)
+		}
+		if ok {
 			return result
 		}
 	}
@@ -339,9 +390,19 @@ func DdotIncSIMD(x, y []float32, n, incX, incY, ix, iy uintptr) float64 {
 	return sum
 }
 
-func SumSIMD(x []float32) float32 {
+func sumPortableEntrySIMD(x []float32) float32 {
+	if hardwareStridedSIMD && !simd.Emulated() && len(x) < 32 {
+		sum := sumShortHardwareSIMD(x)
+		if math.Float32bits(sum)&0x7f800000 == 0x7f800000 {
+			sum = sumOriginalSIMD(x)
+			if math.Float32bits(sum)&0x7f800000 == 0x7f800000 {
+				return sumSequentialSIMD(x)
+			}
+		}
+		return sum
+	}
 	x0 := x
-	acc := simd.BroadcastFloat32s(0)
+	var acc simd.Float32s
 	acc1, acc2, acc3 := acc, acc, acc
 	width := acc.Len()
 	for len(x) >= 4*width {
@@ -392,6 +453,24 @@ func reduceF64(value simd.Float64s) float64 {
 }
 
 func GerSIMD(m, n uintptr, alpha float32, x []float32, incX uintptr, y []float32, incY uintptr, a []float32, lda uintptr) {
+	if hardwareStridedSIMD && !simd.Emulated() && simd.VectorBitSize() >= 256 && n == 8 && m != 0 && lda >= n && simdMatrixDisjoint(a, x) && simdMatrixDisjoint(a, y) && supportsAVX2SIMD() {
+		var ix, iy uintptr
+		if int(incX) < 0 {
+			ix = uintptr(-int(m-1) * int(incX))
+		}
+		if int(incY) < 0 {
+			iy = uintptr(-int(n-1) * int(incY))
+		}
+		gerEightStridedHardwareSIMD(m, alpha, x, incX, ix, y, incY, iy, a, lda)
+		return
+	}
+	if hardwareStridedSIMD && !simd.Emulated() && n >= 4 && incY != 1 && gerPositiveHardwareSIMD(m, n, alpha, x, incX, y, incY, a, lda) {
+		return
+	}
+	gerPortableSIMD(m, n, alpha, x, incX, y, incY, a, lda)
+}
+
+func gerPortableSIMD(m, n uintptr, alpha float32, x []float32, incX uintptr, y []float32, incY uintptr, a []float32, lda uintptr) {
 	var ix, iy uintptr
 	if int(incX) < 0 {
 		ix = uintptr(-int(m-1) * int(incX))
@@ -403,6 +482,10 @@ func GerSIMD(m, n uintptr, alpha float32, x []float32, incX uintptr, y []float32
 	// sequential path when a write can change a later input.
 	if incY == 1 && simdMatrixDisjoint(a, x) && simdMatrixDisjoint(a, y) {
 		width := simd.BroadcastFloat32s(0).Len()
+		if hardwareStridedSIMD && !simd.Emulated() && width >= 8 && n == 8 && m != 0 && supportsAVX2SIMD() {
+			gerEightHardwareSIMD(m, alpha, x, incX, ix, y, a, lda)
+			return
+		}
 		cols := int(n)
 		row := uintptr(0)
 		for ; row+4 <= m; row += 4 {
@@ -423,7 +506,7 @@ func GerSIMD(m, n uintptr, alpha float32, x []float32, incX uintptr, y []float32
 				v.Mul(x2).Add(simd.LoadFloat32s(a2[j : j+width])).Store(a2[j : j+width])
 				v.Mul(x3).Add(simd.LoadFloat32s(a3[j : j+width])).Store(a3[j : j+width])
 			}
-			if hardwareStridedSIMD && !simd.Emulated() && width >= 8 && cols-j >= 4 {
+			if hardwareStridedSIMD && !simd.Emulated() && width >= 8 && cols-j >= 4 && supportsAVX2SIMD() {
 				j += gerTailSIMD(a0[j:], a1[j:], a2[j:], a3[j:], yv[j:], s0, s1, s2, s3)
 			}
 			// Partial SIMD loads can cross the end of the final matrix row

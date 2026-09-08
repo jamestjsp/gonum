@@ -216,3 +216,49 @@ func TestSIMDCandidateComplexMixedStrides(t *testing.T) {
 		}
 	}
 }
+
+// The native pair loop may write one pair before loading the next because exact
+// matching address streams cannot make those later inputs depend on the writes.
+func TestSIMDCandidateComplexStrideExactAliases(t *testing.T) {
+	for _, n := range []int{5, 31, 32, 65} {
+		for _, step := range []int{-3, 2} {
+			stride := step
+			if stride < 0 {
+				stride = -stride
+			}
+			for _, alias := range []string{"x", "y", "both"} {
+				x, y := make([]complex64, 1+(n-1)*stride), make([]complex64, 1+(n-1)*stride)
+				for i := range x {
+					x[i] = complex(float32(i%13-6)/4, float32(i%7-3)/8)
+					y[i] = complex(float32(i%11-5)/8, float32(i%17-8)/4)
+				}
+				dst := x
+				if alias == "y" {
+					dst = y
+				} else if alias == "both" {
+					y = x
+				}
+				want := slices.Clone(dst)
+				wx, wy := slices.Clone(x), slices.Clone(y)
+				if alias != "y" {
+					wx = want
+				}
+				if alias != "x" {
+					wy = want
+				}
+				start := 0
+				if step < 0 {
+					start = (n - 1) * stride
+				}
+				for i, index := 0, start; i < n; i, index = i+1, index+step {
+					want[index] = (0.75-0.25i)*wx[index] + wy[index]
+				}
+				inc, index := uintptr(step), uintptr(start)
+				AxpyIncToSIMD(dst, inc, index, 0.75-0.25i, x, y, uintptr(n), inc, inc, index, index)
+				if !slices.Equal(dst, want) {
+					t.Errorf("n=%d stride=%d alias=%s: got %v want %v", n, step, alias, dst, want)
+				}
+			}
+		}
+	}
+}

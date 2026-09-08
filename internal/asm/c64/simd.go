@@ -24,6 +24,15 @@ func AxpyUnitaryToSIMD(dst []complex64, alpha complex64, x, y []complex64) {
 		}
 		return
 	}
+	if (n < 64 || simd.VectorBitSize() == 256) && complexNativeSIMD() && simd.VectorBitSize() >= 256 {
+		complexAxpyShortSIMD(dst, x, y, alpha)
+		return
+	}
+	portableAxpyUnitaryToSIMD(dst, alpha, x, y)
+}
+
+func portableAxpyUnitaryToSIMD(dst []complex64, alpha complex64, x, y []complex64) {
+	n := len(x)
 	xf, yf, df := complexFloatsSIMD(x), complexFloatsSIMD(y[:n]), complexFloatsSIMD(dst[:n])
 	width := simd.BroadcastFloat32s(0).Len()
 	ar := simd.BroadcastFloat32s(real(alpha))
@@ -44,33 +53,7 @@ func AxpyUnitaryToSIMD(dst []complex64, alpha complex64, x, y []complex64) {
 	}
 }
 
-func AxpyIncSIMD(alpha complex64, x, y []complex64, n, incX, incY, ix, iy uintptr) {
-	AxpyIncToSIMD(y, incY, iy, alpha, x, y, n, incX, incY, ix, iy)
-}
-
-func AxpyIncToSIMD(dst []complex64, incDst, idst uintptr, alpha complex64, x, y []complex64, n, incX, incY, ix, iy uintptr) {
-	if n == 0 {
-		return
-	}
-	if incX == 1 && incY == 1 && incDst == 1 {
-		AxpyUnitaryToSIMD(dst[idst:idst+n], alpha, x[ix:ix+n], y[iy:iy+n])
-		return
-	}
-	if incX == 0 || incY == 0 || incDst == 0 || !complexIncrementsCompatibleSIMD(x, dst, incX, incDst, ix, idst) || !complexIncrementsCompatibleSIMD(y, dst, incY, incDst, iy, idst) {
-		for ; n > 0; n-- {
-			dst[idst] = alpha*x[ix] + y[iy]
-			ix += incX
-			iy += incY
-			idst += incDst
-		}
-		return
-	}
-
-	if complexNativeSIMD() {
-		complexAxpyIncNativeSIMD(dst, incDst, idst, alpha, x, y, n, incX, incY, ix, iy)
-		return
-	}
-
+func portableAxpyIncToSIMD(dst []complex64, incDst, idst uintptr, alpha complex64, x, y []complex64, n, incX, incY, ix, iy uintptr) {
 	width := simd.BroadcastFloat32s(0).Len()
 	ar := simd.BroadcastFloat32s(real(alpha))
 	ai := simd.BroadcastFloat32s(imag(alpha))
@@ -107,16 +90,72 @@ func AxpyIncToSIMD(dst []complex64, incDst, idst uintptr, alpha complex64, x, y 
 }
 
 func DotcUnitarySIMD(x, y []complex64) complex64 {
+	n := len(x)
+	if n >= 4 && n <= nativeDotUnitaryMaxSIMD {
+		// Call the native leaf directly from this public entry, avoiding
+		// the shared helper's additional argument-copy frame.
+		sum := complexDotShortWideSIMD(x, y, true)
+		if math.Float32bits(real(sum))&0x7f800000 != 0x7f800000 && math.Float32bits(imag(sum))&0x7f800000 != 0x7f800000 {
+			return sum
+		}
+	}
+	// Preserve the complete established grouping and exceptional recovery.
 	return portableDotUnitarySIMD(x, y, true)
 }
 
 func DotuUnitarySIMD(x, y []complex64) complex64 {
+	n := len(x)
+	if n >= 4 && n <= nativeDotUnitaryMaxSIMD {
+		// Call the native leaf directly from this public entry, avoiding
+		// the shared helper's additional argument-copy frame.
+		sum := complexDotShortWideSIMD(x, y, false)
+		if math.Float32bits(real(sum))&0x7f800000 != 0x7f800000 && math.Float32bits(imag(sum))&0x7f800000 != 0x7f800000 {
+			return sum
+		}
+	}
+	// Preserve the complete established grouping and exceptional recovery.
 	return portableDotUnitarySIMD(x, y, false)
 }
 
 func portableDotUnitarySIMD(x, y []complex64, conjugate bool) complex64 {
+	// At 256 bits, use the wide loop from 32 elements to avoid short-kernel
+	// setup overhead. Preserve the wider cutoff at the other native widths.
+	shortLimit := 64
+	if simd.VectorBitSize() == 256 {
+		shortLimit = 32
+	}
+	if len(x) >= 4 && len(x) < shortLimit && complexNativeSIMD() {
+		if simd.VectorBitSize() >= 256 {
+			sum := complexDotShortWideSIMD(x, y, conjugate)
+			if math.Float32bits(real(sum))&0x7f800000 != 0x7f800000 && math.Float32bits(imag(sum))&0x7f800000 != 0x7f800000 {
+				return sum
+			}
+		}
+		sum := complexDotShortFastSIMD(x, y, conjugate)
+		if math.Float32bits(real(sum))&0x7f800000 != 0x7f800000 && math.Float32bits(imag(sum))&0x7f800000 != 0x7f800000 {
+			return sum
+		}
+		// Preserve the original short grouping before trying wider component
+		// sums or sequential recovery; either alternative can also overflow.
+		sum = complexDotShortNativeSIMD(x, y, conjugate)
+		if math.Float32bits(real(sum))&0x7f800000 != 0x7f800000 && math.Float32bits(imag(sum))&0x7f800000 != 0x7f800000 {
+			return sum
+		}
+		// A different grouping may avoid intermediate overflow. Retry the
+		// established vector algorithm before recovering sequentially.
+	}
+
+	// At256 bits a native lane shuffle avoids the portable rotate's two
+	// shifts and OR. Preserve the established complete kernel on overflow.
+	if len(x) >= 64 && simd.VectorBitSize() == 256 && complexNativeSIMD() {
+		sum := complexDotShortWideSIMD(x, y, conjugate)
+		if math.Float32bits(real(sum))&0x7f800000 != 0x7f800000 && math.Float32bits(imag(sum))&0x7f800000 != 0x7f800000 {
+			return sum
+		}
+	}
+
 	sum := interleavedDotUnitarySIMD(x, y, conjugate)
-	if !math.IsNaN(float64(real(sum))) && !math.IsNaN(float64(imag(sum))) && !math.IsInf(float64(real(sum)), 0) && !math.IsInf(float64(imag(sum)), 0) {
+	if math.Float32bits(real(sum))&0x7f800000 != 0x7f800000 && math.Float32bits(imag(sum))&0x7f800000 != 0x7f800000 {
 		return sum
 	}
 	// Separate component sums can overflow before per-element cancellation.
@@ -140,20 +179,6 @@ func interleavedDotUnitarySIMD(x, y []complex64, conjugate bool) complex64 {
 			sum += value * y[i]
 		}
 		return sum
-	}
-	// At 256 bits, use the wide loop from 32 elements to avoid short-kernel
-	// setup overhead. Preserve the wider cutoff at the other native widths.
-	shortLimit := 64
-	if simd.BroadcastFloat32s(0).Len() == 8 {
-		shortLimit = 32
-	}
-	if len(x) < shortLimit && complexNativeSIMD() {
-		sum := complexDotShortNativeSIMD(x, y, conjugate)
-		if !math.IsNaN(float64(real(sum))) && !math.IsNaN(float64(imag(sum))) && !math.IsInf(float64(real(sum)), 0) && !math.IsInf(float64(imag(sum)), 0) {
-			return sum
-		}
-		// A different grouping may avoid intermediate overflow. Retry the
-		// established vector algorithm before the wrapper recovers sequentially.
 	}
 
 	xf, yf := complexFloatsSIMD(x), complexFloatsSIMD(y[:len(x)])
@@ -205,32 +230,6 @@ func interleavedDotUnitarySIMD(x, y []complex64, conjugate bool) complex64 {
 		sum += value * y[i]
 	}
 	return sum
-}
-
-func DotcIncSIMD(x, y []complex64, n, incX, incY, ix, iy uintptr) complex64 {
-	if n == 0 {
-		return 0
-	}
-	if incX == 1 && incY == 1 {
-		return portableDotUnitarySIMD(x[ix:ix+n], y[iy:iy+n], true)
-	}
-	if complexNativeSIMD() {
-		return complexDotIncNativeSIMD(x, y, n, incX, incY, ix, iy, true)
-	}
-	return portableDotIncSIMD(x, y, n, incX, incY, ix, iy, true)
-}
-
-func DotuIncSIMD(x, y []complex64, n, incX, incY, ix, iy uintptr) complex64 {
-	if n == 0 {
-		return 0
-	}
-	if incX == 1 && incY == 1 {
-		return portableDotUnitarySIMD(x[ix:ix+n], y[iy:iy+n], false)
-	}
-	if complexNativeSIMD() {
-		return complexDotIncNativeSIMD(x, y, n, incX, incY, ix, iy, false)
-	}
-	return portableDotIncSIMD(x, y, n, incX, incY, ix, iy, false)
 }
 
 func portableDotIncSIMD(x, y []complex64, n, incX, incY, ix, iy uintptr, conjugate bool) complex64 {

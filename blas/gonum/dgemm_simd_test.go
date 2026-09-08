@@ -135,11 +135,22 @@ func TestDgemmSIMDReject(t *testing.T) {
 					}
 				}
 				aOrig, bOrig, cOrig := slices.Clone(a), slices.Clone(b), slices.Clone(c)
-				if dgemmSerialSIMD(trans, alias == "transposed-b", m, n, k, a, lda, b, n, c, n, 0.75) {
-					t.Fatal("kernel accepted unsupported layout")
+				accepted := dgemmSerialSIMD(trans, alias == "transposed-b", m, n, k, a, lda, b, n, c, n, 0.75)
+				wantAccepted := trans && alias == "transposed-b" && k >= 16
+				if accepted != wantAccepted {
+					t.Fatalf("accepted=%t want %t", accepted, wantAccepted)
 				}
-				if !dgemmSIMDEqualBits(a, aOrig) || !dgemmSIMDEqualBits(b, bOrig) || !dgemmSIMDEqualBits(c, cOrig) {
-					t.Fatal("rejected kernel changed an operand")
+				if !dgemmSIMDEqualBits(a, aOrig) || !dgemmSIMDEqualBits(b, bOrig) || !accepted && !dgemmSIMDEqualBits(c, cOrig) {
+					t.Fatal("kernel changed an input or a rejected destination")
+				}
+				if accepted {
+					want := slices.Clone(cOrig)
+					dgemmSerialTransTrans(m, n, k, aOrig, lda, bOrig, n, want, n, 0.75)
+					for i, v := range want {
+						if !gemmSIMDClose(c[i], v, 1e-12, 1e-12) {
+							t.Fatalf("accepted output index %d: got %g want %g", i, c[i], v)
+						}
+					}
 				}
 			})
 		}

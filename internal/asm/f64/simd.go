@@ -8,6 +8,7 @@ package f64
 
 import (
 	"math"
+	"math/bits"
 	"simd"
 	"unsafe"
 )
@@ -41,7 +42,7 @@ func AddConstSIMD(alpha float64, x []float64) {
 	}
 }
 
-func AxpyUnitarySIMD(alpha float64, x, y []float64) {
+func axpyUnitaryPortableSIMD(alpha float64, x, y []float64) {
 	if !simdSlicesCompatible(x, y[:len(x)]) {
 		for i, value := range x {
 			y[i] += alpha * value
@@ -51,6 +52,14 @@ func AxpyUnitarySIMD(alpha float64, x, y []float64) {
 	a := simd.BroadcastFloat64s(alpha)
 	width := a.Len()
 	y = y[:len(x):len(x)]
+	for len(x) >= 4*width {
+		xb, yb := x[:4*width], y[:4*width]
+		simd.LoadFloat64s(xb[0 : 1*width]).Mul(a).Add(simd.LoadFloat64s(yb[0 : 1*width])).Store(yb[0 : 1*width])
+		simd.LoadFloat64s(xb[1*width : 2*width]).Mul(a).Add(simd.LoadFloat64s(yb[1*width : 2*width])).Store(yb[1*width : 2*width])
+		simd.LoadFloat64s(xb[2*width : 3*width]).Mul(a).Add(simd.LoadFloat64s(yb[2*width : 3*width])).Store(yb[2*width : 3*width])
+		simd.LoadFloat64s(xb[3*width : 4*width]).Mul(a).Add(simd.LoadFloat64s(yb[3*width : 4*width])).Store(yb[3*width : 4*width])
+		x, y = x[4*width:], y[4*width:]
+	}
 	for len(x) >= width {
 		simd.LoadFloat64s(x[:width]).Mul(a).Add(simd.LoadFloat64s(y[:width])).Store(y[:width])
 		x, y = x[width:], y[width:]
@@ -60,7 +69,7 @@ func AxpyUnitarySIMD(alpha float64, x, y []float64) {
 	}
 }
 
-func AxpyUnitaryToSIMD(dst []float64, alpha float64, x, y []float64) {
+func axpyUnitaryToPortableSIMD(dst []float64, alpha float64, x, y []float64) {
 	if !simdSlicesCompatible(dst[:len(x)], x) || !simdSlicesCompatible(dst[:len(x)], y[:len(x)]) {
 		for i, value := range x {
 			dst[i] = alpha*value + y[i]
@@ -70,6 +79,16 @@ func AxpyUnitaryToSIMD(dst []float64, alpha float64, x, y []float64) {
 	a := simd.BroadcastFloat64s(alpha)
 	width := a.Len()
 	y, dst = y[:len(x):len(x)], dst[:len(x):len(x)]
+	for len(x) >= 4*width {
+		xb, yb := x[:4*width], y[:4*width]
+		db := dst[:4*width]
+		simd.LoadFloat64s(xb[0 : 1*width]).Mul(a).Add(simd.LoadFloat64s(yb[0 : 1*width])).Store(db[0 : 1*width])
+		simd.LoadFloat64s(xb[1*width : 2*width]).Mul(a).Add(simd.LoadFloat64s(yb[1*width : 2*width])).Store(db[1*width : 2*width])
+		simd.LoadFloat64s(xb[2*width : 3*width]).Mul(a).Add(simd.LoadFloat64s(yb[2*width : 3*width])).Store(db[2*width : 3*width])
+		simd.LoadFloat64s(xb[3*width : 4*width]).Mul(a).Add(simd.LoadFloat64s(yb[3*width : 4*width])).Store(db[3*width : 4*width])
+		x, y = x[4*width:], y[4*width:]
+		dst = dst[4*width:]
+	}
 	for len(x) >= width {
 		simd.LoadFloat64s(x[:width]).Mul(a).Add(simd.LoadFloat64s(y[:width])).Store(dst[:width])
 		x, y, dst = x[width:], y[width:], dst[width:]
@@ -79,7 +98,7 @@ func AxpyUnitaryToSIMD(dst []float64, alpha float64, x, y []float64) {
 	}
 }
 
-func AxpyIncSIMD(alpha float64, x, y []float64, n, incX, incY, ix, iy uintptr) {
+func axpyIncPortableSIMD(alpha float64, x, y []float64, n, incX, incY, ix, iy uintptr) {
 	if n == 0 {
 		return
 	}
@@ -126,6 +145,11 @@ func AxpyIncSIMD(alpha float64, x, y []float64, n, incX, incY, ix, iy uintptr) {
 		return
 	}
 
+	if simdPositiveSpan(len(x), n, incX, ix) && simdPositiveSpan(len(y), n, incY, iy) {
+		axpyIncPositiveSIMD(alpha, unsafe.Pointer(&x[ix]), unsafe.Pointer(&y[iy]), n, incX*8, incY*8)
+		return
+	}
+
 	// Direct scalar operations avoid packing and scattering sparse lanes.
 	// The separate path above preserves dependencies when inputs overlap.
 	for ; n >= 4; n -= 4 {
@@ -143,7 +167,7 @@ func AxpyIncSIMD(alpha float64, x, y []float64, n, incX, incY, ix, iy uintptr) {
 	}
 }
 
-func AxpyIncToSIMD(dst []float64, incDst, idst uintptr, alpha float64, x, y []float64, n, incX, incY, ix, iy uintptr) {
+func axpyIncToPortableSIMD(dst []float64, incDst, idst uintptr, alpha float64, x, y []float64, n, incX, incY, ix, iy uintptr) {
 	if n == 0 {
 		return
 	}
@@ -188,6 +212,11 @@ func AxpyIncToSIMD(dst []float64, incDst, idst uintptr, alpha float64, x, y []fl
 			iy += incY
 			idst += incDst
 		}
+		return
+	}
+
+	if simdPositiveSpan(len(x), n, incX, ix) && simdPositiveSpan(len(y), n, incY, iy) && simdPositiveSpan(len(dst), n, incDst, idst) {
+		axpyIncToPositiveSIMD(alpha, unsafe.Pointer(&x[ix]), unsafe.Pointer(&y[iy]), unsafe.Pointer(&dst[idst]), n, incX*8, incY*8, incDst*8)
 		return
 	}
 
@@ -281,7 +310,7 @@ func CumProdSIMD(dst, src []float64) []float64 {
 	return dst
 }
 
-func DivSIMD(dst, src []float64) {
+func divPortableSIMD(dst, src []float64) {
 	if !simdSlicesCompatible(dst[:len(src)], src) {
 		for i, value := range src {
 			dst[i] /= value
@@ -298,7 +327,7 @@ func DivSIMD(dst, src []float64) {
 	}
 }
 
-func DivToSIMD(dst, x, y []float64) []float64 {
+func divToPortableSIMD(dst, x, y []float64) []float64 {
 	if !simdSlicesCompatible(dst[:len(x)], x) || !simdSlicesCompatible(dst[:len(x)], y[:len(x)]) {
 		for i, value := range x {
 			dst[i] = value / y[i]
@@ -316,7 +345,38 @@ func DivToSIMD(dst, x, y []float64) []float64 {
 	return dst
 }
 
-func DotUnitarySIMD(x, y []float64) float64 {
+func dotUnitaryPortableEntrySIMD(x, y []float64) float64 {
+	if scalarStridesSIMD && !simd.Emulated() && len(x) < 32 {
+		result := dotShortHardwareSIMD(x, y)
+		if math.Float64bits(result)&0x7ff0000000000000 != 0x7ff0000000000000 {
+			return result
+		}
+	}
+	acc := simd.BroadcastFloat64s(0)
+	acc1, acc2, acc3 := acc, acc, acc
+	width := acc.Len()
+	y = y[:len(x):len(x)]
+	for len(x) >= 4*width {
+		xblock, yblock := x[:4*width], y[:4*width]
+		acc = simd.LoadFloat64s(xblock[:width]).Mul(simd.LoadFloat64s(yblock[:width])).Add(acc)
+		acc1 = simd.LoadFloat64s(xblock[width : 2*width]).Mul(simd.LoadFloat64s(yblock[width : 2*width])).Add(acc1)
+		acc2 = simd.LoadFloat64s(xblock[2*width : 3*width]).Mul(simd.LoadFloat64s(yblock[2*width : 3*width])).Add(acc2)
+		acc3 = simd.LoadFloat64s(xblock[3*width : 4*width]).Mul(simd.LoadFloat64s(yblock[3*width : 4*width])).Add(acc3)
+		x, y = x[4*width:], y[4*width:]
+	}
+	acc = acc.Add(acc1).Add(acc2.Add(acc3))
+	for len(x) >= width {
+		acc = simd.LoadFloat64s(x[:width]).Mul(simd.LoadFloat64s(y[:width])).Add(acc)
+		x, y = x[width:], y[width:]
+	}
+	sum := reduceF64(acc)
+	for i, value := range x {
+		sum += value * y[i]
+	}
+	return sum
+}
+
+func dotUnitaryOriginalSIMD(x, y []float64) float64 {
 	acc := simd.BroadcastFloat64s(0)
 	acc1, acc2, acc3 := acc, acc, acc
 	width := acc.Len()
@@ -422,7 +482,7 @@ func dotIncPortableSIMD(x, y []float64, n, incX, incY, ix, iy uintptr) float64 {
 	return sum
 }
 
-func L1NormSIMD(x []float64) float64 {
+func l1NormPortableSIMD(x []float64) float64 {
 	acc := simd.BroadcastFloat64s(0)
 	width := acc.Len()
 	var i int
@@ -438,6 +498,10 @@ func L1NormSIMD(x []float64) float64 {
 
 func L1NormIncSIMD(x []float64, n, incX int) float64 {
 	if n <= 0 {
+		return 0
+	}
+	// Match L1NormInc: zero stride is an empty loop and reads no input.
+	if incX == 0 {
 		return 0
 	}
 	if incX == 1 {
@@ -465,6 +529,31 @@ func L1NormIncSIMD(x []float64, n, incX int) float64 {
 		return sum
 	}
 
+	// Near overflow, rounding in the hardware grouping may turn an established
+	// finite result into infinity. Preserve the original grouping as a retry.
+	if sum, ok := l1NormIncHardwareSIMD(x, n, incX); ok && math.Float64bits(sum)&0x7ff0000000000000 != 0x7ff0000000000000 {
+		return sum
+	}
+
+	if simdPositiveSpan(len(x), uintptr(n), uintptr(incX), 0) {
+		base := unsafe.Pointer(unsafe.SliceData(x))
+		step, offset := uintptr(incX)*8, uintptr(0)
+		var sum, sum1, sum2, sum3 float64
+		for ; n >= 4; n -= 4 {
+			sum += math.Abs(*simdStrideAt(base, offset))
+			sum1 += math.Abs(*simdStrideAt(base, offset+step))
+			sum2 += math.Abs(*simdStrideAt(base, offset+2*step))
+			sum3 += math.Abs(*simdStrideAt(base, offset+3*step))
+			offset += 4 * step
+		}
+		sum = (sum + sum1) + (sum2 + sum3)
+		for ; n > 0; n-- {
+			sum += math.Abs(*simdStrideAt(base, offset))
+			offset += step
+		}
+		return sum
+	}
+
 	var sum, sum1, sum2, sum3 float64
 	index := 0
 	for ; n >= 4; n -= 4 {
@@ -482,7 +571,7 @@ func L1NormIncSIMD(x []float64, n, incX int) float64 {
 	return sum
 }
 
-func L1DistSIMD(x, y []float64) float64 {
+func l1DistPortableSIMD(x, y []float64) float64 {
 	acc := simd.BroadcastFloat64s(0)
 	width := acc.Len()
 	var i int
@@ -497,6 +586,18 @@ func L1DistSIMD(x, y []float64) float64 {
 }
 
 func LinfDistSIMD(x, y []float64) float64 {
+	if len(x) == 0 {
+		return 0
+	}
+	if shortElementwiseHardwareSIMD(len(x)) {
+		if result, ok := linfShortHardwareSIMD(x, y); ok {
+			return result
+		}
+	}
+	return linfDistOriginalSIMD(x, y)
+}
+
+func linfDistOriginalSIMD(x, y []float64) float64 {
 	if len(x) == 0 {
 		return 0
 	}
@@ -534,7 +635,7 @@ func normSumUsable(sum float64, n int) bool {
 	return sum >= float64(n)*0x1p-970 && sum < math.Inf(1)
 }
 
-func L2NormUnitarySIMD(x []float64) float64 {
+func l2NormUnitaryPortableSIMD(x []float64) float64 {
 	acc := simd.BroadcastFloat64s(0)
 	acc1, acc2, acc3 := acc, acc, acc
 	corr, corr1, corr2, corr3 := acc, acc, acc, acc
@@ -575,6 +676,9 @@ func L2NormIncSIMD(x []float64, n, incX uintptr) float64 {
 	if incX == 1 {
 		return L2NormUnitarySIMD(x[:n])
 	}
+	if norm, ok := l2NormIncHardwareSIMD(x, n, incX); ok {
+		return norm
+	}
 	acc := simd.BroadcastFloat64s(0)
 	corr := acc
 	width := acc.Len()
@@ -602,7 +706,7 @@ func L2NormIncSIMD(x []float64, n, incX uintptr) float64 {
 	return l2NormIncScalar(x, n, incX)
 }
 
-func L2DistanceUnitarySIMD(x, y []float64) float64 {
+func l2DistanceUnitaryPortableSIMD(x, y []float64) float64 {
 	y = y[:len(x):len(x)]
 	acc := simd.BroadcastFloat64s(0)
 	acc1, acc2, acc3 := acc, acc, acc
@@ -686,9 +790,24 @@ func normTwoSumScalar(a, b float64) (float64, float64) {
 }
 
 func ScalUnitarySIMD(alpha float64, x []float64) {
+	if shortScalHardwareSIMD(len(x)) {
+		scalShortHardwareSIMD(x, alpha, x)
+		return
+	}
+	scalUnitaryOriginalSIMD(alpha, x)
+}
+
+func scalUnitaryOriginalSIMD(alpha float64, x []float64) {
 	a := simd.BroadcastFloat64s(alpha)
 	width := a.Len()
 	var i int
+	for ; i+4*width <= len(x); i += 4 * width {
+		xb := x[i : i+4*width]
+		simd.LoadFloat64s(xb[0*width : (0+1)*width]).Mul(a).Store(xb[0*width : (0+1)*width])
+		simd.LoadFloat64s(xb[1*width : (1+1)*width]).Mul(a).Store(xb[1*width : (1+1)*width])
+		simd.LoadFloat64s(xb[2*width : (2+1)*width]).Mul(a).Store(xb[2*width : (2+1)*width])
+		simd.LoadFloat64s(xb[3*width : (3+1)*width]).Mul(a).Store(xb[3*width : (3+1)*width])
+	}
 	for ; i+width <= len(x); i += width {
 		simd.LoadFloat64s(x[i : i+width]).Mul(a).Store(x[i : i+width])
 	}
@@ -704,9 +823,25 @@ func ScalUnitaryToSIMD(dst []float64, alpha float64, x []float64) {
 		}
 		return
 	}
+	if scalToHardwareSIMD(len(x)) {
+		scalShortHardwareSIMD(dst, alpha, x)
+		return
+	}
+	scalUnitaryToOriginalSIMD(dst, alpha, x)
+}
+
+func scalUnitaryToOriginalSIMD(dst []float64, alpha float64, x []float64) {
 	a := simd.BroadcastFloat64s(alpha)
 	width := a.Len()
 	var i int
+	for ; i+4*width <= len(x); i += 4 * width {
+		xb := x[i : i+4*width]
+		dstb := dst[i : i+4*width]
+		simd.LoadFloat64s(xb[0*width : (0+1)*width]).Mul(a).Store(dstb[0*width : (0+1)*width])
+		simd.LoadFloat64s(xb[1*width : (1+1)*width]).Mul(a).Store(dstb[1*width : (1+1)*width])
+		simd.LoadFloat64s(xb[2*width : (2+1)*width]).Mul(a).Store(dstb[2*width : (2+1)*width])
+		simd.LoadFloat64s(xb[3*width : (3+1)*width]).Mul(a).Store(dstb[3*width : (3+1)*width])
+	}
 	for ; i+width <= len(x); i += width {
 		simd.LoadFloat64s(x[i : i+width]).Mul(a).Store(dst[i : i+width])
 	}
@@ -715,7 +850,22 @@ func ScalUnitaryToSIMD(dst []float64, alpha float64, x []float64) {
 	}
 }
 
-func ScalIncSIMD(alpha float64, x []float64, n, incX uintptr) {
+// simdPositiveSpan checks all addresses without overflowing the product. Invalid
+// or descending spans retain the checked scalar loop, including its panic and
+// partial-update behavior. The fast loops only form pointers they dereference.
+func simdPositiveSpan(length int, n, inc, start uintptr) bool {
+	if n < 4 || inc == 0 || start >= uintptr(length) {
+		return false
+	}
+	hi, span := bits.Mul(uint(n-1), uint(inc))
+	return hi == 0 && span < uint(uintptr(length)-start)
+}
+
+func simdStrideAt(base unsafe.Pointer, offset uintptr) *float64 {
+	return (*float64)(unsafe.Add(base, offset))
+}
+
+func scalIncOriginalSIMD(alpha float64, x []float64, n, incX uintptr) {
 	if n == 0 {
 		return
 	}
@@ -756,6 +906,25 @@ func ScalIncSIMD(alpha float64, x []float64, n, incX uintptr) {
 		return
 	}
 
+	if simdPositiveSpan(len(x), n, incX, 0) {
+		base := unsafe.Pointer(unsafe.SliceData(x))
+		step, offset := incX*8, uintptr(0)
+		for ; n >= 4; n -= 4 {
+			v0, v1 := *simdStrideAt(base, offset), *simdStrideAt(base, offset+step)
+			v2, v3 := *simdStrideAt(base, offset+2*step), *simdStrideAt(base, offset+3*step)
+			*simdStrideAt(base, offset) = alpha * v0
+			*simdStrideAt(base, offset+step) = alpha * v1
+			*simdStrideAt(base, offset+2*step) = alpha * v2
+			*simdStrideAt(base, offset+3*step) = alpha * v3
+			offset += 4 * step
+		}
+		for ; n > 0; n-- {
+			*simdStrideAt(base, offset) *= alpha
+			offset += step
+		}
+		return
+	}
+
 	var index uintptr
 	for ; n >= 4; n -= 4 {
 		x[index] *= alpha
@@ -770,7 +939,7 @@ func ScalIncSIMD(alpha float64, x []float64, n, incX uintptr) {
 	}
 }
 
-func ScalIncToSIMD(dst []float64, incDst uintptr, alpha float64, x []float64, n, incX uintptr) {
+func scalIncToOriginalSIMD(dst []float64, incDst uintptr, alpha float64, x []float64, n, incX uintptr) {
 	if n == 0 {
 		return
 	}
@@ -814,6 +983,26 @@ func ScalIncToSIMD(dst []float64, incDst uintptr, alpha float64, x []float64, n,
 		return
 	}
 
+	if simdPositiveSpan(len(x), n, incX, 0) && simdPositiveSpan(len(dst), n, incDst, 0) {
+		xp, dp := unsafe.Pointer(unsafe.SliceData(x)), unsafe.Pointer(unsafe.SliceData(dst))
+		sx, sd := incX*8, incDst*8
+		var ix, id uintptr
+		for ; n >= 4; n -= 4 {
+			v0, v1 := *simdStrideAt(xp, ix), *simdStrideAt(xp, ix+sx)
+			v2, v3 := *simdStrideAt(xp, ix+2*sx), *simdStrideAt(xp, ix+3*sx)
+			*simdStrideAt(dp, id) = alpha * v0
+			*simdStrideAt(dp, id+sd) = alpha * v1
+			*simdStrideAt(dp, id+2*sd) = alpha * v2
+			*simdStrideAt(dp, id+3*sd) = alpha * v3
+			ix, id = ix+4*sx, id+4*sd
+		}
+		for ; n > 0; n-- {
+			*simdStrideAt(dp, id) = alpha * *simdStrideAt(xp, ix)
+			ix, id = ix+sx, id+sd
+		}
+		return
+	}
+
 	var ix, idst uintptr
 	for ; n >= 4; n -= 4 {
 		dst[idst] = alpha * x[ix]
@@ -830,7 +1019,41 @@ func ScalIncToSIMD(dst []float64, incDst uintptr, alpha float64, x []float64, n,
 	}
 }
 
-func SumSIMD(x []float64) float64 {
+func sumPortableEntrySIMD(x []float64) float64 {
+	if scalarStridesSIMD && !simd.Emulated() && len(x) < 128 {
+		var result float64
+		if len(x) >= 32 && simd.VectorBitSize() >= 256 {
+			result = sumMediumHardwareSIMD(x)
+		} else {
+			result = sumShortHardwareSIMD(x)
+		}
+		if math.Float64bits(result)&0x7ff0000000000000 != 0x7ff0000000000000 {
+			return result
+		}
+	}
+	acc := simd.BroadcastFloat64s(0)
+	acc1, acc2, acc3 := acc, acc, acc
+	width := acc.Len()
+	for len(x) >= 4*width {
+		acc = simd.LoadFloat64s(x[:width]).Add(acc)
+		acc1 = simd.LoadFloat64s(x[width : 2*width]).Add(acc1)
+		acc2 = simd.LoadFloat64s(x[2*width : 3*width]).Add(acc2)
+		acc3 = simd.LoadFloat64s(x[3*width : 4*width]).Add(acc3)
+		x = x[4*width:]
+	}
+	acc = acc.Add(acc1).Add(acc2.Add(acc3))
+	for len(x) >= width {
+		acc = simd.LoadFloat64s(x[:width]).Add(acc)
+		x = x[width:]
+	}
+	sum := reduceF64(acc)
+	for _, value := range x {
+		sum += value
+	}
+	return sum
+}
+
+func sumOriginalSIMD(x []float64) float64 {
 	acc := simd.BroadcastFloat64s(0)
 	acc1, acc2, acc3 := acc, acc, acc
 	width := acc.Len()
@@ -864,7 +1087,7 @@ func reduceF64(value simd.Float64s) float64 {
 	return sum
 }
 
-func GerSIMD(m, n uintptr, alpha float64, x []float64, incX uintptr, y []float64, incY uintptr, a []float64, lda uintptr) {
+func gerPortableSIMD(m, n uintptr, alpha float64, x []float64, incX uintptr, y []float64, incY uintptr, a []float64, lda uintptr) {
 	var ix, iy uintptr
 	if int(incX) < 0 {
 		ix = uintptr(-int(m-1) * int(incX))
@@ -934,7 +1157,7 @@ func simdMatrixDisjoint(a, b []float64) bool {
 	return aStart+uintptr(len(a))*8 <= bStart || bStart+uintptr(len(b))*8 <= aStart
 }
 
-func GemvNSIMD(m, n uintptr, alpha float64, a []float64, lda uintptr, x []float64, incX uintptr, beta float64, y []float64, incY uintptr) {
+func gemvNPortableSIMD(m, n uintptr, alpha float64, a []float64, lda uintptr, x []float64, incX uintptr, beta float64, y []float64, incY uintptr) {
 	var ix, iy uintptr
 	if int(incX) < 0 {
 		ix = uintptr(-int(n-1) * int(incX))
@@ -1008,7 +1231,7 @@ func GemvNSIMD(m, n uintptr, alpha float64, a []float64, lda uintptr, x []float6
 	}
 }
 
-func GemvTSIMD(m, n uintptr, alpha float64, a []float64, lda uintptr, x []float64, incX uintptr, beta float64, y []float64, incY uintptr) {
+func gemvTPortableSIMD(m, n uintptr, alpha float64, a []float64, lda uintptr, x []float64, incX uintptr, beta float64, y []float64, incY uintptr) {
 	var ix, iy uintptr
 	if int(incX) < 0 {
 		ix = uintptr(-int(m-1) * int(incX))
@@ -1022,6 +1245,8 @@ func GemvTSIMD(m, n uintptr, alpha float64, a []float64, lda uintptr, x []float6
 			y[index] = 0
 			index += incY
 		}
+	} else if incY == 1 {
+		scalUnitaryOriginalSIMD(beta, y[:n])
 	} else if int(incY) < 0 {
 		ScalIncSIMD(beta, y, n, uintptr(-int(incY)))
 	} else {

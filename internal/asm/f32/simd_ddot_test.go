@@ -48,7 +48,7 @@ func TestSIMDDdotWidenBeforeMultiply(t *testing.T) {
 }
 
 func TestSIMDDdotSpecialValues(t *testing.T) {
-	for _, n := range []int{1, 7, 8, 9, 16, 17, 33} {
+	for _, n := range []int{1, 7, 8, 9, 15, 16, 17, 31, 33} {
 		for _, special := range []float32{math.SmallestNonzeroFloat32, math.MaxFloat32, float32(math.NaN()), float32(math.Inf(1)), float32(math.Inf(-1))} {
 			for pos := 0; pos < n; pos++ {
 				x, y := make([]float32, n), make([]float32, n)

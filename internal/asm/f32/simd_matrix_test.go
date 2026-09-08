@@ -45,11 +45,11 @@ func matrixCheck(t *testing.T, got, want []float32) {
 }
 
 func TestSIMDMatrixGer(t *testing.T) {
-	for _, shape := range [][2]int{{0, 0}, {0, 9}, {1, 0}, {1, 1}, {2, 7}, {3, 9}, {4, 16}, {5, 17}, {7, 31}, {8, 32}, {9, 33}, {16, 65}, {65, 7}, {64, 64}} {
+	for _, shape := range [][2]int{{0, 0}, {0, 8}, {1, 8}, {3, 8}, {8, 8}, {65, 8}, {0, 9}, {1, 0}, {1, 1}, {2, 7}, {3, 9}, {4, 16}, {5, 17}, {7, 31}, {8, 32}, {9, 33}, {16, 65}, {65, 7}, {64, 64}, {65, 31}, {65, 65}, {128, 129}, {129, 17}} {
 		m, n := shape[0], shape[1]
 		lda := n + 3
-		for _, incX := range []int{-2, -1, 0, 1, 2} {
-			for _, incY := range []int{-2, -1, 0, 1, 2} {
+		for _, incX := range []int{-2, -1, 0, 1, 2, 3, 7} {
+			for _, incY := range []int{-2, -1, 0, 1, 2, 3, 7} {
 				t.Run(fmt.Sprintf("%dx%d/x=%d/y=%d", m, n, incX, incY), func(t *testing.T) {
 					x, ix := matrixVector(m, incX)
 					y, iy := matrixVector(n, incY)
@@ -69,20 +69,23 @@ func TestSIMDMatrixGer(t *testing.T) {
 }
 
 func TestSIMDMatrixGerOverlap(t *testing.T) {
-	for _, offset := range []int{0, 1, 7} {
-		const m, n, lda = 8, 17, 19
-		a, _ := matrixVector(m*lda, 1)
-		want := slices.Clone(a)
-		x, _ := matrixVector(m, 1)
-		y := a[offset : offset+n]
-		wy := want[offset : offset+n]
-		for i := 0; i < m; i++ {
-			for j := 0; j < n; j++ {
-				want[i*lda+j] += (-0.75 * x[i]) * wy[j]
+	for _, n := range []int{8, 17} {
+		for _, offset := range []int{0, 1, 7} {
+			const m = 8
+			lda := n + 2
+			a, _ := matrixVector(m*lda, 1)
+			want := slices.Clone(a)
+			x, _ := matrixVector(m, 1)
+			y := a[offset : offset+n]
+			wy := want[offset : offset+n]
+			for i := 0; i < m; i++ {
+				for j := 0; j < n; j++ {
+					want[i*lda+j] += (-0.75 * x[i]) * wy[j]
+				}
 			}
+			GerSIMD(m, uintptr(n), -0.75, x, 1, y, 1, a, uintptr(lda))
+			matrixCheck(t, a, want)
 		}
-		GerSIMD(m, n, -0.75, x, 1, y, 1, a, lda)
-		matrixCheck(t, a, want)
 	}
 }
 

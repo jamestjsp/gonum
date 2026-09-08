@@ -150,14 +150,15 @@ func TestSIMDReductionPreservesOriginalGrouping(t *testing.T) {
 	}
 	m := float32(0.75 * math.MaxFloat32)
 	t.Run("DotInc", func(t *testing.T) {
-		const n = 32
-		x, y := make([]float32, 2*n), make([]float32, 2*n)
-		for i := 0; i < n; i++ {
-			y[2*i] = 1
-		}
-		x[0], x[16], x[32], x[48] = m, m, -m, -m
-		if got := DotIncSIMD(x, y, n, 2, 2, 0, 0); got != 0 {
-			t.Fatalf("got%g want0 from original lane grouping", got)
+		for _, n := range []int{32, 128, 129} {
+			x, y := make([]float32, 2*n), make([]float32, 2*n)
+			for i := 0; i < n; i++ {
+				y[2*i] = 1
+			}
+			x[0], x[16], x[32], x[48] = m, m, -m, -m
+			if got := DotIncSIMD(x, y, uintptr(n), 2, 2, 0, 0); got != 0 {
+				t.Fatalf("n=%d got%g want0 from original lane grouping", n, got)
+			}
 		}
 	})
 	t.Run("FiniteTreeThenOverflowingTail", func(t *testing.T) {

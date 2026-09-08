@@ -82,6 +82,17 @@ func complexAxpy8SIMD(dst, x, y []float64, ar archsimd.Float64x8, imagAlpha floa
 		xv.Mul(ar).Add(xv.ConcatPermuteScalarsGrouped(1, 2, xv).Mul(ai)).Add(archsimd.LoadFloat64x8(y[:8])).Store(dst[:8])
 		x, y, dst = x[8:], y[8:], dst[8:]
 	}
+	// Finish with exact smaller vectors to keep scalar tail work out of the caller.
+	if len(x) >= 4 {
+		xv := archsimd.LoadFloat64x4(x[:4])
+		xv.Mul(ar.GetLo()).Add(xv.ConcatPermuteScalarsGrouped(1, 2, xv).Mul(ai.GetLo())).Add(archsimd.LoadFloat64x4(y[:4])).Store(dst[:4])
+		x, y, dst = x[4:], y[4:], dst[4:]
+	}
+	if len(x) >= 2 {
+		xv := archsimd.LoadFloat64x2(x[:2])
+		xv.Mul(ar.GetLo().GetLo()).Add(xv.ConcatPermuteScalars(1, 2, xv).Mul(ai.GetLo().GetLo())).Add(archsimd.LoadFloat64x2(y[:2])).Store(dst[:2])
+		x, y, dst = x[2:], y[2:], dst[2:]
+	}
 	return n - len(x)
 }
 
@@ -93,6 +104,17 @@ func complexScal8SIMD(x []float64, ar archsimd.Float64x8, imagAlpha float64) int
 		xv := archsimd.LoadFloat64x8(x[:8])
 		xv.Mul(ar).Add(xv.ConcatPermuteScalarsGrouped(1, 2, xv).Mul(ai)).Store(x[:8])
 		x = x[8:]
+	}
+	// Finish with exact smaller vectors to keep scalar tail work out of the caller.
+	if len(x) >= 4 {
+		xv := archsimd.LoadFloat64x4(x[:4])
+		xv.Mul(ar.GetLo()).Add(xv.ConcatPermuteScalarsGrouped(1, 2, xv).Mul(ai.GetLo())).Store(x[:4])
+		x = x[4:]
+	}
+	if len(x) >= 2 {
+		xv := archsimd.LoadFloat64x2(x[:2])
+		xv.Mul(ar.GetLo().GetLo()).Add(xv.ConcatPermuteScalars(1, 2, xv).Mul(ai.GetLo().GetLo())).Store(x[:2])
+		x = x[2:]
 	}
 	return n - len(x)
 }
@@ -161,6 +183,12 @@ func complexAxpy4SIMD(dst, x, y []float64, ar archsimd.Float64x4, imagAlpha floa
 		xv.Mul(ar).Add(xv.ConcatPermuteScalarsGrouped(1, 2, xv).Mul(ai)).Add(archsimd.LoadFloat64x4(y[:4])).Store(dst[:4])
 		x, y, dst = x[4:], y[4:], dst[4:]
 	}
+	// Finish with exact smaller vectors to keep scalar tail work out of the caller.
+	if len(x) >= 2 {
+		xv := archsimd.LoadFloat64x2(x[:2])
+		xv.Mul(ar.GetLo()).Add(xv.ConcatPermuteScalars(1, 2, xv).Mul(ai.GetLo())).Add(archsimd.LoadFloat64x2(y[:2])).Store(dst[:2])
+		x, y, dst = x[2:], y[2:], dst[2:]
+	}
 	return n - len(x)
 }
 
@@ -172,6 +200,12 @@ func complexScal4SIMD(x []float64, ar archsimd.Float64x4, imagAlpha float64) int
 		xv := archsimd.LoadFloat64x4(x[:4])
 		xv.Mul(ar).Add(xv.ConcatPermuteScalarsGrouped(1, 2, xv).Mul(ai)).Store(x[:4])
 		x = x[4:]
+	}
+	// Finish with exact smaller vectors to keep scalar tail work out of the caller.
+	if len(x) >= 2 {
+		xv := archsimd.LoadFloat64x2(x[:2])
+		xv.Mul(ar.GetLo()).Add(xv.ConcatPermuteScalars(1, 2, xv).Mul(ai.GetLo())).Store(x[:2])
+		x = x[2:]
 	}
 	return n - len(x)
 }

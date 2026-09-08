@@ -18,17 +18,10 @@ import (
 // for forward, reverse, and repeated read indices without requiring gathers.
 func complexNativeSIMD() bool {
 	// The native broadcasts require AVX2 even for 128-bit vectors.
-	if !archsimd.X86.AVX2() {
-		return false
-	}
-	switch simd.BroadcastFloat64s(0).ToArch().(type) {
-	case archsimd.Float64x2, archsimd.Float64x4, archsimd.Float64x8:
-		return true
-	}
-	return false
+	return archsimd.X86.AVX2() && !simd.Emulated()
 }
 
-func complexAxpyIncNativeSIMD(dst []complex128, incDst, idst uintptr, alpha complex128, x, y []complex128, n, incX, incY, ix, iy uintptr) {
+func complexAxpyIncCheckedSIMD(dst []complex128, incDst, idst uintptr, alpha complex128, x, y []complex128, n, incX, incY, ix, iy uintptr) {
 	ar := archsimd.BroadcastFloat64x2(real(alpha))
 	ai := archsimd.BroadcastFloat64x2(imag(alpha))
 	for ; n > 0; n-- {
@@ -41,7 +34,7 @@ func complexAxpyIncNativeSIMD(dst []complex128, incDst, idst uintptr, alpha comp
 	}
 }
 
-func complexDotIncNativeSIMD(x, y []complex128, n, incX, incY, ix, iy uintptr, conjugate bool) complex128 {
+func complexDotIncCheckedSIMD(x, y []complex128, n, incX, incY, ix, iy uintptr, conjugate bool) complex128 {
 	originalN, originalX, originalY := n, ix, iy
 	sign := archsimd.BroadcastUint64x2(0).SetElem(1, 1<<63)
 	conjugateSign := archsimd.BroadcastUint64x2(0)
@@ -91,13 +84,13 @@ func complexDotIncNativeSIMD(x, y []complex128, n, incX, incY, ix, iy uintptr, c
 		iy += incY
 	}
 	sum := complex(sum0.GetElem(0), sum0.GetElem(1))
-	if !math.IsNaN(real(sum)) && !math.IsNaN(imag(sum)) && !math.IsInf(real(sum), 0) && !math.IsInf(imag(sum), 0) {
+	if math.Float64bits(real(sum))&0x7ff0000000000000 != 0x7ff0000000000000 && math.Float64bits(imag(sum))&0x7ff0000000000000 != 0x7ff0000000000000 {
 		return sum
 	}
 	// Reassociation can overflow both the native and sequential sums. Retry
 	// the established portable grouping before per-element recovery.
 	sum = portableDotIncSIMD(x, y, originalN, incX, incY, originalX, originalY, conjugate)
-	if !math.IsNaN(real(sum)) && !math.IsNaN(imag(sum)) && !math.IsInf(real(sum), 0) && !math.IsInf(imag(sum), 0) {
+	if math.Float64bits(real(sum))&0x7ff0000000000000 != 0x7ff0000000000000 && math.Float64bits(imag(sum))&0x7ff0000000000000 != 0x7ff0000000000000 {
 		return sum
 	}
 	sum = 0
@@ -114,7 +107,7 @@ func complexDotIncNativeSIMD(x, y []complex128, n, incX, incY, ix, iy uintptr, c
 	return sum
 }
 
-func complexScalIncNativeSIMD(alpha complex128, x []complex128, n, inc uintptr) {
+func complexScalIncCheckedSIMD(alpha complex128, x []complex128, n, inc uintptr) {
 	ar, ai := archsimd.BroadcastFloat64x2(real(alpha)), archsimd.BroadcastFloat64x2(imag(alpha))
 	var ix uintptr
 	for ; n > 0; n-- {
@@ -124,7 +117,7 @@ func complexScalIncNativeSIMD(alpha complex128, x []complex128, n, inc uintptr) 
 	}
 }
 
-func complexDscalIncNativeSIMD(alpha float64, x []complex128, n, inc uintptr) {
+func complexDscalIncCheckedSIMD(alpha float64, x []complex128, n, inc uintptr) {
 	a := archsimd.BroadcastFloat64x2(alpha)
 	var ix uintptr
 	for ; n > 0; n-- {

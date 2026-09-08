@@ -109,3 +109,27 @@ func ddotIncHardwareSIMD(x, y []float32, n, incX, incY, ix, iy uintptr) (float64
 	}
 	return sum, true
 }
+
+// Keep the long positive-span calls outside the checked native leaves so short
+// calls do not require those leaves to carry an outgoing-call frame.
+func axpyIncPositiveHardwareSIMD(dst []float32, incDst, idst uintptr, alpha float32, x, y []float32, n, incX, incY, ix, iy uintptr) bool {
+	if !archsimd.X86.AVX2() || !positiveStrideSIMD(len(x), ix, n, incX) || !positiveStrideSIMD(len(y), iy, n, incY) || !positiveStrideSIMD(len(dst), idst, n, incDst) {
+		return false
+	}
+	axpyIncPositiveSIMD(dst, incDst, idst, alpha, x, y, n, incX, incY, ix, iy)
+	return true
+}
+
+func dotIncPositiveHardwareSIMD(x, y []float32, n, incX, incY, ix, iy uintptr) (float32, bool) {
+	if !positiveStrideSIMD(len(x), ix, n, incX) || !positiveStrideSIMD(len(y), iy, n, incY) {
+		return 0, false
+	}
+	return dotIncPositiveSIMD(x, y, n, incX, incY, ix, iy), true
+}
+
+func ddotIncPositiveHardwareSIMD(x, y []float32, n, incX, incY, ix, iy uintptr) (float64, bool) {
+	if simd.VectorBitSize() < 256 || !positiveStrideSIMD(len(x), ix, n, incX) || !positiveStrideSIMD(len(y), iy, n, incY) {
+		return 0, false
+	}
+	return ddotIncPositiveSIMD(x, y, n, incX, incY, ix, iy), true
+}

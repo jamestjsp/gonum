@@ -24,6 +24,11 @@ func AxpyUnitaryToSIMD(dst []complex128, alpha complex128, x, y []complex128) {
 		}
 		return
 	}
+	if n < 64 && complexNativeSIMD() && simd.VectorBitSize() >= 256 {
+		complexAxpyShortSIMD(dst, x, y, alpha)
+		return
+	}
+
 	xf, yf, df := complexFloatsSIMD(x), complexFloatsSIMD(y[:n]), complexFloatsSIMD(dst[:n])
 	if i := complexAxpySIMD(df, xf, yf, alpha); i >= 0 {
 		for i /= 2; i < n; i++ {
@@ -31,6 +36,12 @@ func AxpyUnitaryToSIMD(dst []complex128, alpha complex128, x, y []complex128) {
 		}
 		return
 	}
+	portableAxpyUnitaryToSIMD(dst, alpha, x, y)
+}
+
+func portableAxpyUnitaryToSIMD(dst []complex128, alpha complex128, x, y []complex128) {
+	n := len(x)
+	xf, yf, df := complexFloatsSIMD(x), complexFloatsSIMD(y[:n]), complexFloatsSIMD(dst[:n])
 	width := simd.BroadcastFloat64s(0).Len()
 	ar := simd.BroadcastFloat64s(real(alpha))
 	// Negating even imaginary products implements the real subtraction without FMA.
@@ -45,33 +56,7 @@ func AxpyUnitaryToSIMD(dst []complex128, alpha complex128, x, y []complex128) {
 	}
 }
 
-func AxpyIncSIMD(alpha complex128, x, y []complex128, n, incX, incY, ix, iy uintptr) {
-	AxpyIncToSIMD(y, incY, iy, alpha, x, y, n, incX, incY, ix, iy)
-}
-
-func AxpyIncToSIMD(dst []complex128, incDst, idst uintptr, alpha complex128, x, y []complex128, n, incX, incY, ix, iy uintptr) {
-	if n == 0 {
-		return
-	}
-	if incX == 1 && incY == 1 && incDst == 1 {
-		AxpyUnitaryToSIMD(dst[idst:idst+n], alpha, x[ix:ix+n], y[iy:iy+n])
-		return
-	}
-	if incX == 0 || incY == 0 || incDst == 0 || !complexIncrementsCompatibleSIMD(x, dst, incX, incDst, ix, idst) || !complexIncrementsCompatibleSIMD(y, dst, incY, incDst, iy, idst) {
-		for ; n > 0; n-- {
-			dst[idst] = alpha*x[ix] + y[iy]
-			ix += incX
-			iy += incY
-			idst += incDst
-		}
-		return
-	}
-
-	if complexNativeSIMD() {
-		complexAxpyIncNativeSIMD(dst, incDst, idst, alpha, x, y, n, incX, incY, ix, iy)
-		return
-	}
-
+func portableAxpyIncToSIMD(dst []complex128, incDst, idst uintptr, alpha complex128, x, y []complex128, n, incX, incY, ix, iy uintptr) {
 	width := simd.BroadcastFloat64s(0).Len()
 	ar := simd.BroadcastFloat64s(real(alpha))
 	ai := simd.BroadcastFloat64s(imag(alpha))
@@ -116,8 +101,14 @@ func DotuUnitarySIMD(x, y []complex128) complex128 {
 }
 
 func portableDotUnitarySIMD(x, y []complex128, conjugate bool) complex128 {
+	if len(x) >= 4 && len(x) < 64 && complexNativeSIMD() && simd.VectorBitSize() >= 256 {
+		sum := complexDotShortSIMD(x, y, conjugate)
+		if math.Float64bits(real(sum))&0x7ff0000000000000 != 0x7ff0000000000000 && math.Float64bits(imag(sum))&0x7ff0000000000000 != 0x7ff0000000000000 {
+			return sum
+		}
+	}
 	sum := interleavedDotUnitarySIMD(x, y, conjugate)
-	if !math.IsNaN(real(sum)) && !math.IsNaN(imag(sum)) && !math.IsInf(real(sum), 0) && !math.IsInf(imag(sum), 0) {
+	if math.Float64bits(real(sum))&0x7ff0000000000000 != 0x7ff0000000000000 && math.Float64bits(imag(sum))&0x7ff0000000000000 != 0x7ff0000000000000 {
 		return sum
 	}
 	// Separate component sums can overflow before per-element cancellation.
@@ -154,32 +145,6 @@ func interleavedDotUnitarySIMD(x, y []complex128, conjugate bool) complex128 {
 		return sum
 	}
 	return portableDotIncSIMD(x, y, uintptr(len(x)), 1, 1, 0, 0, conjugate)
-}
-
-func DotcIncSIMD(x, y []complex128, n, incX, incY, ix, iy uintptr) complex128 {
-	if n == 0 {
-		return 0
-	}
-	if incX == 1 && incY == 1 {
-		return portableDotUnitarySIMD(x[ix:ix+n], y[iy:iy+n], true)
-	}
-	if complexNativeSIMD() {
-		return complexDotIncNativeSIMD(x, y, n, incX, incY, ix, iy, true)
-	}
-	return portableDotIncSIMD(x, y, n, incX, incY, ix, iy, true)
-}
-
-func DotuIncSIMD(x, y []complex128, n, incX, incY, ix, iy uintptr) complex128 {
-	if n == 0 {
-		return 0
-	}
-	if incX == 1 && incY == 1 {
-		return portableDotUnitarySIMD(x[ix:ix+n], y[iy:iy+n], false)
-	}
-	if complexNativeSIMD() {
-		return complexDotIncNativeSIMD(x, y, n, incX, incY, ix, iy, false)
-	}
-	return portableDotIncSIMD(x, y, n, incX, incY, ix, iy, false)
 }
 
 func portableDotIncSIMD(x, y []complex128, n, incX, incY, ix, iy uintptr, conjugate bool) complex128 {
@@ -233,6 +198,14 @@ func conj128(value complex128) complex128 {
 }
 
 func DscalUnitarySIMD(alpha float64, x []complex128) {
+	if len(x) >= 4 && (len(x) < 64 || simd.VectorBitSize() == 256) && complexNativeSIMD() && simd.VectorBitSize() >= 256 {
+		complexDscalShortSIMD(alpha, x)
+		return
+	}
+	portableDscalUnitarySIMD(alpha, x)
+}
+
+func portableDscalUnitarySIMD(alpha float64, x []complex128) {
 	xf := complexFloatsSIMD(x)
 	a := simd.BroadcastFloat64s(alpha)
 	width := a.Len()
@@ -245,28 +218,6 @@ func DscalUnitarySIMD(alpha float64, x []complex128) {
 	}
 }
 
-func DscalIncSIMD(alpha float64, x []complex128, n, inc uintptr) {
-	if n == 0 {
-		return
-	}
-	if inc == 1 {
-		DscalUnitarySIMD(alpha, x[:n])
-		return
-	}
-	if inc == 0 {
-		for ; n > 0; n-- {
-			v := x[0]
-			x[0] = complex(alpha*real(v), alpha*imag(v))
-		}
-		return
-	}
-	if complexNativeSIMD() {
-		complexDscalIncNativeSIMD(alpha, x, n, inc)
-		return
-	}
-	portableDscaleSIMD(alpha, x, n, inc)
-}
-
 func ScalUnitarySIMD(alpha complex128, x []complex128) {
 	if len(x) < 4 {
 		for i := range x {
@@ -274,6 +225,11 @@ func ScalUnitarySIMD(alpha complex128, x []complex128) {
 		}
 		return
 	}
+	if (len(x) < 64 || simd.VectorBitSize() == 256) && complexNativeSIMD() && simd.VectorBitSize() >= 256 {
+		complexScalShortSIMD(alpha, x)
+		return
+	}
+
 	xf := complexFloatsSIMD(x)
 	if i := complexScalSIMD(xf, alpha); i >= 0 {
 		for i /= 2; i < len(x); i++ {
@@ -282,27 +238,6 @@ func ScalUnitarySIMD(alpha complex128, x []complex128) {
 		return
 	}
 	portableScaleSIMD(alpha, x, uintptr(len(x)), 1)
-}
-
-func ScalIncSIMD(alpha complex128, x []complex128, n, inc uintptr) {
-	if n == 0 {
-		return
-	}
-	if inc == 1 {
-		ScalUnitarySIMD(alpha, x[:n])
-		return
-	}
-	if inc == 0 {
-		for ; n > 0; n-- {
-			x[0] *= alpha
-		}
-		return
-	}
-	if complexNativeSIMD() {
-		complexScalIncNativeSIMD(alpha, x, n, inc)
-		return
-	}
-	portableScaleSIMD(alpha, x, n, inc)
 }
 
 func complexEvenSignSIMD() simd.Uint64s {

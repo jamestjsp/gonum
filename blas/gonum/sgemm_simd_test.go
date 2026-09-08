@@ -155,32 +155,36 @@ func TestSgemmSIMDDisjoint(t *testing.T) {
 }
 
 func TestSgemmSIMDSharedBacking(t *testing.T) {
+	// Preserve the LU/Cholesky panel geometry while fitting at least one full
+	// SIMD column tile. A 512-bit float32 tile needs 64 columns, not 32.
+	n := max(32, sgemmSIMDCols*simd.BroadcastFloat32s(0).Len())
+	k, ld := n/2, 2*n
 	for _, tc := range []struct {
 		name                      string
 		aTrans                    bool
 		m, n, k, aoff, boff, coff int
 	}{
-		{name: "lu", m: 32, n: 32, k: 16, aoff: 32*64 + 16, boff: 16*64 + 32, coff: 32*64 + 32},
-		{name: "upper-cholesky", aTrans: true, m: 16, n: 32, k: 16, aoff: 16, boff: 32, coff: 16*64 + 32},
+		{name: "lu", m: n, n: n, k: k, aoff: n*ld + k, boff: k*ld + n, coff: n*ld + n},
+		{name: "upper-cholesky", aTrans: true, m: k, n: n, k: k, aoff: k, boff: n, coff: k*ld + n},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			data := make([]float32, 64*64)
+			data := make([]float32, ld*ld)
 			for i := range data {
 				data[i] = float32(i%29-14) / 32
 			}
 			orig := slices.Clone(data)
 			want := slices.Clone(data)
 			if tc.aTrans {
-				sgemmSerialTransNot(tc.m, tc.n, tc.k, want[tc.aoff:], 64, want[tc.boff:], 64, want[tc.coff:], 64, -0.75)
+				sgemmSerialTransNot(tc.m, tc.n, tc.k, want[tc.aoff:], ld, want[tc.boff:], ld, want[tc.coff:], ld, -0.75)
 			} else {
-				sgemmSerialNotNot(tc.m, tc.n, tc.k, want[tc.aoff:], 64, want[tc.boff:], 64, want[tc.coff:], 64, -0.75)
+				sgemmSerialNotNot(tc.m, tc.n, tc.k, want[tc.aoff:], ld, want[tc.boff:], ld, want[tc.coff:], ld, -0.75)
 			}
-			if !sgemmSerialSIMD(tc.aTrans, false, tc.m, tc.n, tc.k, data[tc.aoff:], 64, data[tc.boff:], 64, data[tc.coff:], 64, -0.75) {
+			if !sgemmSerialSIMD(tc.aTrans, false, tc.m, tc.n, tc.k, data[tc.aoff:], ld, data[tc.boff:], ld, data[tc.coff:], ld, -0.75) {
 				t.Fatal("kernel rejected disjoint active regions")
 			}
 			for i := range data {
-				row, col := i/64, i%64
-				crow, ccol := tc.coff/64, tc.coff%64
+				row, col := i/ld, i%ld
+				crow, ccol := tc.coff/ld, tc.coff%ld
 				active := row >= crow && row < crow+tc.m && col >= ccol && col < ccol+tc.n
 				if active {
 					if !gemmSIMDClose(float64(data[i]), float64(want[i]), 2e-5, 2e-5) {

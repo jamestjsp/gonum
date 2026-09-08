@@ -18,3 +18,11 @@ func complexDotShortNativeSIMD(x, y []complex64, conjugate bool) complex64 { pan
 func complexAxpyTailNativeSIMD(dst []complex64, alpha complex64, x, y []complex64) int {
 	panic("unreachable")
 }
+
+func complexDotShortFastSIMD(x, y []complex64, conjugate bool) complex64 {
+	panic("unreachable native complex dot")
+}
+
+func complexDotShortWideSIMD(x, y []complex64, conjugate bool) complex64 { panic("unreachable") }
+
+func complexAxpyShortSIMD(dst, x, y []complex64, alpha complex64) { panic("unreachable") }

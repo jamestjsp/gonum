@@ -18,21 +18,14 @@ import (
 // for forward, reverse, and repeated read indices without requiring gathers.
 func complexNativeSIMD() bool {
 	// The native broadcasts require AVX2 even for 128-bit vectors.
-	if !archsimd.X86.AVX2() {
-		return false
-	}
-	switch simd.BroadcastFloat64s(0).ToArch().(type) {
-	case archsimd.Float64x2, archsimd.Float64x4, archsimd.Float64x8:
-		return true
-	}
-	return false
+	return archsimd.X86.AVX2() && !simd.Emulated()
 }
 
 func complexLoadPairSIMD(x []complex64, ix, inc uintptr) archsimd.Float32x4 {
 	return archsimd.BroadcastUint64x2(*(*uint64)(unsafe.Pointer(&x[ix]))).SetElem(1, *(*uint64)(unsafe.Pointer(&x[ix+inc]))).AsFloat32x4()
 }
 
-func complexAxpyIncNativeSIMD(dst []complex64, incDst, idst uintptr, alpha complex64, x, y []complex64, n, incX, incY, ix, iy uintptr) {
+func complexAxpyIncCheckedSIMD(dst []complex64, incDst, idst uintptr, alpha complex64, x, y []complex64, n, incX, incY, ix, iy uintptr) {
 	ar, ai := archsimd.BroadcastFloat32x4(real(alpha)), archsimd.BroadcastFloat32x4(imag(alpha))
 	for ; n >= 2; n -= 2 {
 		xv, yv := complexLoadPairSIMD(x, ix, incX), complexLoadPairSIMD(y, iy, incY)
@@ -48,7 +41,7 @@ func complexAxpyIncNativeSIMD(dst []complex64, incDst, idst uintptr, alpha compl
 	}
 }
 
-func complexDotIncNativeSIMD(x, y []complex64, n, incX, incY, ix, iy uintptr, conjugate bool) complex64 {
+func complexDotIncCheckedSIMD(x, y []complex64, n, incX, incY, ix, iy uintptr, conjugate bool) complex64 {
 	originalN, originalX, originalY := n, ix, iy
 	sign := archsimd.BroadcastUint64x2(1 << 63).AsUint32x4()
 	conjugateSign := archsimd.BroadcastUint64x2(0).AsUint32x4()
@@ -88,13 +81,13 @@ func complexDotIncNativeSIMD(x, y []complex64, n, incX, incY, ix, iy uintptr, co
 		}
 		sum += v * y[iy]
 	}
-	if !math.IsNaN(float64(real(sum))) && !math.IsNaN(float64(imag(sum))) && !math.IsInf(float64(real(sum)), 0) && !math.IsInf(float64(imag(sum)), 0) {
+	if math.Float32bits(real(sum))&0x7f800000 != 0x7f800000 && math.Float32bits(imag(sum))&0x7f800000 != 0x7f800000 {
 		return sum
 	}
 	// Reassociation can overflow both the native and sequential sums. Retry
 	// the established portable grouping before per-element recovery.
 	sum = portableDotIncSIMD(x, y, originalN, incX, incY, originalX, originalY, conjugate)
-	if !math.IsNaN(float64(real(sum))) && !math.IsNaN(float64(imag(sum))) && !math.IsInf(float64(real(sum)), 0) && !math.IsInf(float64(imag(sum)), 0) {
+	if math.Float32bits(real(sum))&0x7f800000 != 0x7f800000 && math.Float32bits(imag(sum))&0x7f800000 != 0x7f800000 {
 		return sum
 	}
 	sum = 0

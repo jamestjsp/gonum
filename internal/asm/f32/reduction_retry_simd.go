@@ -37,7 +37,7 @@ func dotUnitaryOriginalSIMD(x, y []float32) float32 {
 }
 
 func sumOriginalSIMD(x []float32) float32 {
-	acc := simd.BroadcastFloat32s(0)
+	var acc simd.Float32s
 	acc1, acc2, acc3 := acc, acc, acc
 	width := acc.Len()
 	for len(x) >= 4*width {

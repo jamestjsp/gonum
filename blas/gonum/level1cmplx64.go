@@ -298,17 +298,12 @@ func (Implementation) Cdotc(n int, x []complex64, incX int, y []complex64, incY 
 		}
 		return c64.DotcUnitary(x[:n], y[:n])
 	}
-	var ix, iy int
-	if incX < 0 {
-		ix = (-n + 1) * incX
-	}
-	if incY < 0 {
-		iy = (-n + 1) * incY
-	}
-	if ix >= len(x) || (n-1)*incX >= len(x) {
+	ix, ok := checkedDotStart(n, incX, len(x))
+	if !ok {
 		panic(shortX)
 	}
-	if iy >= len(y) || (n-1)*incY >= len(y) {
+	iy, ok := checkedDotStart(n, incY, len(y))
+	if !ok {
 		panic(shortY)
 	}
 	return c64.DotcInc(x, y, uintptr(n), uintptr(incX), uintptr(incY), uintptr(ix), uintptr(iy))
@@ -343,17 +338,12 @@ func (Implementation) Cdotu(n int, x []complex64, incX int, y []complex64, incY 
 		}
 		return c64.DotuUnitary(x[:n], y[:n])
 	}
-	var ix, iy int
-	if incX < 0 {
-		ix = (-n + 1) * incX
-	}
-	if incY < 0 {
-		iy = (-n + 1) * incY
-	}
-	if ix >= len(x) || (n-1)*incX >= len(x) {
+	ix, ok := checkedDotStart(n, incX, len(x))
+	if !ok {
 		panic(shortX)
 	}
-	if iy >= len(y) || (n-1)*incY >= len(y) {
+	iy, ok := checkedDotStart(n, incY, len(y))
+	if !ok {
 		panic(shortY)
 	}
 	return c64.DotuInc(x, y, uintptr(n), uintptr(incX), uintptr(incY), uintptr(ix), uintptr(iy))

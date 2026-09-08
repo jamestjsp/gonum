@@ -33,17 +33,12 @@ func (Implementation) Ddot(n int, x []float64, incX int, y []float64, incY int) 
 		}
 		return f64.DotUnitary(x[:n], y[:n])
 	}
-	var ix, iy int
-	if incX < 0 {
-		ix = (-n + 1) * incX
-	}
-	if incY < 0 {
-		iy = (-n + 1) * incY
-	}
-	if ix >= len(x) || ix+(n-1)*incX >= len(x) {
+	ix, ok := checkedDotStart(n, incX, len(x))
+	if !ok {
 		panic(shortX)
 	}
-	if iy >= len(y) || iy+(n-1)*incY >= len(y) {
+	iy, ok := checkedDotStart(n, incY, len(y))
+	if !ok {
 		panic(shortY)
 	}
 	return f64.DotInc(x, y, uintptr(n), uintptr(incX), uintptr(incY), uintptr(ix), uintptr(iy))
