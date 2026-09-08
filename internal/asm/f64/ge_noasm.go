@@ -16,6 +16,9 @@ func Ger(m, n uintptr, alpha float64, x []float64, incX uintptr, y []float64, in
 	if incX == 1 && incY == 1 {
 		x = x[:m]
 		y = y[:n]
+		if m >= 4 && n >= 2 && gerARM64SIMD(m, n, alpha, x, incX, y, incY, a, lda) {
+			return
+		}
 		for i, xv := range x {
 			AxpyUnitary(alpha*xv, y, a[uintptr(i)*lda:uintptr(i)*lda+n])
 		}
