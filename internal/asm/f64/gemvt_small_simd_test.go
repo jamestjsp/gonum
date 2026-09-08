@@ -7,6 +7,7 @@
 package f64
 
 import (
+	"fmt"
 	"math"
 	"slices"
 	"testing"
@@ -25,6 +26,16 @@ func gemvTSmallReference(m, n, lda int, alpha float64, a, x []float64, beta floa
 		for j := 0; j < n; j++ {
 			product := float64(scale * a[i*lda+j])
 			y[j] += product
+		}
+	}
+}
+
+func checkGemvTSmallBits(t *testing.T, context string, got, want []float64) {
+	t.Helper()
+	for i, g := range got {
+		w := want[i]
+		if math.Float64bits(g) != math.Float64bits(w) && !(math.IsNaN(g) && math.IsNaN(w)) {
+			t.Fatalf("%s: index=%d got=%g (%x) want=%g (%x)", context, i, g, math.Float64bits(g), w, math.Float64bits(w))
 		}
 	}
 }
@@ -48,9 +59,10 @@ func TestGemvTSmallIEEEAndPadding(t *testing.T) {
 							y[i] = values[(i+6)%len(values)]
 						}
 						xBefore, aBefore, want := slices.Clone(x), slices.Clone(a), slices.Clone(y)
-						gemvTSmallReference(m, n, lda, alpha, a, x, beta, want)
+						gemvTSmallBackendReference(m, n, lda, alpha, a, x, beta, want)
 						GemvTSIMD(uintptr(m), uintptr(n), alpha, a, uintptr(lda), x, 1, beta, y, 1)
-						checkGemvTEightBits(t, y, want)
+						context := fmt.Sprintf("m=%d n=%d pad=%d alpha=%g beta=%g", m, n, pad, alpha, beta)
+						checkGemvTSmallBits(t, context, y, want)
 						checkGemvTEightBits(t, a, aBefore)
 						checkGemvTEightBits(t, x, xBefore)
 					}
@@ -72,9 +84,9 @@ func TestGemvTSmallRowOrder(t *testing.T) {
 				}
 			}
 			want := slices.Clone(y)
-			gemvTSmallReference(m, n, lda, 1, a, x, 0, want)
+			gemvTSmallBackendReference(m, n, lda, 1, a, x, 0, want)
 			GemvTSIMD(uintptr(m), uintptr(n), 1, a, uintptr(lda), x, 1, 0, y, 1)
-			checkGemvTEightBits(t, y, want)
+			checkGemvTSmallBits(t, fmt.Sprintf("m=%d n=%d row order", m, n), y, want)
 		}
 	}
 }

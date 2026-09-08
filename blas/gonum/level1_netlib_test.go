@@ -154,12 +154,7 @@ func testLevel1Float32Case(t *testing.T, count, incX, incY int) {
 	t.Helper()
 	g, n := Implementation{}, netlib.Implementation{}
 	x, y := level1Data32(count, incX, 1), level1Data32(count, incY, -2)
-	if count == 0 {
-		check32(t, "Gonum Sdsdot n=0", g.Sdsdot(count, 1.25, x, incX, y, incY), 0)
-		check32(t, "Netlib Sdsdot n=0", n.Sdsdot(count, 1.25, x, incX, y, incY), 1.25)
-	} else {
-		check32(t, "Sdsdot", g.Sdsdot(count, 1.25, x, incX, y, incY), n.Sdsdot(count, 1.25, x, incX, y, incY))
-	}
+	check32(t, "Sdsdot", g.Sdsdot(count, 1.25, x, incX, y, incY), n.Sdsdot(count, 1.25, x, incX, y, incY))
 	check64(t, "Dsdot", g.Dsdot(count, x, incX, y, incY), n.Dsdot(count, x, incX, y, incY))
 	check32(t, "Sdot", g.Sdot(count, x, incX, y, incY), n.Sdot(count, x, incX, y, incY))
 	compareMut32(t, "Sswap", x, y, func(x, y []float32) { g.Sswap(count, x, incX, y, incY) }, func(x, y []float32) { n.Sswap(count, x, incX, y, incY) })
