@@ -253,8 +253,8 @@ func (impl Implementation) Dgees(jobvs lapack.SchurComp, sort lapack.SchurSort, 
 	if scalea {
 		// Undo scaling for the Schur form of A.
 		impl.Dlascl(lapack.General, 0, 0, cscale, anrm, n, n, a, lda)
-		impl.Dlascl(lapack.General, 0, 0, cscale, anrm, n, 1, wr, n)
-		impl.Dlascl(lapack.General, 0, 0, cscale, anrm, n, 1, wi, n)
+		impl.Dlascl(lapack.General, 0, 0, cscale, anrm, n, 1, wr, 1)
+		impl.Dlascl(lapack.General, 0, 0, cscale, anrm, n, 1, wi, 1)
 	}
 
 	work[0] = float64(maxwrk)
