@@ -162,8 +162,7 @@ func (impl Implementation) Dtgsy2(trans blas.Transpose, ijob, m, n int, a []floa
 				if is < 0 {
 					is = -is
 				}
-				is--             // Convert to 0-based.
-				ie = is + mb - 1 // 0-based end index.
+				is-- // Convert to 0-based.
 
 				// Solve the (I,J)-subsystem.
 				if mb == 1 && nb == 1 {
@@ -421,8 +420,7 @@ func (impl Implementation) Dtgsy2(trans blas.Transpose, ijob, m, n int, a []floa
 				if js < 0 {
 					js = -js
 				}
-				js--             // Convert to 0-based.
-				je = js + nb - 1 // 0-based end index.
+				js-- // Convert to 0-based.
 
 				// Solve the (I,J)-subsystem.
 				if mb == 1 && nb == 1 {
