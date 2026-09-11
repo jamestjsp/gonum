@@ -71,7 +71,7 @@ func (impl Implementation) Dlagv2(a []float64, lda int, b []float64, ldb int) (
 		csq = 1
 		a[lda], b[ldb], b[ldb+1] = 0, 0, 0
 	} else {
-		scale1, scale2, wr1, _, wi = impl.Dlag2(a, lda, b, ldb)
+		scale1, _, wr1, _, wi = impl.Dlag2(a, lda, b, ldb)
 		if wi == 0 {
 			h1 := scale1*a[0] - wr1*b[0]
 			h2 := scale1*a[1] - wr1*b[1]
