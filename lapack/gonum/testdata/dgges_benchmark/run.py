@@ -24,8 +24,9 @@ root = Path(__file__).resolve().parents[4]
 out = args.output.resolve()
 out.mkdir(parents=True, exist_ok=True)
 env = dict(os.environ, GOMAXPROCS='1', OMP_NUM_THREADS='1', OPENBLAS_NUM_THREADS='1', VECLIB_MAXIMUM_THREADS='1')
-harness = ['dgges_netlib_cases_test.go', 'dgges_netlib_bench_test.go',
-           'netlib_helpers_test.go', 'internal/netlib/differential.go']
+harness = ['lapack/gonum/dgges_netlib_test.go', 'lapack/gonum/bench_test.go',
+           'lapack/testlapack/dgges_bench.go', 'lapack/gonum/netlib_helpers_test.go',
+           'lapack/gonum/internal/netlib/differential.go']
 
 def capture(command):
     return subprocess.check_output(command, cwd=root, env=env, text=True).strip()
@@ -40,7 +41,7 @@ metadata = {'base': capture(['git', 'rev-parse', args.base]),
             'lapack': capture(['otool', '-L', '/opt/homebrew/opt/lapack/lib/liblapack.dylib'])}
 metadata['lapack_path'] = str(Path('/opt/homebrew/opt/lapack').resolve())
 metadata['sha256'] = {str(p): hashlib.sha256(p.read_bytes()).hexdigest() for p in
-    [root/'lapack/gonum'/name for name in harness] +
+    [root/name for name in harness] +
     [root/'lapack/gonum'/name for name in ['dgges.go', 'dtgex2.go', 'dtgexc.go', 'dtgsen.go', 'dtgsy2.go']] +
     [Path('/opt/homebrew/opt/lapack/lib')/name for name in ['liblapack.dylib', 'liblapacke.dylib', 'libblas.dylib']]}
 (out/'metadata.json').write_text(json.dumps(metadata, indent=2)+'\n')
@@ -55,7 +56,7 @@ with tempfile.TemporaryDirectory(prefix='dgges-compare-') as temp:
     with tarfile.open(fileobj=io.BytesIO(archive)) as tar:
         tar.extractall(baseline, filter='data')
     for name in harness:
-        shutil.copy2(root/'lapack/gonum'/name, baseline/'lapack/gonum'/name)
+        shutil.copy2(root/name, baseline/name)
     binaries = {}
     for name, source in [('baseline', baseline), ('current', root)]:
         binary = temp/(name+'.test')

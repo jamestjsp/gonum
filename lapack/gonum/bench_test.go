@@ -32,3 +32,14 @@ func BenchmarkDggesScaledSort(b *testing.B) {
 func BenchmarkDggesIsolated(b *testing.B) {
 	testlapack.DggesIsolatedBenchmark(b, impl)
 }
+
+// The external-oracle test file installs this factory only in Netlib builds.
+var dggesNetlibBenchmarkRun func(n int, kind, vectors string, sorting, native bool) func() (int, bool)
+var dggesNetlibBenchmarkKinds []string
+
+func BenchmarkDggesNetlib(b *testing.B) {
+	if dggesNetlibBenchmarkRun == nil {
+		b.Skip("requires netlib, darwin, and cgo")
+	}
+	testlapack.DggesComparisonBenchmark(b, dggesNetlibBenchmarkKinds, dggesNetlibBenchmarkRun)
+}
