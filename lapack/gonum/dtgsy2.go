@@ -43,6 +43,18 @@ func (impl Implementation) Dtgsy2(trans blas.Transpose, ijob, m, n int, a []floa
 	b []float64, ldb int, c []float64, ldc int, d []float64, ldd int,
 	e []float64, lde int, f []float64, ldf int,
 	rdsum, rdscal float64, iwork []int) (scale, rdsum2, rdscal2 float64, pq int, ok bool) {
+	return impl.dtgsy2(trans, ijob, m, n, a, lda, b, ldb, c, ldc, d, ldd, e, lde, f, ldf, rdsum, rdscal, iwork, nil)
+}
+
+type dtgsy2Scratch struct {
+	z   [64]float64
+	rhs [8]float64
+}
+
+func (impl Implementation) dtgsy2(trans blas.Transpose, ijob, m, n int, a []float64, lda int,
+	b []float64, ldb int, c []float64, ldc int, d []float64, ldd int,
+	e []float64, lde int, f []float64, ldf int,
+	rdsum, rdscal float64, iwork []int, scratch *dtgsy2Scratch) (scale, rdsum2, rdscal2 float64, pq int, ok bool) {
 
 	switch trans {
 	case blas.NoTrans, blas.Trans:
@@ -100,8 +112,11 @@ func (impl Implementation) Dtgsy2(trans blas.Transpose, ijob, m, n int, a []floa
 	bi := blas64.Implementation()
 
 	const ldz = 8
-	var z [ldz * ldz]float64
-	var rhs [ldz]float64
+	if scratch == nil {
+		scratch = new(dtgsy2Scratch)
+	}
+	*scratch = dtgsy2Scratch{}
+	z, rhs := scratch.z[:], scratch.rhs[:]
 	var ipiv, jpiv [ldz]int
 
 	// Determine block structure of A.
