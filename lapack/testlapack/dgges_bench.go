@@ -40,9 +40,12 @@ func DggesBenchmark(b *testing.B, impl Dggeser) {
 				copy(a, aOrig)
 				copy(bm, bOrig)
 				b.StartTimer()
-				impl.Dgges(lapack.SchurNone, lapack.SchurNone, lapack.SortNone, nil,
+				_, ok := impl.Dgges(lapack.SchurNone, lapack.SchurNone, lapack.SortNone, nil,
 					n, a, n, bm, n, alphar, alphai, beta,
 					nil, 1, nil, 1, work, len(work), nil)
+				if !ok {
+					b.Fatal("Dgges failed")
+				}
 			}
 		})
 	}
@@ -78,9 +81,12 @@ func DggesScaledSortBenchmark(b *testing.B, impl Dggeser) {
 				copy(a, aOrig)
 				copy(bm, bOrig)
 				b.StartTimer()
-				impl.Dgges(lapack.SchurNone, lapack.SchurNone, lapack.SortSelected, selector,
+				_, ok := impl.Dgges(lapack.SchurNone, lapack.SchurNone, lapack.SortSelected, selector,
 					n, a, n, bm, n, alphar, alphai, beta,
 					nil, 1, nil, 1, work, len(work), bwork)
+				if !ok {
+					b.Fatal("Dgges failed")
+				}
 			}
 		})
 	}
@@ -110,9 +116,12 @@ func DggesIsolatedBenchmark(b *testing.B, impl Dggeser) {
 				copy(a, aOrig)
 				copy(bm, bOrig)
 				b.StartTimer()
-				impl.Dgges(lapack.SchurNone, lapack.SchurNone, lapack.SortNone, nil,
+				_, ok := impl.Dgges(lapack.SchurNone, lapack.SchurNone, lapack.SortNone, nil,
 					n, a, n, bm, n, alphar, alphai, beta,
 					nil, 1, nil, 1, work, len(work), nil)
+				if !ok {
+					b.Fatal("Dgges failed")
+				}
 			}
 		})
 	}

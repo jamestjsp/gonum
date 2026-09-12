@@ -52,7 +52,7 @@ import (
 // lapack.SortSelected. An eigenvalue (alphar[j] + i*alphai[j]) / beta[j] is
 // selected if selctg(alphar[j], alphai[j], beta[j]) returns true. Note that
 // when beta[j] is zero, the eigenvalue is infinite; the caller must handle this
-// case. For complex conjugate pairs, both eigenvalues must be selected.
+// case. For a complex conjugate pair, selecting either member selects both.
 //
 // On entry, a and b contain the n×n matrices A and B. On return, a has been
 // overwritten by its real Schur form S, and b has been overwritten by the upper
