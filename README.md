@@ -1,8 +1,7 @@
 # Gonum
 
-[![Build status](https://github.com/gonum/gonum/workflows/CI/badge.svg)](https://github.com/gonum/gonum/actions)
-[![Build status](https://ci.appveyor.com/api/projects/status/valslkp8sr50eepn/branch/master?svg=true)](https://ci.appveyor.com/project/Gonum/gonum/branch/master)
-[![codecov.io](https://codecov.io/gh/gonum/gonum/branch/master/graph/badge.svg)](https://codecov.io/gh/gonum/gonum)
+[![Build status](https://github.com/jamestjsp/gonum/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/jamestjsp/gonum/actions/workflows/ci.yml)
+[![codecov.io](https://codecov.io/gh/jamestjsp/gonum/branch/main/graph/badge.svg)](https://codecov.io/gh/jamestjsp/gonum)
 [![go.dev reference](https://pkg.go.dev/badge/gonum.org/v1/gonum)](https://pkg.go.dev/gonum.org/v1/gonum)
 [![GoDoc](https://godocs.io/gonum.org/v1/gonum?status.svg)](https://godocs.io/gonum.org/v1/gonum)
 [![Go Report Card](https://goreportcard.com/badge/github.com/gonum/gonum)](https://goreportcard.com/report/github.com/gonum/gonum)
@@ -18,7 +17,7 @@ go get -u gonum.org/v1/gonum/...
 
 ## Supported Go versions
 
-Gonum supports and tests using the gc compiler on the [two most recent Go releases](https://github.com/gonum/gonum/blob/master/.github/workflows/ci.yml#L14-L15) on Linux (386, amd64 and arm64), macOS and Windows (both on amd64).
+Gonum supports and tests using the gc compiler on the [two most recent Go releases](https://github.com/jamestjsp/gonum/blob/main/.github/workflows/ci.yml#L14-L15) on Linux (386, amd64 and arm64), macOS and Windows (both on amd64).
 
 Note that floating point behavior may differ between compiler versions and between architectures due to differences in floating point operation implementations.
 
