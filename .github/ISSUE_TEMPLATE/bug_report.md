@@ -32,5 +32,5 @@ executed in the root of your dependent module.
 -->
 
 
-### Does this issue reproduce with the current master?
+### Does this issue reproduce with the current main?
 

@@ -2,7 +2,7 @@ name: Codecov
 
 on:
   pull_request:
-    branches: [ master ]
+    branches: [ main ]
     types:
       - closed
 
@@ -69,4 +69,4 @@ jobs:
       with:
         override_pr: ${{ github.event.pull_request.number }}
         override_commit: ${{ github.event.pull_request.merge_commit_sha }}
-        override_branch: "refs/heads/master"
+        override_branch: "refs/heads/main"

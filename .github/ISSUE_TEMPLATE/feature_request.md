@@ -25,7 +25,7 @@ the output of `(cd $(go env GOPATH)/src/gonum.org/v1/gonum && git rev-parse HEAD
 -->
 
 
-### Is this feature absent from the current master?
+### Is this feature absent from the current main?
 
 
 ### Are you able to help contribute the feature?
